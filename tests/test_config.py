@@ -1,6 +1,6 @@
 import pytest
 
-from chat import ConfigError, load_config
+from chatbot.config import ConfigError, load_config
 
 
 def test_load_config_uses_environment_values(monkeypatch):

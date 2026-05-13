@@ -3,7 +3,6 @@ import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
 
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -58,59 +57,3 @@ def load_config(argv=None, *, load_env=True) -> ChatConfig:
         temperature=parse_temperature(raw_temperature),
         base_url=base_url,
     )
-
-
-def build_llm(config: ChatConfig) -> ChatOpenAI:
-    kwargs = {
-        "api_key": config.api_key,
-        "model": config.model,
-        "temperature": config.temperature,
-    }
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    return ChatOpenAI(**kwargs)
-
-
-def ask_once(llm: ChatOpenAI, question: str) -> str:
-    response = llm.invoke(question)
-    content = response.content
-    if isinstance(content, str):
-        return content
-    return str(content)
-
-
-def run_chat_loop(llm: ChatOpenAI) -> None:
-    print("LangChain CLI chatbot")
-    print("Type a question and press Enter. Type exit or quit, or submit an empty line, to stop.")
-
-    while True:
-        question = input("\nYou: ").strip()
-        if not question or question.lower() in {"exit", "quit"}:
-            print("Bye.")
-            return
-
-        try:
-            answer = ask_once(llm, question)
-        except Exception as exc:
-            print(f"Error: {exc}")
-            continue
-
-        print(f"Bot: {answer}")
-
-
-def main(argv=None) -> int:
-    try:
-        config = load_config(argv)
-        llm = build_llm(config)
-        run_chat_loop(llm)
-        return 0
-    except ConfigError as exc:
-        print(f"Configuration error: {exc}")
-        return 1
-    except KeyboardInterrupt:
-        print("\nBye.")
-        return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
