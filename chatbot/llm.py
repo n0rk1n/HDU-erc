@@ -1,13 +1,14 @@
 import warnings
+from typing import Any
 
-from langchain_openai import ChatOpenAI
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 warnings.filterwarnings("ignore", message=".*RunnableWithMessageHistory is deprecated.*")
 
-from chatbot.config import ChatConfig
+from chatbot.config import LlmConfig
+from chatbot.llm_adapter import ChatModelAdapter, build_chat_model
 
 store: dict[str, InMemoryChatMessageHistory] = {}
 
@@ -18,23 +19,31 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
     return store[session_id]
 
 
-def build_llm(config: ChatConfig) -> ChatOpenAI:
-    kwargs = {
-        "api_key": config.api_key,
-        "model": config.model,
-        "temperature": config.temperature,
-    }
-    if config.base_url:
-        kwargs["base_url"] = config.base_url
-    return ChatOpenAI(**kwargs)
+def build_llm(config: LlmConfig) -> ChatModelAdapter:
+    return build_chat_model(config)
 
 
-def ask_once(llm: ChatOpenAI, question: str) -> str:
+def ask_once(llm: ChatModelAdapter, question: str) -> str:
     response = llm.invoke(question)
     content = response.content
     if isinstance(content, str):
         return content
     return str(content)
+
+
+def format_emotion_context(emotion: str) -> str:
+    emotion = emotion.strip()
+    if not emotion:
+        return ""
+    return f"Current detected user emotion: {emotion}"
+
+
+def build_system_message(profile_text: str = "") -> str:
+    system_message = "You are a helpful assistant."
+    if profile_text:
+        system_message += f"\n\nUser Profile:\n{profile_text}"
+    system_message += "\n\n{emotion_context}"
+    return system_message
 
 
 def init_session_history(session_id: str, records: list[dict]) -> None:
@@ -48,10 +57,8 @@ def init_session_history(session_id: str, records: list[dict]) -> None:
             history.add_ai_message(content)
 
 
-def build_chain(llm: ChatOpenAI, profile_text: str = "") -> RunnableWithMessageHistory:
-    system_message = "You are a helpful assistant."
-    if profile_text:
-        system_message += f"\n\nUser Profile:\n{profile_text}"
+def build_chain(llm: Any, profile_text: str = "") -> RunnableWithMessageHistory:
+    system_message = build_system_message(profile_text)
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_message),
         MessagesPlaceholder(variable_name="chat_history"),
