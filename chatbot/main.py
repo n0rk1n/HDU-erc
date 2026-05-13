@@ -19,12 +19,7 @@ def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
                 {"input": question},
                 config={"configurable": {"session_id": "default"}},
             )
-            if isinstance(result, str):
-                answer = result
-            elif hasattr(result, "content"):
-                answer = result.content
-            else:
-                answer = str(result)
+            answer = result.content if hasattr(result, "content") else str(result)
         except Exception as exc:
             print(f"Error: {exc}")
             continue
