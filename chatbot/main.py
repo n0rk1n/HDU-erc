@@ -1,11 +1,11 @@
-from langchain_openai import ChatOpenAI
+from langchain.chains import LLMChain
 
 from chatbot.config import ConfigError, load_config
-from chatbot.llm import ask_once, build_llm
+from chatbot.llm import build_chain, build_llm
 
 
-def run_chat_loop(llm: ChatOpenAI) -> None:
-    print("LangChain CLI chatbot")
+def run_chat_loop(chain: LLMChain) -> None:
+    print("LangChain CLI chatbot (with memory)")
     print("Type a question and press Enter. Type exit or quit, or submit an empty line, to stop.")
 
     while True:
@@ -15,7 +15,7 @@ def run_chat_loop(llm: ChatOpenAI) -> None:
             return
 
         try:
-            answer = ask_once(llm, question)
+            answer = chain.run(input=question)
         except Exception as exc:
             print(f"Error: {exc}")
             continue
@@ -27,7 +27,8 @@ def main(argv=None) -> int:
     try:
         config = load_config(argv)
         llm = build_llm(config)
-        run_chat_loop(llm)
+        chain = build_chain(llm)
+        run_chat_loop(chain)
         return 0
     except ConfigError as exc:
         print(f"Configuration error: {exc}")
