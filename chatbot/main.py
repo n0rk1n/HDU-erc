@@ -1,14 +1,33 @@
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-from chatbot.config import ConfigError, load_config
+from chatbot.config import ChatConfig, ConfigError, load_config
+from chatbot.emotion import analyze_emotion
 from chatbot.history import append_message, format_recent, load_history
-from chatbot.llm import build_chain, build_llm, init_session_history
+from chatbot.llm import build_chain, build_llm, format_emotion_context, init_session_history
 from chatbot.profile import format_profile, load_profile
 
 
-def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
+def build_runtime_llms(config: ChatConfig):
+    chat_llm = build_llm(config.chat_llm)
+    if config.emotion_llm == config.chat_llm:
+        return chat_llm, chat_llm
+    emotion_llm = build_llm(config.emotion_llm)
+    return chat_llm, emotion_llm
+
+
+def run_chat_loop(
+    chain: RunnableWithMessageHistory,
+    config: ChatConfig,
+    emotion_llm,
+    *,
+    initial_records: list[dict] | None = None,
+) -> None:
     print("LangChain CLI chatbot (with memory)")
     print("Type a question and press Enter. Type exit or quit, or submit an empty line, to stop.")
+
+    session_records = list(initial_records or [])
+    turn_count = 0
+    current_emotion = ""
 
     while True:
         question = input("\nYou: ").strip()
@@ -36,10 +55,27 @@ def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
             return
 
         append_message("human", question)
+        session_records.append({"role": "human", "content": question})
+        turn_count += 1
+
+        if turn_count % config.emotion_interval == 0:
+            emotion_result = analyze_emotion(
+                emotion_llm,
+                session_records[:-1],
+                question,
+                previous_emotion=current_emotion,
+                turn_count=turn_count,
+                emotion_interval=config.emotion_interval,
+            )
+            if emotion_result.success:
+                current_emotion = emotion_result.emotion
 
         try:
             result = chain.invoke(
-                {"input": question},
+                {
+                    "input": question,
+                    "emotion_context": format_emotion_context(current_emotion),
+                },
                 config={"configurable": {"session_id": "default"}},
             )
             answer = result.content if hasattr(result, "content") else str(result)
@@ -48,6 +84,7 @@ def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
             continue
 
         append_message("ai", answer)
+        session_records.append({"role": "ai", "content": answer})
         print(f"Bot: {answer}")
 
 
@@ -57,15 +94,15 @@ def main(argv=None) -> int:
         records = load_history()
         profile = load_profile()
         profile_text = format_profile(profile)
-        llm = build_llm(config)
+        chat_llm, emotion_llm = build_runtime_llms(config)
         init_session_history("default", records)
         recent = format_recent(records)
         if recent:
             print("\n--- 最近消息 ---")
             print(recent)
             print("---")
-        chain = build_chain(llm, profile_text)
-        run_chat_loop(chain)
+        chain = build_chain(chat_llm, profile_text)
+        run_chat_loop(chain, config, emotion_llm, initial_records=records)
         return 0
     except ConfigError as exc:
         print(f"Configuration error: {exc}")
