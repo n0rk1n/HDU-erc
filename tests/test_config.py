@@ -145,6 +145,14 @@ def test_legacy_constructor_builds_chat_and_emotion_llm_config():
     assert config.emotion_interval == 2
 
 
+def test_legacy_constructor_defaults_emotion_interval():
+    config = ChatConfig(api_key="test-key", model="test-model", temperature=0.7)
+
+    assert config.emotion_interval == 5
+    assert config.chat_llm.api_key == "test-key"
+    assert config.emotion_llm == config.chat_llm
+
+
 def test_llm_environment_values_win_over_legacy_openai_values(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "chat-key")
     monkeypatch.setenv("LLM_MODEL", "chat-model")

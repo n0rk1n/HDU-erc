@@ -53,7 +53,7 @@ class ChatConfig:
             )
 
         if emotion_interval is None:
-            raise TypeError("ChatConfig requires emotion_interval.")
+            emotion_interval = DEFAULT_EMOTION_RECOGNITION_INTERVAL
 
         object.__setattr__(self, "chat_llm", chat_llm)
         object.__setattr__(self, "emotion_llm", emotion_llm or chat_llm)
