@@ -7,7 +7,7 @@ HISTORY_FILE = "chat_history.json"
 
 def load_history() -> list[dict]:
     path = Path(HISTORY_FILE)
-    if not path.exists():
+    if not path.exists() or path.stat().st_size == 0:
         return []
     try:
         with path.open() as f:
