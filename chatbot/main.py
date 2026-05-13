@@ -3,6 +3,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 from chatbot.config import ConfigError, load_config
 from chatbot.history import append_message, load_history
 from chatbot.llm import build_chain, build_llm, init_session_history
+from chatbot.profile import format_profile, load_profile
 
 
 def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
@@ -35,9 +36,11 @@ def main(argv=None) -> int:
     try:
         config = load_config(argv)
         records = load_history()
+        profile = load_profile()
+        profile_text = format_profile(profile)
         llm = build_llm(config)
         init_session_history("default", records)
-        chain = build_chain(llm)
+        chain = build_chain(llm, profile_text)
         run_chat_loop(chain)
         return 0
     except ConfigError as exc:
