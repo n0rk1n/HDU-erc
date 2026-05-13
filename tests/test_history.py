@@ -51,3 +51,13 @@ def test_load_history_returns_all_records(history_file):
     records = load_history()
     assert len(records) == 2
     assert records[0]["content"] == "q1"
+
+
+def test_append_message_write_failure_does_not_crash(history_file, capsys):
+    """Write failure prints a warning and does not raise."""
+    # Make directory read-only to force write failure
+    Path(history_file).parent.chmod(0o444)
+    try:
+        append_message("human", "hello")  # should not raise
+    finally:
+        Path(history_file).parent.chmod(0o755)
