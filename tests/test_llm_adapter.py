@@ -2,7 +2,10 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from chatbot.config import LlmConfig
+from chatbot.llm import build_chain
 from chatbot.llm_adapter import OpenAICompatibleChatAdapter, build_chat_model
+
+pytestmark = pytest.mark.filterwarnings("ignore:RunnableWithMessageHistory is deprecated.*")
 
 
 class FakeChatOpenAI:
@@ -81,3 +84,24 @@ def test_build_chat_model_rejects_unknown_provider():
 
     with pytest.raises(ValueError, match="Unsupported LLM provider"):
         build_chat_model(config)
+
+
+def test_adapter_can_be_composed_in_langchain_chain(monkeypatch):
+    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", FakeChatOpenAI)
+    config = LlmConfig(
+        provider="openai",
+        api_key="test-key",
+        model="gpt-4o-mini",
+        temperature=0.7,
+    )
+    chain = build_chain(build_chat_model(config), "- name: Alice")
+
+    response = chain.invoke(
+        {
+            "input": "hello",
+            "emotion_context": "Current detected user emotion: calm",
+        },
+        config={"configurable": {"session_id": "test-adapter-composition"}},
+    )
+
+    assert response.content.startswith("handled: ")

@@ -3,11 +3,12 @@ from typing import Any
 
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnablePassthrough
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 warnings.filterwarnings("ignore", message=".*RunnableWithMessageHistory is deprecated.*")
 
-from chatbot.config import LlmConfig
+from chatbot.config import ChatConfig, LlmConfig
 from chatbot.llm_adapter import ChatModelAdapter, build_chat_model
 
 store: dict[str, InMemoryChatMessageHistory] = {}
@@ -19,8 +20,9 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
     return store[session_id]
 
 
-def build_llm(config: LlmConfig) -> ChatModelAdapter:
-    return build_chat_model(config)
+def build_llm(config: ChatConfig | LlmConfig) -> ChatModelAdapter:
+    llm_config = config.chat_llm if isinstance(config, ChatConfig) else config
+    return build_chat_model(llm_config)
 
 
 def ask_once(llm: ChatModelAdapter, question: str) -> str:
@@ -64,7 +66,13 @@ def build_chain(llm: Any, profile_text: str = "") -> RunnableWithMessageHistory:
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
     ])
-    chain = prompt | llm
+    chain = (
+        RunnablePassthrough.assign(
+            emotion_context=lambda input_data: input_data.get("emotion_context", "")
+        )
+        | prompt
+        | llm
+    )
     return RunnableWithMessageHistory(
         chain,
         get_session_history,
