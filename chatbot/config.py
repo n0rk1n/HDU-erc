@@ -24,11 +24,56 @@ class LlmConfig:
     base_url: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class ChatConfig:
     chat_llm: LlmConfig
     emotion_llm: LlmConfig
     emotion_interval: int
+
+    def __init__(
+        self,
+        chat_llm: LlmConfig | None = None,
+        emotion_llm: LlmConfig | None = None,
+        emotion_interval: int | None = None,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        base_url: str | None = None,
+    ):
+        if chat_llm is None:
+            if api_key is None or model is None or temperature is None:
+                raise TypeError("ChatConfig requires chat_llm or legacy api_key, model, and temperature.")
+            chat_llm = LlmConfig(
+                provider=DEFAULT_PROVIDER,
+                api_key=api_key,
+                model=model,
+                temperature=temperature,
+                base_url=base_url,
+            )
+
+        if emotion_interval is None:
+            raise TypeError("ChatConfig requires emotion_interval.")
+
+        object.__setattr__(self, "chat_llm", chat_llm)
+        object.__setattr__(self, "emotion_llm", emotion_llm or chat_llm)
+        object.__setattr__(self, "emotion_interval", emotion_interval)
+
+    @property
+    def api_key(self) -> str:
+        return self.chat_llm.api_key
+
+    @property
+    def model(self) -> str:
+        return self.chat_llm.model
+
+    @property
+    def temperature(self) -> float:
+        return self.chat_llm.temperature
+
+    @property
+    def base_url(self) -> str | None:
+        return self.chat_llm.base_url
 
 
 def parse_args(argv=None):
@@ -66,6 +111,14 @@ def _first_value(*values: str | None) -> str | None:
     return None
 
 
+def _first_named_value(*values: tuple[str | None, str]) -> tuple[str | None, str | None]:
+    for value, name in values:
+        cleaned = _clean(value)
+        if cleaned is not None:
+            return cleaned, name
+    return None, None
+
+
 def parse_temperature(raw_value: str, name: str = "LLM_TEMPERATURE") -> float:
     try:
         return float(raw_value)
@@ -90,17 +143,21 @@ def _load_chat_llm_config(args) -> LlmConfig:
 
     provider = _first_value(args.provider, os.getenv("LLM_PROVIDER")) or DEFAULT_PROVIDER
     model = _first_value(args.model, os.getenv("LLM_MODEL"), os.getenv("OPENAI_MODEL")) or DEFAULT_MODEL
-    raw_temperature = (
-        _first_value(args.temperature, os.getenv("LLM_TEMPERATURE"), os.getenv("OPENAI_TEMPERATURE"))
-        or str(DEFAULT_TEMPERATURE)
+    raw_temperature, temperature_name = _first_named_value(
+        (args.temperature, "LLM_TEMPERATURE"),
+        (os.getenv("LLM_TEMPERATURE"), "LLM_TEMPERATURE"),
+        (os.getenv("OPENAI_TEMPERATURE"), "OPENAI_TEMPERATURE"),
     )
+    if raw_temperature is None:
+        raw_temperature = str(DEFAULT_TEMPERATURE)
+        temperature_name = "LLM_TEMPERATURE"
     base_url = _first_value(args.base_url, os.getenv("LLM_BASE_URL"), os.getenv("OPENAI_BASE_URL"))
 
     return LlmConfig(
         provider=provider.lower(),
         api_key=api_key,
         model=model,
-        temperature=parse_temperature(raw_temperature, "LLM_TEMPERATURE"),
+        temperature=parse_temperature(raw_temperature, temperature_name),
         base_url=base_url,
     )
 
