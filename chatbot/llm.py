@@ -48,9 +48,12 @@ def init_session_history(session_id: str, records: list[dict]) -> None:
             history.add_ai_message(content)
 
 
-def build_chain(llm: ChatOpenAI) -> RunnableWithMessageHistory:
+def build_chain(llm: ChatOpenAI, profile_text: str = "") -> RunnableWithMessageHistory:
+    system_message = "You are a helpful assistant."
+    if profile_text:
+        system_message += f"\n\nUser Profile:\n{profile_text}"
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful assistant."),
+        ("system", system_message),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
     ])
