@@ -37,6 +37,17 @@ def ask_once(llm: ChatOpenAI, question: str) -> str:
     return str(content)
 
 
+def init_session_history(session_id: str, records: list[dict]) -> None:
+    history = get_session_history(session_id)
+    for record in records:
+        role = record.get("role")
+        content = record.get("content", "")
+        if role == "human":
+            history.add_user_message(content)
+        elif role == "ai":
+            history.add_ai_message(content)
+
+
 def build_chain(llm: ChatOpenAI) -> RunnableWithMessageHistory:
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are a helpful assistant."),
