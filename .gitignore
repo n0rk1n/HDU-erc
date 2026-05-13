@@ -1,5 +1,6 @@
-.venv/
-.idea/
-__pycache__/
-.pytest_cache/
+.claude
+.idea
+__pycache__
+EICL
+docs
 .env
