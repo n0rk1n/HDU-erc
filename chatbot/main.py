@@ -1,7 +1,7 @@
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 from chatbot.config import ConfigError, load_config
-from chatbot.history import append_message, load_history
+from chatbot.history import append_message, format_recent, load_history
 from chatbot.llm import build_chain, build_llm, init_session_history
 from chatbot.profile import format_profile, load_profile
 
@@ -12,6 +12,25 @@ def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
 
     while True:
         question = input("\nYou: ").strip()
+        if question.startswith("/history"):
+            parts = question.split()
+            n = 10
+            if len(parts) > 1:
+                try:
+                    parsed = int(parts[1])
+                    if parsed > 0:
+                        n = parsed
+                except ValueError:
+                    pass
+            all_records = load_history()
+            output = format_recent(all_records, n=n)
+            if output:
+                print(f"\n--- 最近 {n} 条消息 ---")
+                print(output)
+                print("---")
+            else:
+                print("暂无历史消息。")
+            continue
         if not question or question.lower() in {"exit", "quit"}:
             print("Bye.")
             return
@@ -40,6 +59,11 @@ def main(argv=None) -> int:
         profile_text = format_profile(profile)
         llm = build_llm(config)
         init_session_history("default", records)
+        recent = format_recent(records)
+        if recent:
+            print("\n--- 最近消息 ---")
+            print(recent)
+            print("---")
         chain = build_chain(llm, profile_text)
         run_chat_loop(chain)
         return 0
