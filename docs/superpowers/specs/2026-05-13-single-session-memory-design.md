@@ -24,26 +24,34 @@
 
 ## 推荐方案
 
-采用 LangChain 自带的 `LLMChain` + `ConversationBufferMemory` 方案。
+采用 LangChain 1.x 的 `RunnableWithMessageHistory` + `InMemoryChatMessageHistory` 方案，使用 LCEL（LangChain Expression Language）构建链。
 
-### 为什么在选择阶段选了此方案
+LangChain 1.0+ 移除了 `LLMChain` 和 `ConversationBufferMemory` 等旧 API，推荐使用 LCEL 组合式 API。`RunnableWithMessageHistory` 是 LangChain 1.x 中管理对话历史的标准方式。
 
-用户明确选择了此方案。其优势在于由 LangChain 框架自动管理消息历史，`chain.run(input)` 自动在每次调用前插入历史消息，调用后更新历史，接入代码最简洁。
+### 为什么选择此方案
+
+1. 与已安装的 LangChain 1.3.0 兼容，使用受支持的最新 API。
+
+2. `InMemoryChatMessageHistory` 是纯内存存储，进程退出自动释放。
+
+3. LCEL 链（`prompt | llm`）比旧版 `LLMChain` 更简洁，也更具可组合性。
 
 ## 文件变更
 
 ### `chatbot/llm.py`
 
-新增 `build_chain()` 函数：
+修改 `build_chain()` 的实现：
 
-1. 定义 `ChatPromptTemplate`，结构为：
-   - system 消息（"You are a helpful assistant."）
-   - `MessagesPlaceholder(variable_name="chat_history")` — 用于插入历史对话
-   - human 消息（`"{input}"`）
+1. 添加必要的 import：`RunnableWithMessageHistory`、`InMemoryChatMessageHistory`、`ChatPromptTemplate`、`MessagesPlaceholder`。
 
-2. 创建 `ConversationBufferMemory(memory_key="chat_history", return_messages=True)`。
+2. 添加模块级 `store: dict[str, InMemoryChatMessageHistory]` 字典，用于按 `session_id` 存储对话历史。
 
-3. 构造 `LLMChain(llm=llm, prompt=prompt, memory=memory)` 并返回。
+3. 添加 `get_session_history(session_id: str)` 辅助函数，从 `store` 中获取或创建对应 session 的历史记录。
+
+4. `build_chain(llm)` 函数：
+   - 使用 LCEL 创建 `prompt | llm` 链
+   - 用 `RunnableWithMessageHistory` 包装该链，指定 `input_messages_key="input"` 和 `history_messages_key="chat_history"`
+   - 返回 `RunnableWithMessageHistory` 实例
 
 `ask_once()` 保留不动，供无记忆场景使用。
 
@@ -51,11 +59,11 @@
 
 1. 新增导入 `build_chain`。
 
-2. `run_chat_loop()` 入参从 `ChatOpenAI` 改为 `LLMChain`。
+2. `run_chat_loop()` 入参从 `ChatOpenAI` 改为 `RunnableWithMessageHistory`。
 
-3. 循环体内的 `answer = ask_once(llm, question)` 改为 `answer = chain.run(input=question)`。
+3. 循环体内的 `answer = ask_once(llm, question)` 改为调用 `chain.invoke({"input": question}, config={"configurable": {"session_id": "default"}})`。
 
-4. `main()` 中顺序不变：`config → build_llm → build_chain → run_chat_loop`。
+4. `main()` 中顺序：`config → build_llm → build_chain → run_chat_loop`。
 
 ## 数据流
 
@@ -63,13 +71,14 @@
 flowchart LR
     A["python -m chatbot.main"] --> B["chatbot.config 读取配置"]
     B --> C["chatbot.llm 创建 ChatOpenAI"]
-    C --> D["chatbot.llm 创建 LLMChain + ConversationBufferMemory"]
+    C --> D["chatbot.llm 创建 RunnableWithMessageHistory"]
     D --> E["chatbot.main 终端循环"]
-    E --> F["chain.run(input=question)"]
-    F --> G["LLMChain 自动拼入 chat_history"]
-    G --> H["模型回答"]
-    H --> I["ConversationBufferMemory 追加本轮对话"]
-    I --> E
+    E --> F["chain.invoke(input, session_id=default)"]
+    F --> G["InMemoryChatMessageHistory 获取历史"]
+    G --> H["LCEL 链: prompt | llm"]
+    H --> I["模型回答"]
+    I --> J["InMemoryChatMessageHistory 追加本轮对话"]
+    J --> E
 ```
 
 ## 交互行为保持
@@ -86,7 +95,7 @@ flowchart LR
 
 ## 依赖
 
-不需要新增依赖。`LLMChain` 和 `ConversationBufferMemory` 来自已安装的 `langchain` 包。
+不需要新增依赖。`RunnableWithMessageHistory` 来自 `langchain-core`，`InMemoryChatMessageHistory` 来自 `langchain-core`，均已随 `langchain` 安装。
 
 ## 验收标准
 

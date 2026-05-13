@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 给 CLI 聊天机器人加入 LLMChain + ConversationBufferMemory，实现单次运行内的对话记忆。
+**Goal:** 给 CLI 聊天机器人加入 `RunnableWithMessageHistory` + `InMemoryChatMessageHistory`，实现单次运行内的对话记忆。
 
-**Architecture:** 在 `chatbot/llm.py` 中新增 `build_chain(llm)` 函数，返回带 `ConversationBufferMemory` 的 `LLMChain`。`chatbot/main.py` 的 `run_chat_loop` 入参从 `ChatOpenAI` 改为 `LLMChain`，循环内用 `chain.run(input=question)` 替代 `ask_once()`。Memory 自动管理每轮对话的历史追加。
+**Architecture:** 在 `chatbot/llm.py` 中新增 `build_chain(llm)` 函数，使用 LCEL（`prompt | llm`）构建链，用 `RunnableWithMessageHistory` 包装并传入 `InMemoryChatMessageHistory` 管理对话历史。`chatbot/main.py` 的 `run_chat_loop` 入参从 `ChatOpenAI` 改为 `RunnableWithMessageHistory`，循环内用 `chain.invoke()` 替代 `ask_once()`。每轮对话通过 `session_id="default"` 自动读取和追加历史。
 
-**Tech Stack:** Python 3.13, LangChain 1.3.0, LLMChain, ConversationBufferMemory
+**Tech Stack:** Python 3.13, LangChain 1.3.0, langchain-core 1.4.0, RunnableWithMessageHistory, InMemoryChatMessageHistory
 
 ---
 
@@ -15,25 +15,45 @@
 **Files:**
 - Modify: `chatbot/llm.py`
 
-- [ ] **Step 1: 添加 import 并新增 `build_chain()` 函数**
+- [ ] **Step 1: 替换 import 并新增 `build_chain()` 函数**
 
-在文件顶部添加 import：
+移除旧 import（不在 LangChain 1.3.0 中存在）：
 ```python
-from langchain.chains import LLMChain
-from langchain.memory import ConversationBufferMemory
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+# 删除以下两行
+# from langchain.chains import LLMChain
+# from langchain.memory import ConversationBufferMemory
 ```
 
-在文件末尾追加 `build_chain()` 函数：
+添加新 import：
 ```python
-def build_chain(llm: ChatOpenAI) -> LLMChain:
+from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables.history import RunnableWithMessageHistory
+```
+
+在文件末尾追加以下新代码：
+```python
+store: dict[str, InMemoryChatMessageHistory] = {}
+
+def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
+    if session_id not in store:
+        store[session_id] = InMemoryChatMessageHistory()
+    return store[session_id]
+
+
+def build_chain(llm: ChatOpenAI) -> RunnableWithMessageHistory:
     prompt = ChatPromptTemplate.from_messages([
         ("system", "You are a helpful assistant."),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{input}"),
     ])
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    return LLMChain(llm=llm, prompt=prompt, memory=memory)
+    chain = prompt | llm
+    return RunnableWithMessageHistory(
+        chain,
+        get_session_history,
+        input_messages_key="input",
+        history_messages_key="chat_history",
+    )
 ```
 
 - [ ] **Step 2: 验证语法正确**
@@ -45,10 +65,10 @@ Expected: exit code 0, no output
 
 ```bash
 git add chatbot/llm.py
-git commit -m "feat: add build_chain function with ConversationBufferMemory"
+git commit -m "feat: add build_chain with RunnableWithMessageHistory"
 ```
 
-### Task 2: 修改 `chatbot/main.py` — 接入 LLMChain
+### Task 2: 修改 `chatbot/main.py` — 接入带记忆的链
 
 **Files:**
 - Modify: `chatbot/main.py`
@@ -64,7 +84,17 @@ from chatbot.llm import ask_once, build_llm
 from chatbot.llm import build_chain, build_llm
 ```
 
-修改 `run_chat_loop` 签名（入参从 `ChatOpenAI` 改为 `LLMChain`）和内部调用。把：
+移除不再使用的 import（`ChatOpenAI` 不再需要做类型标注）：
+```python
+# 删除: from langchain_openai import ChatOpenAI
+```
+
+添加新 import：
+```python
+from langchain_core.runnables.history import RunnableWithMessageHistory
+```
+
+修改 `run_chat_loop` 签名和内部调用。把：
 ```python
 def run_chat_loop(llm: ChatOpenAI) -> None:
     print("LangChain CLI chatbot")
@@ -73,10 +103,13 @@ def run_chat_loop(llm: ChatOpenAI) -> None:
 ```
 改为：
 ```python
-def run_chat_loop(chain: LLMChain) -> None:
+def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
     print("LangChain CLI chatbot (with memory)")
     ...
-        answer = chain.run(input=question)
+        answer = chain.invoke(
+            {"input": question},
+            config={"configurable": {"session_id": "default"}},
+        )
 ```
 
 修改 `main()` 中的调用顺序。把：
@@ -91,20 +124,17 @@ def run_chat_loop(chain: LLMChain) -> None:
         run_chat_loop(chain)
 ```
 
-添加缺失的 import。在文件顶部添加：
-```python
-from langchain.chains import LLMChain
-```
+**注意：** `RunnableWithMessageHistory.invoke()` 返回的是一个 `AIMessage` 对象（或完整 `dict`），不是纯字符串。需要提取其 `content` 属性。确认 `answer.content` 或 `answer["content"]` 的正确提取方式。
 
 完整修改后的文件结构如下：
 ```python
-from langchain.chains import LLMChain
+from langchain_core.runnables.history import RunnableWithMessageHistory
 
 from chatbot.config import ConfigError, load_config
 from chatbot.llm import build_chain, build_llm
 
 
-def run_chat_loop(chain: LLMChain) -> None:
+def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
     print("LangChain CLI chatbot (with memory)")
     print("Type a question and press Enter. Type exit or quit, or submit an empty line, to stop.")
 
@@ -115,7 +145,11 @@ def run_chat_loop(chain: LLMChain) -> None:
             return
 
         try:
-            answer = chain.run(input=question)
+            result = chain.invoke(
+                {"input": question},
+                config={"configurable": {"session_id": "default"}},
+            )
+            answer = result.content if hasattr(result, "content") else str(result)
         except Exception as exc:
             print(f"Error: {exc}")
             continue
@@ -166,5 +200,5 @@ Expected: all tests PASS
 
 ```bash
 git add chatbot/main.py
-git commit -m "feat: integrate LLMChain with memory into chat loop"
+git commit -m "feat: integrate RunnableWithMessageHistory into chat loop"
 ```
