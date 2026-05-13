@@ -3,6 +3,7 @@ import os
 from dataclasses import dataclass
 
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 
 
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -57,3 +58,22 @@ def load_config(argv=None, *, load_env=True) -> ChatConfig:
         temperature=parse_temperature(raw_temperature),
         base_url=base_url,
     )
+
+
+def build_llm(config: ChatConfig) -> ChatOpenAI:
+    kwargs = {
+        "api_key": config.api_key,
+        "model": config.model,
+        "temperature": config.temperature,
+    }
+    if config.base_url:
+        kwargs["base_url"] = config.base_url
+    return ChatOpenAI(**kwargs)
+
+
+def ask_once(llm: ChatOpenAI, question: str) -> str:
+    response = llm.invoke(question)
+    content = response.content
+    if isinstance(content, str):
+        return content
+    return str(content)
