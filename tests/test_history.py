@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from chatbot.history import append_message, load_history
+from chatbot.history import append_message, format_recent, load_history
 
 
 @pytest.fixture
@@ -61,3 +61,48 @@ def test_append_message_write_failure_does_not_crash(history_file, capsys):
         append_message("human", "hello")  # should not raise
     finally:
         Path(history_file).parent.chmod(0o755)
+
+
+def test_format_recent_empty():
+    assert format_recent([]) == ""
+
+
+def test_format_recent_human_message():
+    records = [{"role": "human", "content": "hello"}]
+    assert format_recent(records) == "You: hello"
+
+
+def test_format_recent_ai_message():
+    records = [{"role": "ai", "content": "hi there"}]
+    assert format_recent(records) == "Bot: hi there"
+
+
+def test_format_recent_multiple_messages():
+    records = [
+        {"role": "human", "content": "q1"},
+        {"role": "ai", "content": "a1"},
+        {"role": "human", "content": "q2"},
+        {"role": "ai", "content": "a2"},
+    ]
+    expected = "You: q1\nBot: a1\nYou: q2\nBot: a2"
+    assert format_recent(records) == expected
+
+
+def test_format_recent_returns_last_n():
+    records = [
+        {"role": "human", "content": "q1"},
+        {"role": "ai", "content": "a1"},
+        {"role": "human", "content": "q2"},
+        {"role": "ai", "content": "a2"},
+    ]
+    expected = "You: q2\nBot: a2"
+    assert format_recent(records, n=2) == expected
+
+
+def test_format_recent_n_exceeds_length():
+    records = [
+        {"role": "human", "content": "q1"},
+        {"role": "ai", "content": "a1"},
+    ]
+    expected = "You: q1\nBot: a1"
+    assert format_recent(records, n=10) == expected

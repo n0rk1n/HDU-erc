@@ -3,7 +3,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-HISTORY_FILE = "chat_history.json"
+HISTORY_FILE = "../data/chat_history.json"
 
 
 def load_history() -> list[dict]:
@@ -41,3 +41,20 @@ def append_message(role: str, content: str) -> None:
                 tmp.unlink()
     except OSError as exc:
         print(f"Warning: could not save chat history: {exc}")
+
+
+def format_recent(records: list[dict], n: int = 10) -> str:
+    if not records:
+        return ""
+    if not isinstance(n, int) or n <= 0:
+        n = 10
+    recent = records[-n:]
+    lines = []
+    for record in recent:
+        role = record.get("role")
+        content = record.get("content", "")
+        if role == "human":
+            lines.append(f"You: {content}")
+        elif role == "ai":
+            lines.append(f"Bot: {content}")
+    return "\n".join(lines)
