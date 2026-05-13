@@ -1,7 +1,8 @@
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 from chatbot.config import ConfigError, load_config
-from chatbot.llm import build_chain, build_llm
+from chatbot.history import append_message, load_history
+from chatbot.llm import build_chain, build_llm, init_session_history
 
 
 def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
@@ -14,6 +15,8 @@ def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
             print("Bye.")
             return
 
+        append_message("human", question)
+
         try:
             result = chain.invoke(
                 {"input": question},
@@ -24,13 +27,16 @@ def run_chat_loop(chain: RunnableWithMessageHistory) -> None:
             print(f"Error: {exc}")
             continue
 
+        append_message("ai", answer)
         print(f"Bot: {answer}")
 
 
 def main(argv=None) -> int:
     try:
         config = load_config(argv)
+        records = load_history()
         llm = build_llm(config)
+        init_session_history("default", records)
         chain = build_chain(llm)
         run_chat_loop(chain)
         return 0
