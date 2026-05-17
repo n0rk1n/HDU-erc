@@ -4,3 +4,4 @@ __pycache__
 EICL
 docs
 .env
+.worktrees
