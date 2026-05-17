@@ -37,6 +37,13 @@ class StreamingFakeChain(FakeChain):
         yield SimpleNamespace(content=" world")
 
 
+class FailingStreamingFakeChain(FakeChain):
+    def stream(self, payload, config):
+        self.payloads.append(payload)
+        yield SimpleNamespace(content="partial")
+        raise RuntimeError("stream failed")
+
+
 def make_test_config(emotion_interval=2):
     llm_config = LlmConfig(
         provider="openai",
@@ -174,14 +181,24 @@ def test_stream_reply_emits_user_tokens_and_done(monkeypatch):
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
-    events = list(service.stream_reply("hello"))
+    events = service.stream_reply("hello")
 
-    assert [(event.event, event.data) for event in events] == [
-        ("user_message", {"role": "human", "content": "hello"}),
-        ("token", {"content": "hello"}),
-        ("token", {"content": " world"}),
-        ("done", {"content": "hello world"}),
-    ]
+    event = next(events)
+    assert (event.event, event.data) == (
+        "user_message",
+        {"role": "human", "content": "hello"},
+    )
+    assert stored_messages == [("human", "hello")]
+    event = next(events)
+    assert (event.event, event.data) == ("token", {"content": "hello"})
+    assert stored_messages == [("human", "hello")]
+    event = next(events)
+    assert (event.event, event.data) == ("token", {"content": " world"})
+    assert stored_messages == [("human", "hello")]
+    done = next(events)
+
+    assert (done.event, done.data) == ("done", {"content": "hello world"})
+    assert done.data == {"content": "hello world"}
     assert stored_messages == [("human", "hello"), ("ai", "hello world")]
 
 
@@ -231,6 +248,31 @@ def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
         "done",
     ]
     assert "Failed to parse" in events[2].data["error"]
+    assert events[-1].data == {"content": "hello world"}
+
+
+def test_stream_reply_emits_error_without_ai_history_after_partial_stream(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FailingStreamingFakeChain()
+    emotion_llm = FakeEmotionLlm()
+    stored_messages = []
+
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_message",
+        lambda role, content: stored_messages.append((role, content)),
+    )
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    events = list(service.stream_reply("hello"))
+
+    assert [(event.event, event.data) for event in events] == [
+        ("user_message", {"role": "human", "content": "hello"}),
+        ("token", {"content": "partial"}),
+        ("error", {"message": "stream failed"}),
+    ]
+    assert stored_messages == [("human", "hello")]
+    assert service.session_records == [{"role": "human", "content": "hello"}]
 
 
 def test_stream_reply_emits_error_without_ai_history(monkeypatch):
