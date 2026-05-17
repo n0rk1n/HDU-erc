@@ -74,6 +74,26 @@ def test_adapter_delegates_invoke_to_client(monkeypatch):
     assert response.content == "handled: hello"
 
 
+def test_adapter_delegates_stream_to_client(monkeypatch):
+    class StreamingFakeChatOpenAI(FakeChatOpenAI):
+        def stream(self, prompt, *args, **kwargs):
+            yield AIMessage(content="hello")
+            yield AIMessage(content=" world")
+
+    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", StreamingFakeChatOpenAI)
+    config = LlmConfig(
+        provider="openai",
+        api_key="test-key",
+        model="gpt-4o-mini",
+        temperature=0.7,
+    )
+    adapter = build_chat_model(config)
+
+    chunks = list(adapter.stream("hello"))
+
+    assert [chunk.content for chunk in chunks] == ["hello", " world"]
+
+
 def test_build_chat_model_rejects_unknown_provider():
     config = LlmConfig(
         provider="unknown",

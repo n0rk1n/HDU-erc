@@ -9,13 +9,18 @@ from chatbot.config import LlmConfig
 
 
 class ChatModelAdapter(Protocol):
-    """LLM 调用的结构协议，上层仅依赖 invoke 方法，不关心底层 provider 实现。"""
+    """LLM 调用的结构协议，上层仅依赖 invoke/stream，不关心底层 provider 实现。"""
+
     def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        raise NotImplementedError
+
+    def stream(self, input: Any, config: Any = None, **kwargs: Any):
         raise NotImplementedError
 
 
 class OpenAICompatibleChatAdapter(Runnable[Any, Any]):
     """OpenAI 兼容 API 适配器 —— 封装 langchain-openai 的 ChatOpenAI，供 openai/deepseek 等 provider 使用。"""
+
     def __init__(self, config: LlmConfig):
         kwargs: dict[str, Any] = {
             "api_key": config.api_key,
@@ -28,6 +33,9 @@ class OpenAICompatibleChatAdapter(Runnable[Any, Any]):
 
     def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
         return self._client.invoke(input, config=config, **kwargs)
+
+    def stream(self, input: Any, config: Any = None, **kwargs: Any):
+        return self._client.stream(input, config=config, **kwargs)
 
 
 OPENAI_COMPATIBLE_PROVIDERS = {"openai", "deepseek"}
