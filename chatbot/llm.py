@@ -53,7 +53,8 @@ def build_system_message(profile_text: str = "") -> str:
 
 def init_session_history(session_id: str, records: list[dict]) -> None:
     """从持久化历史恢复 LangChain 的 InMemoryChatMessageHistory 会话。"""
-    history = get_session_history(session_id)
+    history = InMemoryChatMessageHistory()
+    store[session_id] = history
     for record in records:
         role = record.get("role")
         content = record.get("content", "")

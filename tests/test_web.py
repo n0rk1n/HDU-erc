@@ -3,7 +3,7 @@ import json
 from fastapi.testclient import TestClient
 
 from chatbot.chat_service import ChatEvent
-from chatbot.web import create_app, format_sse
+from chatbot.web import build_service, create_app, format_sse
 
 
 class FakeService:
@@ -15,6 +15,35 @@ class FakeService:
         yield ChatEvent("user_message", {"role": "human", "content": message})
         yield ChatEvent("token", {"content": "hi"})
         yield ChatEvent("done", {"content": "hi"})
+
+
+def test_build_service_does_not_duplicate_session_history(monkeypatch):
+    from chatbot.llm import get_session_history, store
+
+    records = [
+        {"role": "human", "content": "hello"},
+        {"role": "ai", "content": "hi"},
+    ]
+
+    class FakeLlm:
+        pass
+
+    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
+    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
+    monkeypatch.setattr(
+        "chatbot.web.build_runtime_llms",
+        lambda config: (FakeLlm(), FakeLlm()),
+    )
+    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    store.clear()
+
+    build_service()
+    build_service()
+
+    history = get_session_history("default")
+    assert [message.content for message in history.messages] == ["hello", "hi"]
 
 
 def test_format_sse_encodes_event_and_json_data():
