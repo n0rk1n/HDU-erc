@@ -198,7 +198,6 @@ def test_stream_reply_emits_user_tokens_and_done(monkeypatch):
     done = next(events)
 
     assert (done.event, done.data) == ("done", {"content": "hello world"})
-    assert done.data == {"content": "hello world"}
     assert stored_messages == [("human", "hello"), ("ai", "hello world")]
 
 
