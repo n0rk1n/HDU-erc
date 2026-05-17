@@ -3,3 +3,6 @@ langchain-openai
 langchain_core
 python-dotenv
 pytest
+fastapi
+uvicorn
+httpx
