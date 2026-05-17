@@ -2,20 +2,6 @@ from chatbot.config import ChatConfig, LlmConfig
 from chatbot.main import build_runtime_llms
 
 
-def make_test_config(emotion_interval=2):
-    llm_config = LlmConfig(
-        provider="openai",
-        api_key="test-key",
-        model="test-model",
-        temperature=0.7,
-    )
-    return ChatConfig(
-        chat_llm=llm_config,
-        emotion_llm=llm_config,
-        emotion_interval=emotion_interval,
-    )
-
-
 def test_build_runtime_llms_reuses_chat_llm_when_emotion_config_matches(monkeypatch):
     chat_config = LlmConfig(
         provider="deepseek",

@@ -114,3 +114,41 @@ def test_generate_reply_keeps_user_message_when_chat_fails(monkeypatch):
 
     assert stored_messages == [("human", "q1")]
     assert service.session_records == [{"role": "human", "content": "q1"}]
+
+
+def test_generate_reply_counts_interval_from_current_runtime(monkeypatch):
+    config = make_test_config(emotion_interval=2)
+    chain = FakeChain(replies=["reply 1"])
+    emotion_llm = FakeEmotionLlm()
+    initial_records = [{"role": "human", "content": "old q"}]
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+
+    service = ChatService(chain, config, emotion_llm, initial_records=initial_records)
+
+    assert service.generate_reply("q1") == "reply 1"
+    assert emotion_llm.prompts == []
+    assert service.turn_count == 1
+
+
+def test_stream_reply_falls_back_to_invoke_and_writes_ai_message(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["full reply"])
+    emotion_llm = FakeEmotionLlm()
+    stored_messages = []
+
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_message",
+        lambda role, content: stored_messages.append((role, content)),
+    )
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    events = list(service.stream_reply("hello"))
+
+    assert [(event.event, event.data) for event in events] == [
+        ("user_message", {"role": "human", "content": "hello"}),
+        ("token", {"content": "full reply"}),
+        ("done", {"content": "full reply"}),
+    ]
+    assert stored_messages == [("human", "hello"), ("ai", "full reply")]

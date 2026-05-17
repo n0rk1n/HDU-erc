@@ -32,9 +32,7 @@ class ChatService:
         self.emotion_llm = emotion_llm
         self.session_records = list(initial_records or [])
         self.session_id = session_id
-        self.turn_count = sum(
-            1 for record in self.session_records if record.get("role") == "human"
-        )
+        self.turn_count = 0
         self.current_emotion = ""
 
     def _append_user_message(self, message: str) -> None:
