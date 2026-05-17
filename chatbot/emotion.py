@@ -1,3 +1,5 @@
+"""情感分析模块 —— 在聊天过程中按固定轮次间隔分析用户当前情绪，结果持久化到 JSON 文件。"""
+
 import json
 import re
 from dataclasses import dataclass
@@ -95,6 +97,7 @@ Dialogue context: {dialogue_context}""".strip()
 
 
 def parse_emotion_output(output: str) -> str | None:
+    """从 LLM 输出中提取情绪标签，并校验其在预定义标签集中。"""
     match = re.search(r"Emotion:\s*([A-Za-z_-]+)", output)
     if not match:
         return None
@@ -141,6 +144,7 @@ def analyze_emotion(
     turn_count: int,
     emotion_interval: int,
 ) -> EmotionAnalysisResult:
+    """执行单次情感分析：构建 prompt → 调用 LLM → 解析结果 → 持久化记录。"""
     prompt = build_emotion_prompt(
         records,
         current_input,

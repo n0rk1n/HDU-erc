@@ -1,3 +1,5 @@
+"""配置加载与验证 —— 按 CLI 参数 > 环境变量 > 默认值的优先级解析聊天和情感 LLM 配置。"""
+
 import argparse
 import os
 from dataclasses import dataclass
@@ -41,6 +43,7 @@ class ChatConfig:
         temperature: float | None = None,
         base_url: str | None = None,
     ):
+        # 支持旧版平铺参数：将 api_key/model/temperature/base_url 自动包装为 LlmConfig
         if chat_llm is None:
             if api_key is None or model is None or temperature is None:
                 raise TypeError("ChatConfig requires chat_llm or legacy api_key, model, and temperature.")
@@ -56,9 +59,11 @@ class ChatConfig:
             emotion_interval = DEFAULT_EMOTION_RECOGNITION_INTERVAL
 
         object.__setattr__(self, "chat_llm", chat_llm)
+        # 情感 LLM 未独立配置时默认复用聊天 LLM
         object.__setattr__(self, "emotion_llm", emotion_llm or chat_llm)
         object.__setattr__(self, "emotion_interval", emotion_interval)
 
+    # 向后兼容：将 chat_llm 核心字段代理到 ChatConfig 上
     @property
     def api_key(self) -> str:
         return self.chat_llm.api_key
@@ -163,6 +168,7 @@ def _load_chat_llm_config(args) -> LlmConfig:
 
 
 def _load_emotion_llm_config(args, chat_llm: LlmConfig) -> LlmConfig:
+    """加载情感 LLM 配置；仅设置 EMOTION_LLM_MODEL 时才独立配置，否则复用 chat_llm。"""
     emotion_model = _first_value(args.emotion_model, os.getenv("EMOTION_LLM_MODEL"))
     if emotion_model is None:
         return chat_llm
@@ -185,6 +191,7 @@ def _load_emotion_llm_config(args, chat_llm: LlmConfig) -> LlmConfig:
 
 
 def load_config(argv=None, *, load_env=True) -> ChatConfig:
+    """加载完整配置，串联 .env 加载、CLI 解析、LLM 配置构建和参数校验。"""
     if load_env:
         load_dotenv()
     args = parse_args(argv)

@@ -1,3 +1,5 @@
+"""LLM 链构建与会话管理 —— 封装 LangChain 的 prompt、chain 组装和 session history 存储。"""
+
 import warnings
 from typing import Any
 
@@ -34,6 +36,7 @@ def ask_once(llm: ChatModelAdapter, question: str) -> str:
 
 
 def format_emotion_context(emotion: str) -> str:
+    """将当前检测到的情绪格式化为可注入系统提示词的上下文。"""
     emotion = emotion.strip()
     if not emotion:
         return ""
@@ -49,6 +52,7 @@ def build_system_message(profile_text: str = "") -> str:
 
 
 def init_session_history(session_id: str, records: list[dict]) -> None:
+    """从持久化历史恢复 LangChain 的 InMemoryChatMessageHistory 会话。"""
     history = get_session_history(session_id)
     for record in records:
         role = record.get("role")
@@ -60,6 +64,7 @@ def init_session_history(session_id: str, records: list[dict]) -> None:
 
 
 def build_chain(llm: Any, profile_text: str = "") -> RunnableWithMessageHistory:
+    """组装 LangChain 可运行链：注入 emotion_context → prompt → LLM，并挂载消息历史。"""
     system_message = build_system_message(profile_text)
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_message),

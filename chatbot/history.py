@@ -1,3 +1,5 @@
+"""聊天历史持久化 —— 将对话记录读写到 JSON 文件，并提供格式化输出。"""
+
 import json
 import tempfile
 from datetime import datetime, timezone
@@ -21,6 +23,7 @@ def load_history() -> list[dict]:
 
 
 def append_message(role: str, content: str) -> None:
+    """追加一条消息到历史文件 —— 先写临时文件再原子替换，避免写坏 JSON。"""
     try:
         records = load_history()
         records.append({

@@ -1,3 +1,5 @@
+"""Chatbot CLI entry point —— 加载配置、初始化历史与 LLM、运行交互循环。"""
+
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 from chatbot.config import ChatConfig, ConfigError, load_config
@@ -8,6 +10,7 @@ from chatbot.profile import format_profile, load_profile
 
 
 def build_runtime_llms(config: ChatConfig):
+    """构建运行时 LLM 实例；若情感 LLM 复用聊天配置则共享同一实例避免重复初始化。"""
     chat_llm = build_llm(config.chat_llm)
     if config.emotion_llm == config.chat_llm:
         return chat_llm, chat_llm
@@ -89,6 +92,7 @@ def run_chat_loop(
 
 
 def main(argv=None) -> int:
+    """CLI 入口：加载配置 → 初始化历史/画像/LLM → 恢复会话 → 进入交互循环。"""
     try:
         config = load_config(argv)
         records = load_history()

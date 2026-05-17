@@ -1,3 +1,5 @@
+"""用户画像加载 —— 从 JSON 读取 key-value 用户信息，注入系统提示词以个性化对话。"""
+
 import json
 from pathlib import Path
 
