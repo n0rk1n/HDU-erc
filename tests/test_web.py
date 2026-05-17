@@ -52,6 +52,26 @@ def test_history_endpoint_returns_recent_structured_messages(monkeypatch):
     }
 
 
+def test_history_endpoint_filters_roles_before_limiting(monkeypatch):
+    records = [
+        {"role": "human", "content": f"q{i}", "timestamp": f"t{i}"}
+        for i in range(10)
+    ] + [
+        {"role": "system", "content": "ignored", "timestamp": "ignored"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/history?limit=10")
+
+    assert response.status_code == 200
+    assert len(response.json()["messages"]) == 10
+    assert response.json()["messages"][0]["content"] == "q0"
+    assert response.json()["messages"][-1]["content"] == "q9"
+
+
 def test_stream_endpoint_returns_sse_events():
     service = FakeService()
     app = create_app(service_factory=lambda: service)

@@ -34,15 +34,16 @@ def build_service() -> ChatService:
 
 def _recent_messages(limit: int) -> list[dict]:
     records = load_history()
-    return [
+    messages = [
         {
             "role": record.get("role", ""),
             "content": record.get("content", ""),
             "timestamp": record.get("timestamp", ""),
         }
-        for record in records[-limit:]
+        for record in records
         if record.get("role") in {"human", "ai"}
     ]
+    return messages[-limit:]
 
 
 def create_app(service_factory: Callable[[], ChatService] = build_service) -> FastAPI:
