@@ -6,13 +6,13 @@
 
 聊天历史已经通过 `chatbot/history.py` 持久化到 `data/chat_history.json`，并且 `format_recent(records, n=10)` 已经支持读取最近 10 条消息。情感分析逻辑在 `chatbot/emotion.py` 中按 `EMOTION_INTERVAL` 触发，分析结果持久化到 `data/emotion_analysis.json`。
 
-本设计目标是新增一个可视化 Web 页面，把原本在控制台完成的聊天操作迁移到浏览器中，同时保留 CLI 入口。页面启动时加载最近 10 条消息，用户后续通过页面和 chatbot 沟通，AI 回复通过 SSE 协议流式显示。
+本设计目标是新增一个可视化 Web 页面，把原本在控制台完成的聊天操作迁移到浏览器中，并移除 CLI 聊天能力。页面启动时加载最近 10 条消息，用户后续通过页面和 chatbot 沟通，AI 回复通过 SSE 协议流式显示。
 
 ## 已确认需求
 
 1. 新增 Web 页面，采用 FastAPI + 原生 HTML/CSS/JS。
 
-2. 保留现有 CLI，新增 Web 能力，不移除控制台聊天入口。
+2. 不保留现有 CLI 聊天能力，交互入口迁移为 Web 页面。
 
 3. 页面启动时加载历史记录中的最近 10 条消息。
 
@@ -29,7 +29,6 @@
 ```mermaid
 flowchart TD
     Browser["Web 页面"] --> Web["FastAPI Web 层"]
-    CLI["现有 CLI"] --> Service["ChatService 共享聊天服务"]
     Web --> Service
     Service --> History["chatbot.history"]
     Service --> Emotion["chatbot.emotion"]
@@ -38,11 +37,11 @@ flowchart TD
     Emotion --> EmotionData["data/emotion_analysis.json"]
 ```
 
-这个方案让 CLI 和 Web 调用同一套单轮聊天流程，避免复制业务逻辑。Web 层只负责 HTTP、静态页面和 SSE 事件组织，聊天历史、情感分析、LLM 调用仍由共享服务协调。
+这个方案让 Web 层调用共享聊天服务，避免把业务逻辑散落在 HTTP 处理函数中。Web 层只负责 HTTP、静态页面和 SSE 事件组织，聊天历史、情感分析、LLM 调用仍由共享服务协调。
 
 未采用的方案：
 
-1. 在 Web 层复刻 CLI 逻辑。优点是短期实现快，缺点是 CLI 和 Web 容易行为分叉。
+1. 在 Web 层复刻原 CLI 逻辑。优点是短期实现快，缺点是 HTTP 处理函数会承担过多业务职责。
 
 2. 引入完整会话管理层。优点是后续支持多用户更自然，缺点是当前本地单用户需求不需要这部分复杂度。
 
@@ -66,9 +65,9 @@ flowchart TD
 
 6. 在回复成功完成后追加 ai 历史消息。
 
-7. 为 CLI 提供整段回复方法，为 Web 提供流式事件生成方法。
+7. 为 Web 提供流式事件生成方法，并为测试提供可直接调用的服务接口。
 
-CLI 现有行为会通过这个服务保留：用户输入、情感分析间隔、历史写入和错误处理语义保持一致。
+原 CLI 中的业务流程会迁移到这个服务中：用户输入、情感分析间隔、历史写入和错误处理语义保持一致，但不再提供控制台聊天交互。
 
 ### LLM 适配器流式能力
 
@@ -76,7 +75,7 @@ CLI 现有行为会通过这个服务保留：用户输入、情感分析间隔�
 
 设计约束：
 
-1. 保留 `invoke`，继续服务 CLI 和现有测试。
+1. 保留 `invoke`，继续服务非流式测试和内部兜底逻辑。
 
 2. 为支持流式的适配器新增 `stream` 能力，返回可迭代的回复片段。
 
@@ -126,7 +125,7 @@ Web 应用启动时加载配置、历史、用户画像、聊天 LLM 和情感�
 
 ### `chatbot/main.py`
 
-保留 CLI 入口，但将单轮聊天处理改为调用 `ChatService`。`/history` 命令继续保留，`exit`、`quit` 和空输入退出逻辑继续保留。
+不再保留 CLI 聊天循环。官方运行方式改为启动 Web 服务，例如 `uvicorn chatbot.web:app`。`chatbot/main.py` 不再提供交互式聊天入口；`/history`、`exit`、`quit` 和空输入退出等控制台专属行为不再作为功能要求保留。
 
 ## 数据流
 
@@ -231,9 +230,9 @@ data: {"content":"你好"}
 
    覆盖 `user_message`、`emotion_start`、`emotion_done` 或 `emotion_error`、`token`、`done`、`error` 的事件顺序和 JSON 数据结构。
 
-4. CLI 回归测试
+4. 旧 CLI 测试迁移
 
-   保持现有 CLI 测试通过，证明控制台入口没有被 Web 改造破坏。
+   删除或改写依赖控制台输入输出的测试，把情感分析间隔、历史写入和错误处理断言迁移到 `ChatService` 测试中。
 
 ## 非目标
 
@@ -261,6 +260,6 @@ data: {"content":"你好"}
 
 6. 用户消息和完整 AI 回复会写入 `data/chat_history.json`。
 
-7. 原 CLI 入口仍可正常聊天，并保留 `/history`、退出命令和历史写入行为。
+7. 原 CLI 聊天入口不再作为可用能力保留，项目文档或运行方式指向 Web 服务。
 
-8. 新增和现有测试通过。
+8. 新增测试和保留测试通过。
