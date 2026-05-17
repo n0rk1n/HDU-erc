@@ -24,7 +24,6 @@ class ChatService:
         chain,
         config: ChatConfig,
         emotion_llm,
-        *,
         initial_records: list[dict] | None = None,
         session_id: str = "default",
     ):
