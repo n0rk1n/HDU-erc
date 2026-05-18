@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Emotion Chatbot</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Emotion Chatbot</h1>
+          <p id="emotion-status" class="emotion-status">情感状态：暂无</p>
+        </div>
+      </header>
+
+      <section id="messages" class="messages" aria-live="polite"></section>
+
+      <form id="chat-form" class="composer">
+        <label class="sr-only" for="message-input">输入消息</label>
+        <textarea id="message-input" rows="2" placeholder="输入消息，按 Enter 发送"></textarea>
+        <button id="send-button" type="submit">发送</button>
+      </form>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

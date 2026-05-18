@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -125,3 +126,21 @@ def test_stream_endpoint_rejects_blank_message():
 
     assert response.status_code == 400
     assert response.json() == {"detail": "Message must not be empty."}
+
+
+def test_static_assets_exist():
+    root = Path(__file__).resolve().parents[1]
+
+    assert (root / "chatbot" / "static" / "index.html").exists()
+    assert (root / "chatbot" / "static" / "style.css").exists()
+    assert (root / "chatbot" / "static" / "app.js").exists()
+
+
+def test_index_endpoint_returns_html():
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]

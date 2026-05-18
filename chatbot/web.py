@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
@@ -48,6 +49,7 @@ def _recent_messages(limit: int) -> list[dict]:
 
 def create_app(service_factory: Callable[[], ChatService] = build_service) -> FastAPI:
     app = FastAPI(title="Emotion Recognition Chatbot")
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.on_event("startup")
     def startup() -> None:
