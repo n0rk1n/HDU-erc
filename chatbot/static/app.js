@@ -41,6 +41,15 @@ async function loadHistory() {
   });
 }
 
+async function initialize() {
+  setLocked(true);
+  try {
+    await loadHistory();
+  } finally {
+    setLocked(false);
+  }
+}
+
 function streamMessage(message) {
   setLocked(true);
   let aiBubble = null;
@@ -109,4 +118,4 @@ inputEl.addEventListener("keydown", (event) => {
   }
 });
 
-loadHistory();
+initialize();

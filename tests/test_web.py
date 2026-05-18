@@ -144,3 +144,13 @@ def test_index_endpoint_returns_html():
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
+
+
+def test_static_app_js_is_served():
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "javascript" in response.headers["content-type"]
