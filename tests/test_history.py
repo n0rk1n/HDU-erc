@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import chatbot.history as history
 from chatbot.history import append_message, format_recent, load_history
 
 
@@ -15,6 +16,15 @@ def history_file(tmp_path, monkeypatch):
 
 def test_load_history_file_not_found(history_file):
     assert load_history() == []
+
+
+def test_default_history_file_is_project_data_file():
+    path = Path(history.HISTORY_FILE)
+
+    assert path.is_absolute()
+    assert path.name == "chat_history.json"
+    assert path.parent.name == "data"
+    assert path.parent.parent == Path(__file__).resolve().parents[1]
 
 
 def test_load_history_empty_file(history_file):

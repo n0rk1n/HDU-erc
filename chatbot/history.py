@@ -5,7 +5,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-HISTORY_FILE = "../data/chat_history.json"
+HISTORY_FILE = str(Path(__file__).resolve().parents[1] / "data" / "chat_history.json")
 
 
 def load_history() -> list[dict]:
