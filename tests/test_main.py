@@ -2,6 +2,12 @@ from chatbot.config import ChatConfig, LlmConfig
 from chatbot.main import build_runtime_llms
 
 
+def test_main_no_longer_exports_interactive_chat_loop():
+    import chatbot.main as main_module
+
+    assert not hasattr(main_module, "run_chat_loop")
+
+
 def test_build_runtime_llms_reuses_chat_llm_when_emotion_config_matches(monkeypatch):
     chat_config = LlmConfig(
         provider="deepseek",
