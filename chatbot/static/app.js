@@ -89,12 +89,14 @@ function streamMessage(message) {
   });
 
   source.addEventListener("error", (event) => {
+    if (!aiBubble) {
+      aiBubble = addMessage("ai", "");
+    }
     if (event.data) {
       const payload = JSON.parse(event.data);
-      if (!aiBubble) {
-        aiBubble = addMessage("ai", "");
-      }
       aiBubble.textContent = payload.message;
+    } else {
+      aiBubble.textContent = "连接中断，请稍后重试";
     }
     source.close();
     setLocked(false);
