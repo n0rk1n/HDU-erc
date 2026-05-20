@@ -192,6 +192,89 @@ def test_session_endpoint_returns_messages_and_latest_emotion(monkeypatch):
     }
 
 
+def test_session_endpoint_matches_emotion_after_restart_turn_count(monkeypatch):
+    records = [
+        {"role": "human", "content": "old q1", "timestamp": "t1"},
+        {"role": "ai", "content": "old a1", "timestamp": "t2"},
+        {"role": "human", "content": "old q2", "timestamp": "t3"},
+        {"role": "ai", "content": "old a2", "timestamp": "t4"},
+        {"role": "human", "content": "new q1", "timestamp": "t5"},
+        {"role": "ai", "content": "new a1", "timestamp": "t6"},
+        {"role": "human", "content": "new q2", "timestamp": "t7"},
+        {"role": "ai", "content": "new a2", "timestamp": "t8"},
+        {"role": "human", "content": "new q3", "timestamp": "t9"},
+        {"role": "ai", "content": "new a3", "timestamp": "t10"},
+        {"role": "human", "content": "new q4", "timestamp": "t11"},
+        {"role": "ai", "content": "new a4", "timestamp": "t12"},
+        {"role": "human", "content": "new q5", "timestamp": "t13"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [{
+            "timestamp": "emotion-time",
+            "turn_count": 5,
+            "emotion_interval": 5,
+            "input": (
+                "Dialogue context: old q2</s>old a2</s>new q1</s>new a1</s>"
+                "new q2</s>new a2</s>new q3</s>new a3</s>new q4</s>new a4</s>new q5"
+            ),
+            "emotion": "sad",
+            "success": True,
+        }],
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["emotion"] == {
+        "emotion": "sad",
+        "timestamp": "emotion-time",
+        "turn_count": 5,
+    }
+
+
+def test_session_endpoint_does_not_fall_back_when_latest_emotion_mismatches(monkeypatch):
+    records = [
+        {"role": "human", "content": "q1", "timestamp": "t1"},
+        {"role": "ai", "content": "a1", "timestamp": "t2"},
+        {"role": "human", "content": "q2", "timestamp": "t3"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [
+            {
+                "timestamp": "older-emotion-time",
+                "turn_count": 1,
+                "emotion_interval": 1,
+                "input": "Dialogue context: q1",
+                "emotion": "anxious",
+                "success": True,
+            },
+            {
+                "timestamp": "latest-emotion-time",
+                "turn_count": 1,
+                "emotion_interval": 1,
+                "input": "Dialogue context: different q",
+                "emotion": "sad",
+                "success": True,
+            },
+        ],
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["emotion"] is None
+
+
 def test_session_endpoint_returns_null_emotion(monkeypatch):
     monkeypatch.setattr("chatbot.web.load_history", lambda: [])
     monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [])

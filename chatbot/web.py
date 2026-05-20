@@ -67,6 +67,7 @@ def _latest_emotion_for_records(records: list[dict]) -> dict | None:
             continue
         if _emotion_record_matches_history(record, records, snapshot["turn_count"]):
             return snapshot
+        return None
     return None
 
 
@@ -82,30 +83,29 @@ def _emotion_record_matches_history(
     if not isinstance(input_text, str) or not input_text:
         return False
 
-    current_index = _index_of_human_turn(records, turn_count)
-    if current_index is None:
-        return False
-
-    interval = emotion_record.get("emotion_interval")
-    if type(interval) is not int or interval <= 0:
-        interval = turn_count
-    prior_contents = [
-        str(record.get("content", "")).strip()
-        for record in records[:current_index]
-        if record.get("role") in {"human", "ai"}
-    ]
-    expected_contents = [content for content in prior_contents if content][-interval * 2 :]
-    current_content = str(records[current_index].get("content", "")).strip()
-    if current_content:
-        expected_contents.append(current_content)
-    if not expected_contents:
-        return False
     stored_context = _dialogue_context_from_prompt(input_text)
     if stored_context is None:
         return False
 
-    dialogue_context = "</s>".join(expected_contents)
-    return stored_context == dialogue_context
+    expected_contents = [
+        content
+        for content in (part.strip() for part in stored_context.split("</s>"))
+        if content
+    ]
+    if not expected_contents:
+        return False
+
+    history_items = [
+        (record.get("role"), str(record.get("content", "")).strip())
+        for record in records
+        if record.get("role") in {"human", "ai"}
+    ]
+    history_items = [
+        (role, content)
+        for role, content in history_items
+        if content
+    ]
+    return _contains_context_window(history_items, expected_contents, turn_count)
 
 
 def _dialogue_context_from_prompt(input_text: str) -> str | None:
@@ -120,15 +120,20 @@ def _dialogue_context_from_prompt(input_text: str) -> str | None:
     return None
 
 
-def _index_of_human_turn(records: list[dict], turn_count: int) -> int | None:
-    human_turns = 0
-    for index, record in enumerate(records):
-        if record.get("role") != "human":
-            continue
-        human_turns += 1
-        if human_turns == turn_count:
-            return index
-    return None
+def _contains_context_window(
+    history_items: list[tuple[str, str]],
+    expected_contents: list[str],
+    min_human_turns: int,
+) -> bool:
+    if len(expected_contents) > len(history_items):
+        return False
+    for index in range(len(history_items) - len(expected_contents) + 1):
+        window = history_items[index:index + len(expected_contents)]
+        contents = [content for _, content in window]
+        human_turns = sum(1 for role, _ in window if role == "human")
+        if contents == expected_contents and human_turns >= min_human_turns:
+            return True
+    return False
 
 
 def _session_snapshot(limit: int) -> dict:
