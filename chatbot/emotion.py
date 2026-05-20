@@ -123,26 +123,33 @@ def load_analysis_records() -> list[dict]:
     return data
 
 
+def successful_emotion_snapshot(record: dict) -> dict[str, Any] | None:
+    emotion = record.get("emotion")
+    if record.get("success") is not True or not isinstance(emotion, str):
+        return None
+    timestamp = record.get("timestamp")
+    turn_count = record.get("turn_count")
+    if not isinstance(timestamp, str) or type(turn_count) is not int:
+        return None
+    emotion = emotion.strip()
+    if not emotion:
+        return None
+    return {
+        "emotion": emotion,
+        "timestamp": timestamp,
+        "turn_count": turn_count,
+    }
+
+
 def load_latest_successful_emotion() -> dict[str, Any] | None:
     records = load_analysis_records()
     for record in reversed(records):
         if not isinstance(record, dict):
             continue
-        emotion = record.get("emotion")
-        if record.get("success") is not True or not isinstance(emotion, str):
+        snapshot = successful_emotion_snapshot(record)
+        if snapshot is None:
             continue
-        timestamp = record.get("timestamp")
-        turn_count = record.get("turn_count")
-        if not isinstance(timestamp, str) or type(turn_count) is not int:
-            continue
-        emotion = emotion.strip()
-        if not emotion:
-            continue
-        return {
-            "emotion": emotion,
-            "timestamp": timestamp,
-            "turn_count": turn_count,
-        }
+        return snapshot
     return None
 
 

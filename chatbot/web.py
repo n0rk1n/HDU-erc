@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
-from chatbot.emotion import load_latest_successful_emotion
+from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.history import load_history
 from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
@@ -59,15 +59,54 @@ def _recent_messages(limit: int) -> list[dict]:
 
 
 def _latest_emotion_for_records(records: list[dict]) -> dict | None:
-    latest_emotion = load_latest_successful_emotion()
-    if latest_emotion is None:
-        return None
+    for record in reversed(load_analysis_records()):
+        if not isinstance(record, dict):
+            continue
+        snapshot = successful_emotion_snapshot(record)
+        if snapshot is None:
+            continue
+        if _emotion_record_matches_history(record, records, snapshot["turn_count"]):
+            return snapshot
+    return None
 
-    human_turns = sum(1 for record in records if record.get("role") == "human")
-    turn_count = latest_emotion.get("turn_count")
-    if type(turn_count) is not int or turn_count <= 0 or turn_count > human_turns:
-        return None
-    return latest_emotion
+
+def _emotion_record_matches_history(
+    emotion_record: dict,
+    records: list[dict],
+    turn_count: int,
+) -> bool:
+    if turn_count <= 0:
+        return False
+
+    input_text = emotion_record.get("input")
+    if not isinstance(input_text, str) or not input_text:
+        return False
+
+    end_index = _index_after_human_turn(records, turn_count)
+    if end_index is None:
+        return False
+
+    interval = emotion_record.get("emotion_interval")
+    if type(interval) is not int or interval <= 0:
+        interval = turn_count
+    contents = [
+        str(record.get("content", "")).strip()
+        for record in records[:end_index]
+        if record.get("role") in {"human", "ai"}
+    ]
+    expected_contents = [content for content in contents if content][-interval * 2 :]
+    return bool(expected_contents) and all(content in input_text for content in expected_contents)
+
+
+def _index_after_human_turn(records: list[dict], turn_count: int) -> int | None:
+    human_turns = 0
+    for index, record in enumerate(records):
+        if record.get("role") != "human":
+            continue
+        human_turns += 1
+        if human_turns == turn_count:
+            return index + 1
+    return None
 
 
 def _session_snapshot(limit: int) -> dict:
