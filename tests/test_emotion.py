@@ -193,6 +193,12 @@ def test_load_latest_successful_emotion_skips_malformed_trailing_records(tmp_pat
             "emotion": "sad",
             "success": True,
         },
+        {
+            "timestamp": "2026-05-19T18:40:00+08:00",
+            "turn_count": True,
+            "emotion": "sad",
+            "success": True,
+        },
     ]), encoding="utf-8")
     monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
 
