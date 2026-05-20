@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
+from chatbot.emotion import load_latest_successful_emotion
 from chatbot.history import load_history
 from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
@@ -28,9 +29,16 @@ def build_service() -> ChatService:
     records = load_history()
     profile_text = format_profile(load_profile())
     chat_llm, emotion_llm = build_runtime_llms(config)
+    latest_emotion = load_latest_successful_emotion()
     init_session_history("default", records)
     chain = build_chain(chat_llm, profile_text)
-    return ChatService(chain, config, emotion_llm, initial_records=records)
+    return ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=records,
+        initial_emotion=(latest_emotion or {}).get("emotion", ""),
+    )
 
 
 def _recent_messages(limit: int) -> list[dict]:
@@ -45,6 +53,13 @@ def _recent_messages(limit: int) -> list[dict]:
         if record.get("role") in {"human", "ai"}
     ]
     return messages[-limit:]
+
+
+def _session_snapshot(limit: int) -> dict:
+    return {
+        "messages": _recent_messages(limit),
+        "emotion": load_latest_successful_emotion(),
+    }
 
 
 def create_app(service_factory: Callable[[], ChatService] = build_service) -> FastAPI:
@@ -69,6 +84,10 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.get("/api/history")
     def history(limit: int = Query(default=10, gt=0, le=100)):
         return {"messages": _recent_messages(limit)}
+
+    @app.get("/api/session")
+    def session(limit: int = Query(default=10, gt=0, le=100)):
+        return _session_snapshot(limit)
 
     @app.get("/api/chat/stream")
     def chat_stream(message: str, service: ChatService = Depends(get_service)):

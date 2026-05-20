@@ -47,6 +47,98 @@ def test_build_service_does_not_duplicate_session_history(monkeypatch):
     assert [message.content for message in history.messages] == ["hello", "hi"]
 
 
+def test_build_service_uses_latest_successful_emotion(monkeypatch):
+    records = [
+        {"role": "human", "content": "hello"},
+        {"role": "ai", "content": "hi"},
+    ]
+
+    class FakeLlm:
+        pass
+
+    captured = {}
+
+    def fake_chat_service(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=None,
+        initial_emotion="",
+        session_id="default",
+    ):
+        captured["initial_records"] = initial_records
+        captured["initial_emotion"] = initial_emotion
+        return object()
+
+    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_latest_successful_emotion",
+        lambda: {"emotion": "sad", "timestamp": "t1", "turn_count": 5},
+    )
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
+    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
+    monkeypatch.setattr(
+        "chatbot.web.build_runtime_llms",
+        lambda config: (FakeLlm(), FakeLlm()),
+    )
+    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
+
+    build_service()
+
+    assert captured["initial_records"] == records
+    assert captured["initial_emotion"] == "sad"
+
+
+def test_session_endpoint_returns_messages_and_latest_emotion(monkeypatch):
+    records = [
+        {"role": "human", "content": f"q{i}", "timestamp": f"t{i}"}
+        for i in range(12)
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_latest_successful_emotion",
+        lambda: {"emotion": "sad", "timestamp": "emotion-time", "turn_count": 5},
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["messages"][0] == {
+        "role": "human",
+        "content": "q2",
+        "timestamp": "t2",
+    }
+    assert payload["messages"][-1] == {
+        "role": "human",
+        "content": "q11",
+        "timestamp": "t11",
+    }
+    assert payload["emotion"] == {
+        "emotion": "sad",
+        "timestamp": "emotion-time",
+        "turn_count": 5,
+    }
+
+
+def test_session_endpoint_returns_null_emotion(monkeypatch):
+    monkeypatch.setattr("chatbot.web.load_history", lambda: [])
+    monkeypatch.setattr("chatbot.web.load_latest_successful_emotion", lambda: None)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json() == {"messages": [], "emotion": None}
+
+
 def test_format_sse_encodes_event_and_json_data():
     output = format_sse(ChatEvent("token", {"content": "hi"}))
 
