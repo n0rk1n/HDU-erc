@@ -100,8 +100,24 @@ def _emotion_record_matches_history(
         expected_contents.append(current_content)
     if not expected_contents:
         return False
+    stored_context = _dialogue_context_from_prompt(input_text)
+    if stored_context is None:
+        return False
+
     dialogue_context = "</s>".join(expected_contents)
-    return f"Dialogue context: {dialogue_context}" in input_text
+    return stored_context == dialogue_context
+
+
+def _dialogue_context_from_prompt(input_text: str) -> str | None:
+    marker = "\nDialogue context: "
+    if marker in input_text:
+        return input_text.rsplit(marker, 1)[1].strip()
+
+    prefix = "Dialogue context: "
+    if input_text.startswith(prefix):
+        return input_text[len(prefix):].strip()
+
+    return None
 
 
 def _index_of_human_turn(records: list[dict], turn_count: int) -> int | None:

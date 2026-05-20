@@ -303,6 +303,34 @@ def test_session_endpoint_returns_null_for_substring_collision(monkeypatch):
     assert response.json()["emotion"] is None
 
 
+def test_session_endpoint_requires_exact_dialogue_context(monkeypatch):
+    records = [
+        {"role": "human", "content": "q1", "timestamp": "t1"},
+        {"role": "ai", "content": "a1", "timestamp": "t2"},
+        {"role": "human", "content": "q2", "timestamp": "t3"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [{
+            "timestamp": "emotion-time",
+            "turn_count": 2,
+            "emotion_interval": 2,
+            "input": "Dialogue context: q1</s>a1</s>q2 extra",
+            "emotion": "sad",
+            "success": True,
+        }],
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["emotion"] is None
+
+
 def test_session_endpoint_checks_full_emotion_prompt_window(monkeypatch):
     records = [
         {"role": "human", "content": "q1", "timestamp": "t1"},
