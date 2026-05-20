@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-EMOTION_ANALYSIS_FILE = "data/emotion_analysis.json"
+EMOTION_ANALYSIS_FILE = str(Path(__file__).resolve().parents[1] / "data" / "emotion_analysis.json")
 EMOTION_LABELS = [
     "surprised",
     "excited",
@@ -121,6 +121,25 @@ def load_analysis_records() -> list[dict]:
     if not isinstance(data, list):
         return []
     return data
+
+
+def load_latest_successful_emotion() -> dict[str, Any] | None:
+    records = load_analysis_records()
+    for record in reversed(records):
+        if not isinstance(record, dict):
+            continue
+        emotion = record.get("emotion")
+        if record.get("success") is not True or not isinstance(emotion, str):
+            continue
+        emotion = emotion.strip()
+        if not emotion:
+            continue
+        return {
+            "emotion": emotion,
+            "timestamp": record.get("timestamp", ""),
+            "turn_count": record.get("turn_count", 0),
+        }
+    return None
 
 
 def append_analysis_record(record: dict[str, Any]) -> None:
