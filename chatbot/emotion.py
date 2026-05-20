@@ -131,13 +131,17 @@ def load_latest_successful_emotion() -> dict[str, Any] | None:
         emotion = record.get("emotion")
         if record.get("success") is not True or not isinstance(emotion, str):
             continue
+        timestamp = record.get("timestamp")
+        turn_count = record.get("turn_count")
+        if not isinstance(timestamp, str) or not isinstance(turn_count, int):
+            continue
         emotion = emotion.strip()
         if not emotion:
             continue
         return {
             "emotion": emotion,
-            "timestamp": record.get("timestamp", ""),
-            "turn_count": record.get("turn_count", 0),
+            "timestamp": timestamp,
+            "turn_count": turn_count,
         }
     return None
 
