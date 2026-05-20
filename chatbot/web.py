@@ -29,7 +29,7 @@ def build_service() -> ChatService:
     records = load_history()
     profile_text = format_profile(load_profile())
     chat_llm, emotion_llm = build_runtime_llms(config)
-    latest_emotion = load_latest_successful_emotion()
+    latest_emotion = _latest_emotion_for_records(records)
     init_session_history("default", records)
     chain = build_chain(chat_llm, profile_text)
     return ChatService(
@@ -41,8 +41,7 @@ def build_service() -> ChatService:
     )
 
 
-def _recent_messages(limit: int) -> list[dict]:
-    records = load_history()
+def _structured_messages(records: list[dict], limit: int) -> list[dict]:
     messages = [
         {
             "role": record.get("role", ""),
@@ -55,10 +54,27 @@ def _recent_messages(limit: int) -> list[dict]:
     return messages[-limit:]
 
 
+def _recent_messages(limit: int) -> list[dict]:
+    return _structured_messages(load_history(), limit)
+
+
+def _latest_emotion_for_records(records: list[dict]) -> dict | None:
+    latest_emotion = load_latest_successful_emotion()
+    if latest_emotion is None:
+        return None
+
+    human_turns = sum(1 for record in records if record.get("role") == "human")
+    turn_count = latest_emotion.get("turn_count")
+    if type(turn_count) is not int or turn_count <= 0 or turn_count > human_turns:
+        return None
+    return latest_emotion
+
+
 def _session_snapshot(limit: int) -> dict:
+    records = load_history()
     return {
-        "messages": _recent_messages(limit),
-        "emotion": load_latest_successful_emotion(),
+        "messages": _structured_messages(records, limit),
+        "emotion": _latest_emotion_for_records(records),
     }
 
 
