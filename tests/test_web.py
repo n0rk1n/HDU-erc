@@ -228,6 +228,16 @@ def test_static_assets_exist():
     assert (root / "chatbot" / "static" / "app.js").exists()
 
 
+def test_static_app_js_loads_session_snapshot():
+    root = Path(__file__).resolve().parents[1]
+    app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'fetch("/api/session?limit=10")' in app_js
+    assert 'fetch("/api/history?limit=10")' not in app_js
+    assert "payload.emotion" in app_js
+    assert "情感状态：暂无" in app_js
+
+
 def test_index_endpoint_returns_html():
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)

@@ -27,8 +27,16 @@ function addMessage(role, content = "") {
   return bubble;
 }
 
-async function loadHistory() {
-  const response = await fetch("/api/history?limit=10");
+function renderEmotion(emotion) {
+  if (emotion && emotion.emotion) {
+    emotionStatusEl.textContent = `情感状态：${emotion.emotion}`;
+    return;
+  }
+  emotionStatusEl.textContent = "情感状态：暂无";
+}
+
+async function loadSession() {
+  const response = await fetch("/api/session?limit=10");
   if (!response.ok) {
     emotionStatusEl.textContent = "历史加载失败";
     return;
@@ -39,12 +47,13 @@ async function loadHistory() {
     const role = message.role === "human" ? "human" : "ai";
     addMessage(role, message.content);
   });
+  renderEmotion(payload.emotion);
 }
 
 async function initialize() {
   setLocked(true);
   try {
-    await loadHistory();
+    await loadSession();
   } finally {
     setLocked(false);
   }
