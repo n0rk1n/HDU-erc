@@ -81,7 +81,7 @@ def test_build_service_uses_latest_successful_emotion(monkeypatch):
             "timestamp": "t1",
             "turn_count": 5,
             "emotion_interval": 5,
-            "input": "q0</s>q1</s>q2</s>q3</s>q4",
+            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
             "emotion": "sad",
             "success": True,
         }],
@@ -131,7 +131,7 @@ def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
             "timestamp": "t1",
             "turn_count": 5,
             "emotion_interval": 5,
-            "input": "q0</s>q1</s>q2</s>q3</s>q4",
+            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
             "emotion": "sad",
             "success": True,
         }],
@@ -162,7 +162,7 @@ def test_session_endpoint_returns_messages_and_latest_emotion(monkeypatch):
             "timestamp": "emotion-time",
             "turn_count": 5,
             "emotion_interval": 5,
-            "input": "q0</s>q1</s>q2</s>q3</s>q4",
+            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
             "emotion": "sad",
             "success": True,
         }],
@@ -217,7 +217,7 @@ def test_session_endpoint_returns_null_for_stale_emotion(monkeypatch):
             "timestamp": "emotion-time",
             "turn_count": 5,
             "emotion_interval": 5,
-            "input": "q1",
+            "input": "Dialogue context: q1",
             "emotion": "sad",
             "success": True,
         }],
@@ -252,7 +252,7 @@ def test_session_endpoint_returns_null_for_replaced_history(monkeypatch):
             "timestamp": "emotion-time",
             "turn_count": 2,
             "emotion_interval": 2,
-            "input": "old q1</s>old a1</s>old q2",
+            "input": "Dialogue context: old q1</s>old a1</s>old q2",
             "emotion": "sad",
             "success": True,
         }],
@@ -273,6 +273,66 @@ def test_session_endpoint_returns_null_for_replaced_history(monkeypatch):
         ],
         "emotion": None,
     }
+
+
+def test_session_endpoint_returns_null_for_substring_collision(monkeypatch):
+    records = [
+        {"role": "human", "content": "q1", "timestamp": "t1"},
+        {"role": "ai", "content": "a1", "timestamp": "t2"},
+        {"role": "human", "content": "q2", "timestamp": "t3"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [{
+            "timestamp": "emotion-time",
+            "turn_count": 2,
+            "emotion_interval": 2,
+            "input": "Dialogue context: q10</s>a10</s>q20",
+            "emotion": "sad",
+            "success": True,
+        }],
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["emotion"] is None
+
+
+def test_session_endpoint_checks_full_emotion_prompt_window(monkeypatch):
+    records = [
+        {"role": "human", "content": "q1", "timestamp": "t1"},
+        {"role": "ai", "content": "a1", "timestamp": "t2"},
+        {"role": "human", "content": "new q2", "timestamp": "t3"},
+        {"role": "ai", "content": "a2", "timestamp": "t4"},
+        {"role": "human", "content": "q3", "timestamp": "t5"},
+        {"role": "ai", "content": "a3", "timestamp": "t6"},
+        {"role": "human", "content": "q4", "timestamp": "t7"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [{
+            "timestamp": "emotion-time",
+            "turn_count": 4,
+            "emotion_interval": 2,
+            "input": "Dialogue context: old q2</s>a2</s>q3</s>a3</s>q4",
+            "emotion": "sad",
+            "success": True,
+        }],
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["emotion"] is None
 
 
 def test_format_sse_encodes_event_and_json_data():

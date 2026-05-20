@@ -82,30 +82,36 @@ def _emotion_record_matches_history(
     if not isinstance(input_text, str) or not input_text:
         return False
 
-    end_index = _index_after_human_turn(records, turn_count)
-    if end_index is None:
+    current_index = _index_of_human_turn(records, turn_count)
+    if current_index is None:
         return False
 
     interval = emotion_record.get("emotion_interval")
     if type(interval) is not int or interval <= 0:
         interval = turn_count
-    contents = [
+    prior_contents = [
         str(record.get("content", "")).strip()
-        for record in records[:end_index]
+        for record in records[:current_index]
         if record.get("role") in {"human", "ai"}
     ]
-    expected_contents = [content for content in contents if content][-interval * 2 :]
-    return bool(expected_contents) and all(content in input_text for content in expected_contents)
+    expected_contents = [content for content in prior_contents if content][-interval * 2 :]
+    current_content = str(records[current_index].get("content", "")).strip()
+    if current_content:
+        expected_contents.append(current_content)
+    if not expected_contents:
+        return False
+    dialogue_context = "</s>".join(expected_contents)
+    return f"Dialogue context: {dialogue_context}" in input_text
 
 
-def _index_after_human_turn(records: list[dict], turn_count: int) -> int | None:
+def _index_of_human_turn(records: list[dict], turn_count: int) -> int | None:
     human_turns = 0
     for index, record in enumerate(records):
         if record.get("role") != "human":
             continue
         human_turns += 1
         if human_turns == turn_count:
-            return index + 1
+            return index
     return None
 
 
