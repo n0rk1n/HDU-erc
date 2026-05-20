@@ -75,7 +75,7 @@ function streamMessage(message) {
 
   source.addEventListener("emotion_done", (event) => {
     const payload = JSON.parse(event.data);
-    emotionStatusEl.textContent = `情感状态：${payload.emotion}`;
+    renderEmotion(payload);
   });
 
   source.addEventListener("emotion_error", () => {

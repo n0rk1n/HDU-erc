@@ -1,6 +1,9 @@
 import json
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from chatbot.chat_service import ChatEvent
@@ -236,6 +239,133 @@ def test_static_app_js_loads_session_snapshot():
     assert 'fetch("/api/history?limit=10")' not in app_js
     assert "payload.emotion" in app_js
     assert "情感状态：暂无" in app_js
+    assert "renderEmotion(payload);" in app_js
+    assert "emotionStatusEl.textContent = `情感状态：${payload.emotion}`;" not in app_js
+
+
+def test_static_app_js_initializes_from_session_snapshot():
+    root = Path(__file__).resolve().parents[1]
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior test")
+
+    script = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+class Element {
+  constructor(name) {
+    this.name = name;
+    this.children = [];
+    this.textContent = "";
+    this.className = "";
+    this.disabled = false;
+    this.value = "";
+    this.scrollTop = 0;
+    this.scrollHeight = 0;
+    this.listeners = {};
+  }
+
+  appendChild(child) {
+    this.children.push(child);
+    return child;
+  }
+
+  addEventListener(name, callback) {
+    this.listeners[name] = callback;
+  }
+
+  requestSubmit() {}
+
+  focus() {}
+
+  set innerHTML(value) {
+    this.children = [];
+    this._innerHTML = value;
+  }
+
+  get innerHTML() {
+    return this._innerHTML || "";
+  }
+}
+
+const messagesEl = new Element("messages");
+const formEl = new Element("form");
+const inputEl = new Element("input");
+const buttonEl = new Element("button");
+const emotionStatusEl = new Element("emotion");
+const fetchCalls = [];
+
+const elements = {
+  "#messages": messagesEl,
+  "#chat-form": formEl,
+  "#message-input": inputEl,
+  "#send-button": buttonEl,
+  "#emotion-status": emotionStatusEl,
+};
+
+const context = {
+  console,
+  encodeURIComponent,
+  EventSource: function EventSource() {},
+  fetch: async (url) => {
+    fetchCalls.push(url);
+    return {
+      ok: true,
+      json: async () => ({
+        messages: [
+          {role: "human", content: "hello"},
+          {role: "ai", content: "hi"},
+        ],
+        emotion: {emotion: "sad"},
+      }),
+    };
+  },
+  document: {
+    querySelector: (selector) => elements[selector],
+    createElement: (name) => new Element(name),
+  },
+};
+
+context.EventSource.prototype.addEventListener = function addEventListener() {};
+context.EventSource.prototype.close = function close() {};
+
+const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
+vm.runInNewContext(code, context);
+
+setImmediate(() => {
+  try {
+    if (fetchCalls.length !== 1 || fetchCalls[0] !== "/api/session?limit=10") {
+      throw new Error(`unexpected fetch calls: ${JSON.stringify(fetchCalls)}`);
+    }
+    if (messagesEl.children.length !== 2) {
+      throw new Error(`expected 2 rendered messages, got ${messagesEl.children.length}`);
+    }
+    const contents = messagesEl.children.map((message) => message.children[0].textContent);
+    if (JSON.stringify(contents) !== JSON.stringify(["hello", "hi"])) {
+      throw new Error(`unexpected rendered messages: ${JSON.stringify(contents)}`);
+    }
+    if (emotionStatusEl.textContent !== "情感状态：sad") {
+      throw new Error(`unexpected emotion status: ${emotionStatusEl.textContent}`);
+    }
+    if (inputEl.disabled !== false || buttonEl.disabled !== false) {
+      throw new Error("input and button should be unlocked after initialization");
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+});
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_index_endpoint_returns_html():
