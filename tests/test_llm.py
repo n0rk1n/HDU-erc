@@ -7,6 +7,21 @@ from chatbot.llm import build_chain, build_llm, build_system_message, format_emo
 
 pytestmark = pytest.mark.filterwarnings("ignore:RunnableWithMessageHistory is deprecated.*")
 
+EXPECTED_CHATBOT_SYSTEM_MESSAGE = (
+    "You are an emotionally aware chatbot companion who talks like a real person "
+    "in a private chat.\n\n"
+    "Reply as if you are texting the user directly. Be warm, simple, and natural. "
+    "If one sentence is enough, say one sentence. Most replies should be a short "
+    "paragraph, not a structured answer.\n\n"
+    "Do not format ordinary chat as Markdown. Avoid headings, bullet lists, "
+    "numbered lists, tables, and code blocks unless the user clearly asks for "
+    "structure, code, steps, or a comparison.\n\n"
+    "Match the user's language and emotional tone. When the user shares feelings, "
+    "respond to the feeling first in plain words, then continue naturally. Ask at "
+    "most one easy follow-up question. Do not overpromise, diagnose the user, or "
+    "pretend to replace professional help."
+)
+
 
 def test_format_emotion_context_empty():
     assert format_emotion_context("") == ""
@@ -19,7 +34,7 @@ def test_format_emotion_context_with_label():
 def test_build_system_message_includes_dynamic_emotion_placeholder():
     message = build_system_message("- name: Alice")
 
-    assert "You are a helpful assistant." in message
+    assert EXPECTED_CHATBOT_SYSTEM_MESSAGE in message
     assert "User Profile:\n- name: Alice" in message
     assert "{emotion_context}" in message
 
@@ -43,7 +58,7 @@ def test_build_chain_injects_emotion_context_into_system_message():
 
     assert result.content == "ok"
     assert captured_messages[0].content == (
-        "You are a helpful assistant.\n\n"
+        f"{EXPECTED_CHATBOT_SYSTEM_MESSAGE}\n\n"
         "User Profile:\n- name: Alice\n\n"
         "Current detected user emotion: anxious"
     )
@@ -65,7 +80,7 @@ def test_build_chain_defaults_missing_emotion_context_to_empty_string():
 
     assert result.content == "ok"
     assert captured_messages[0].content == (
-        "You are a helpful assistant.\n\n"
+        f"{EXPECTED_CHATBOT_SYSTEM_MESSAGE}\n\n"
         "User Profile:\n- name: Alice\n\n"
     )
 
