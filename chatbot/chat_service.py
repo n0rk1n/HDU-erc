@@ -26,6 +26,7 @@ class ChatService:
         emotion_llm,
         initial_records: list[dict] | None = None,
         session_id: str = "default",
+        initial_emotion: str = "",
     ):
         self.chain = chain
         self.config = config
@@ -33,7 +34,7 @@ class ChatService:
         self.session_records = list(initial_records or [])
         self.session_id = session_id
         self.turn_count = 0
-        self.current_emotion = ""
+        self.current_emotion = initial_emotion
 
     def _append_user_message(self, message: str) -> None:
         append_message("human", message)

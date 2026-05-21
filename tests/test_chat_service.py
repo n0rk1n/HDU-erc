@@ -106,6 +106,25 @@ def test_generate_reply_does_not_trigger_before_interval(tmp_path, monkeypatch):
     assert not analysis_file.exists()
 
 
+def test_generate_reply_uses_initial_emotion_context(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["reply 1"])
+    emotion_llm = FakeEmotionLlm()
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        initial_emotion="sad",
+    )
+
+    assert service.generate_reply("q1") == "reply 1"
+    assert chain.payloads[0]["emotion_context"] == "Current detected user emotion: sad"
+
+
 def test_generate_reply_keeps_user_message_when_chat_fails(monkeypatch):
     config = make_test_config(emotion_interval=3)
     chain = FakeChain(error=RuntimeError("chat failed"))

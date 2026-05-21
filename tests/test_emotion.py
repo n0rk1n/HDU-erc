@@ -1,5 +1,7 @@
 import json
+from pathlib import Path
 
+import chatbot.emotion as emotion
 from chatbot.emotion import (
     append_analysis_record,
     build_emotion_prompt,
@@ -96,3 +98,134 @@ def test_append_analysis_record_appends(tmp_path, monkeypatch):
 
     data = json.loads(analysis_file.read_text())
     assert [record["turn_count"] for record in data] == [5, 10]
+
+
+def test_default_emotion_analysis_file_is_project_data_file():
+    path = Path(emotion.EMOTION_ANALYSIS_FILE)
+
+    assert path.is_absolute()
+    assert path.name == "emotion_analysis.json"
+    assert path.parent.name == "data"
+    assert path.parent.parent == Path(__file__).resolve().parents[1]
+
+
+def test_load_latest_successful_emotion_returns_latest_success(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "emotion_analysis.json"
+    analysis_file.write_text(json.dumps([
+        {
+            "timestamp": "2026-05-19T18:00:00+08:00",
+            "turn_count": 3,
+            "emotion": "anxious",
+            "success": True,
+        },
+        {
+            "timestamp": "2026-05-19T18:10:00+08:00",
+            "turn_count": 4,
+            "emotion": "",
+            "success": False,
+            "error": "Failed to parse a known emotion label.",
+        },
+        {
+            "timestamp": "2026-05-19T18:20:00+08:00",
+            "turn_count": 5,
+            "emotion": "sad",
+            "success": True,
+        },
+    ]), encoding="utf-8")
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    assert emotion.load_latest_successful_emotion() == {
+        "emotion": "sad",
+        "timestamp": "2026-05-19T18:20:00+08:00",
+        "turn_count": 5,
+    }
+
+
+def test_load_latest_successful_emotion_skips_trailing_failures(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "emotion_analysis.json"
+    analysis_file.write_text(json.dumps([
+        {
+            "timestamp": "2026-05-19T18:00:00+08:00",
+            "turn_count": 3,
+            "emotion": "anxious",
+            "success": True,
+        },
+        {
+            "timestamp": "2026-05-19T18:10:00+08:00",
+            "turn_count": 4,
+            "emotion": "",
+            "success": False,
+        },
+    ]), encoding="utf-8")
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    assert emotion.load_latest_successful_emotion() == {
+        "emotion": "anxious",
+        "timestamp": "2026-05-19T18:00:00+08:00",
+        "turn_count": 3,
+    }
+
+
+def test_load_latest_successful_emotion_skips_malformed_trailing_records(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "emotion_analysis.json"
+    analysis_file.write_text(json.dumps([
+        {
+            "timestamp": "2026-05-19T18:00:00+08:00",
+            "turn_count": 3,
+            "emotion": "anxious",
+            "success": True,
+        },
+        {
+            "timestamp": "2026-05-19T18:10:00+08:00",
+            "turn_count": 4,
+            "emotion": "sad",
+            "success": "false",
+        },
+        {
+            "timestamp": "2026-05-19T18:20:00+08:00",
+            "turn_count": 5,
+            "emotion": None,
+            "success": True,
+        },
+        {
+            "timestamp": ["2026-05-19T18:30:00+08:00"],
+            "turn_count": "6",
+            "emotion": "sad",
+            "success": True,
+        },
+        {
+            "timestamp": "2026-05-19T18:40:00+08:00",
+            "turn_count": True,
+            "emotion": "sad",
+            "success": True,
+        },
+    ]), encoding="utf-8")
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    assert emotion.load_latest_successful_emotion() == {
+        "emotion": "anxious",
+        "timestamp": "2026-05-19T18:00:00+08:00",
+        "turn_count": 3,
+    }
+
+
+def test_load_latest_successful_emotion_returns_none_without_success(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "emotion_analysis.json"
+    analysis_file.write_text(json.dumps([
+        {
+            "timestamp": "2026-05-19T18:00:00+08:00",
+            "turn_count": 3,
+            "emotion": "",
+            "success": False,
+        }
+    ]), encoding="utf-8")
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    assert emotion.load_latest_successful_emotion() is None
+
+
+def test_load_latest_successful_emotion_returns_none_for_missing_file(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "emotion_analysis.json"
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    assert emotion.load_latest_successful_emotion() is None
