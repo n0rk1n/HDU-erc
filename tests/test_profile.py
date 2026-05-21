@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+import chatbot.profile as profile
 from chatbot.profile import load_profile, format_profile
 
 PROFILE_FILE = "user_profile.json"
@@ -17,6 +18,26 @@ def profile_file(tmp_path, monkeypatch):
 
 def test_load_profile_file_not_found(profile_file):
     assert load_profile() == {}
+
+
+def test_default_profile_file_is_project_config_file():
+    path = Path(profile.PROFILE_FILE)
+
+    assert path.is_absolute()
+    assert path.name == "user_profile.json"
+    assert path.parent.name == "config"
+    assert path.parent.parent.name == "data"
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
+
+
+def test_load_profile_reads_legacy_root_file_when_new_file_missing(tmp_path, monkeypatch):
+    profile_file = tmp_path / "data" / "config" / "user_profile.json"
+    legacy_file = tmp_path / "user_profile.json"
+    legacy_file.write_text(json.dumps({"name": "Alice"}))
+    monkeypatch.setattr("chatbot.profile.PROFILE_FILE", str(profile_file))
+    monkeypatch.setattr("chatbot.profile.LEGACY_PROFILE_FILE", str(legacy_file))
+
+    assert load_profile() == {"name": "Alice"}
 
 
 def test_load_profile_empty_file(profile_file):

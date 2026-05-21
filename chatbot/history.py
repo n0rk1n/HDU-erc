@@ -5,12 +5,32 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-HISTORY_FILE = str(Path(__file__).resolve().parents[1] / "data" / "chat_history.json")
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DEFAULT_HISTORY_FILE = str(DATA_DIR / "records" / "chat_history.json")
+DEFAULT_LEGACY_HISTORY_FILE = str(DATA_DIR / "chat_history.json")
+HISTORY_FILE = DEFAULT_HISTORY_FILE
+LEGACY_HISTORY_FILE = DEFAULT_LEGACY_HISTORY_FILE
 
 
 def load_history() -> list[dict]:
+    primary_path = Path(HISTORY_FILE)
+    if primary_path.exists():
+        return _load_history_file(primary_path)
+
+    if _should_read_legacy_history():
+        return _load_history_file(Path(LEGACY_HISTORY_FILE))
+    return []
+
+
+def _should_read_legacy_history() -> bool:
+    return (
+        Path(HISTORY_FILE) == Path(DEFAULT_HISTORY_FILE)
+        or Path(LEGACY_HISTORY_FILE) != Path(DEFAULT_LEGACY_HISTORY_FILE)
+    )
+
+
+def _load_history_file(path: Path) -> list[dict]:
     try:
-        path = Path(HISTORY_FILE)
         if not path.exists() or path.stat().st_size == 0:
             return []
         with path.open() as f:
@@ -34,6 +54,7 @@ def append_message(role: str, content: str) -> None:
         path = Path(HISTORY_FILE)
         tmp = path.with_suffix(".tmp")
         try:
+            path.parent.mkdir(parents=True, exist_ok=True)
             with tmp.open("w") as f:
                 json.dump(records, f, ensure_ascii=False, indent=2)
             tmp.replace(path)

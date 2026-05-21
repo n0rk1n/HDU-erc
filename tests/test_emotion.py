@@ -105,8 +105,20 @@ def test_default_emotion_analysis_file_is_project_data_file():
 
     assert path.is_absolute()
     assert path.name == "emotion_analysis.json"
-    assert path.parent.name == "data"
-    assert path.parent.parent == Path(__file__).resolve().parents[1]
+    assert path.parent.name == "records"
+    assert path.parent.parent.name == "data"
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
+
+
+def test_load_analysis_records_reads_legacy_data_file_when_new_file_missing(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "data" / "records" / "emotion_analysis.json"
+    legacy_file = tmp_path / "data" / "emotion_analysis.json"
+    legacy_file.parent.mkdir(parents=True)
+    legacy_file.write_text(json.dumps([{"emotion": "sad"}]))
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.LEGACY_EMOTION_ANALYSIS_FILE", str(legacy_file))
+
+    assert load_analysis_records() == [{"emotion": "sad"}]
 
 
 def test_load_latest_successful_emotion_returns_latest_success(tmp_path, monkeypatch):

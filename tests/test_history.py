@@ -23,8 +23,20 @@ def test_default_history_file_is_project_data_file():
 
     assert path.is_absolute()
     assert path.name == "chat_history.json"
-    assert path.parent.name == "data"
-    assert path.parent.parent == Path(__file__).resolve().parents[1]
+    assert path.parent.name == "records"
+    assert path.parent.parent.name == "data"
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
+
+
+def test_load_history_reads_legacy_data_file_when_new_file_missing(tmp_path, monkeypatch):
+    history_file = tmp_path / "data" / "records" / "chat_history.json"
+    legacy_file = tmp_path / "data" / "chat_history.json"
+    legacy_file.parent.mkdir(parents=True)
+    legacy_file.write_text(json.dumps([{"role": "human", "content": "hello"}]))
+    monkeypatch.setattr("chatbot.history.HISTORY_FILE", str(history_file))
+    monkeypatch.setattr("chatbot.history.LEGACY_HISTORY_FILE", str(legacy_file))
+
+    assert load_history() == [{"role": "human", "content": "hello"}]
 
 
 def test_load_history_empty_file(history_file):

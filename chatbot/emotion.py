@@ -7,8 +7,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-
-EMOTION_ANALYSIS_FILE = str(Path(__file__).resolve().parents[1] / "data" / "emotion_analysis.json")
+DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DEFAULT_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "records" / "emotion_analysis.json")
+DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "emotion_analysis.json")
+EMOTION_ANALYSIS_FILE = DEFAULT_EMOTION_ANALYSIS_FILE
+LEGACY_EMOTION_ANALYSIS_FILE = DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE
 EMOTION_LABELS = [
     "surprised",
     "excited",
@@ -108,7 +111,23 @@ def parse_emotion_output(output: str) -> str | None:
 
 
 def load_analysis_records() -> list[dict]:
-    path = Path(EMOTION_ANALYSIS_FILE)
+    primary_path = Path(EMOTION_ANALYSIS_FILE)
+    if primary_path.exists():
+        return _load_analysis_file(primary_path)
+
+    if _should_read_legacy_analysis():
+        return _load_analysis_file(Path(LEGACY_EMOTION_ANALYSIS_FILE))
+    return []
+
+
+def _should_read_legacy_analysis() -> bool:
+    return (
+        Path(EMOTION_ANALYSIS_FILE) == Path(DEFAULT_EMOTION_ANALYSIS_FILE)
+        or Path(LEGACY_EMOTION_ANALYSIS_FILE) != Path(DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE)
+    )
+
+
+def _load_analysis_file(path: Path) -> list[dict]:
     if not path.exists():
         return []
     try:

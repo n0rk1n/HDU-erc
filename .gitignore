@@ -5,3 +5,4 @@ EICL
 docs
 .env
 .worktrees
+data/records
