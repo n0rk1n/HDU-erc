@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from chatbot.chat_service import ChatEvent
+from chatbot.history import FeedbackUpdateResult
 from chatbot.web import build_service, create_app, format_sse
 
 
@@ -288,6 +289,36 @@ def test_session_endpoint_returns_null_emotion(monkeypatch):
     assert response.json() == {"messages": [], "emotion": None}
 
 
+def test_session_endpoint_preserves_message_feedback_metadata(monkeypatch):
+    records = [
+        {"role": "ai", "content": "old", "timestamp": "t1"},
+        {
+            "id": "ai_1",
+            "role": "ai",
+            "content": "new",
+            "timestamp": "t2",
+            "feedback": None,
+        },
+        {
+            "id": "ai_2",
+            "role": "ai",
+            "content": "rated",
+            "timestamp": "t3",
+            "feedback": "like",
+        },
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [])
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == records
+
+
 def test_session_endpoint_returns_null_for_stale_emotion(monkeypatch):
     records = [
         {"role": "human", "content": "q1", "timestamp": "t1"},
@@ -499,6 +530,109 @@ def test_history_endpoint_filters_roles_before_limiting(monkeypatch):
     assert len(response.json()["messages"]) == 10
     assert response.json()["messages"][0]["content"] == "q0"
     assert response.json()["messages"][-1]["content"] == "q9"
+
+
+def test_feedback_endpoint_records_like(monkeypatch):
+    captured = {}
+
+    def fake_record_feedback(message_id, feedback):
+        captured["message_id"] = message_id
+        captured["feedback"] = feedback
+        return FeedbackUpdateResult("updated", feedback)
+
+    monkeypatch.setattr("chatbot.web.record_message_feedback", fake_record_feedback)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post("/api/messages/ai_1/feedback", json={"feedback": "like"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "updated",
+        "message_id": "ai_1",
+        "feedback": "like",
+    }
+    assert captured == {"message_id": "ai_1", "feedback": "like"}
+
+
+def test_feedback_endpoint_records_already_rated(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.web.record_message_feedback",
+        lambda message_id, feedback: FeedbackUpdateResult("already_rated", "dislike"),
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post("/api/messages/ai_1/feedback", json={"feedback": "like"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "already_rated",
+        "message_id": "ai_1",
+        "feedback": "dislike",
+    }
+
+
+def test_feedback_endpoint_returns_not_found(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.web.record_message_feedback",
+        lambda message_id, feedback: FeedbackUpdateResult("not_found"),
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/messages/ai_missing/feedback",
+        json={"feedback": "like"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Message not found."}
+
+
+def test_feedback_endpoint_rejects_non_ai_message(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.web.record_message_feedback",
+        lambda message_id, feedback: FeedbackUpdateResult("not_ai"),
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/messages/human_1/feedback",
+        json={"feedback": "like"},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Feedback is only supported for AI messages."}
+
+
+def test_feedback_endpoint_rejects_invalid_feedback():
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post("/api/messages/ai_1/feedback", json={"feedback": "neutral"})
+
+    assert response.status_code == 422
+
+
+def test_feedback_endpoint_returns_write_failure(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.web.record_message_feedback",
+        lambda message_id, feedback: FeedbackUpdateResult("write_failed"),
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post("/api/messages/ai_1/feedback", json={"feedback": "like"})
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not save feedback."}
 
 
 def test_stream_endpoint_returns_sse_events():

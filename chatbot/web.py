@@ -3,20 +3,26 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
-from chatbot.history import load_history
+from chatbot.history import load_history, record_message_feedback
 from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
 from chatbot.profile import format_profile, load_profile
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+class FeedbackRequest(BaseModel):
+    feedback: Literal["like", "dislike"]
 
 
 def format_sse(event: ChatEvent) -> str:
@@ -42,15 +48,20 @@ def build_service() -> ChatService:
 
 
 def _structured_messages(records: list[dict], limit: int) -> list[dict]:
-    messages = [
-        {
+    messages = []
+    for record in records:
+        if record.get("role") not in {"human", "ai"}:
+            continue
+        message = {
             "role": record.get("role", ""),
             "content": record.get("content", ""),
             "timestamp": record.get("timestamp", ""),
         }
-        for record in records
-        if record.get("role") in {"human", "ai"}
-    ]
+        if "id" in record:
+            message["id"] = record["id"]
+        if "feedback" in record:
+            message["feedback"] = record["feedback"]
+        messages.append(message)
     return messages[-limit:]
 
 
@@ -170,6 +181,26 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.get("/api/session")
     def session(limit: int = Query(default=10, gt=0, le=100)):
         return _session_snapshot(limit)
+
+    @app.post("/api/messages/{message_id}/feedback")
+    def message_feedback(message_id: str, request: FeedbackRequest):
+        result = record_message_feedback(message_id, request.feedback)
+        if result.status in {"updated", "already_rated"}:
+            return {
+                "status": result.status,
+                "message_id": message_id,
+                "feedback": result.feedback,
+            }
+        if result.status == "not_found":
+            raise HTTPException(status_code=404, detail="Message not found.")
+        if result.status == "not_ai":
+            raise HTTPException(
+                status_code=400,
+                detail="Feedback is only supported for AI messages.",
+            )
+        if result.status == "write_failed":
+            raise HTTPException(status_code=500, detail="Could not save feedback.")
+        raise HTTPException(status_code=400, detail="Invalid feedback.")
 
     @app.get("/api/chat/stream")
     def chat_stream(message: str, service: ChatService = Depends(get_service)):
