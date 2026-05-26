@@ -1,15 +1,22 @@
 """聊天历史持久化 —— 将对话记录读写到 JSON 文件，并提供格式化输出。"""
 
 import json
-import tempfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_HISTORY_FILE = str(DATA_DIR / "records" / "chat_history.json")
 DEFAULT_LEGACY_HISTORY_FILE = str(DATA_DIR / "chat_history.json")
 HISTORY_FILE = DEFAULT_HISTORY_FILE
 LEGACY_HISTORY_FILE = DEFAULT_LEGACY_HISTORY_FILE
+
+
+@dataclass(frozen=True)
+class FeedbackUpdateResult:
+    status: str
+    feedback: str = ""
 
 
 def load_history() -> list[dict]:
@@ -42,29 +49,83 @@ def _load_history_file(path: Path) -> list[dict]:
         return []
 
 
-def append_message(role: str, content: str) -> None:
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _save_history(records: list[dict]) -> bool:
+    path = Path(HISTORY_FILE)
+    tmp = path.with_suffix(".tmp")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tmp.open("w") as f:
+            json.dump(records, f, ensure_ascii=False, indent=2)
+        tmp.replace(path)
+        return True
+    except OSError as exc:
+        print(f"Warning: could not save chat history: {exc}")
+        return False
+    finally:
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except OSError:
+            pass
+
+
+def append_message(role: str, content: str) -> dict | None:
     """追加一条消息到历史文件 —— 先写临时文件再原子替换，避免写坏 JSON。"""
     try:
         records = load_history()
-        records.append({
+        record = {
             "role": role,
             "content": content,
-            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        })
-        path = Path(HISTORY_FILE)
-        tmp = path.with_suffix(".tmp")
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            with tmp.open("w") as f:
-                json.dump(records, f, ensure_ascii=False, indent=2)
-            tmp.replace(path)
-        except OSError as exc:
-            print(f"Warning: could not save chat history: {exc}")
-        finally:
-            if tmp.exists():
-                tmp.unlink()
+            "timestamp": _now_iso(),
+        }
+        records.append(record)
+        if _save_history(records):
+            return record
+        return None
     except OSError as exc:
         print(f"Warning: could not save chat history: {exc}")
+        return None
+
+
+def append_ai_message(content: str) -> dict | None:
+    records = load_history()
+    record = {
+        "id": f"ai_{uuid4().hex}",
+        "role": "ai",
+        "content": content,
+        "timestamp": _now_iso(),
+        "feedback": None,
+    }
+    records.append(record)
+    if _save_history(records):
+        return record
+    return None
+
+
+def record_message_feedback(message_id: str, feedback: str) -> FeedbackUpdateResult:
+    if feedback not in {"like", "dislike"}:
+        return FeedbackUpdateResult("invalid_feedback")
+
+    records = load_history()
+    for record in records:
+        if record.get("id") != message_id:
+            continue
+        if record.get("role") != "ai":
+            return FeedbackUpdateResult("not_ai")
+        existing_feedback = record.get("feedback")
+        if existing_feedback in {"like", "dislike"}:
+            return FeedbackUpdateResult("already_rated", existing_feedback)
+
+        record["feedback"] = feedback
+        if _save_history(records):
+            return FeedbackUpdateResult("updated", feedback)
+        return FeedbackUpdateResult("write_failed")
+
+    return FeedbackUpdateResult("not_found")
 
 
 def format_recent(records: list[dict], n: int = 10) -> str:

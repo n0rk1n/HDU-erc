@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 
 import chatbot.history as history
-from chatbot.history import append_message, format_recent, load_history
+from chatbot.history import (
+    append_ai_message,
+    append_message,
+    format_recent,
+    load_history,
+    record_message_feedback,
+)
 
 
 @pytest.fixture
@@ -67,12 +73,88 @@ def test_append_message_appends(history_file):
     assert data[1]["content"] == "reply1"
 
 
+def test_append_ai_message_creates_feedback_ready_record(history_file):
+    record = append_ai_message("reply")
+
+    data = json.loads(history_file.read_text())
+
+    assert record == data[0]
+    assert data[0]["role"] == "ai"
+    assert data[0]["content"] == "reply"
+    assert data[0]["id"].startswith("ai_")
+    assert data[0]["feedback"] is None
+    assert "timestamp" in data[0]
+
+
+def test_append_message_keeps_human_record_shape(history_file):
+    append_message("human", "hello")
+
+    data = json.loads(history_file.read_text())
+
+    assert data[0]["role"] == "human"
+    assert data[0]["content"] == "hello"
+    assert "timestamp" in data[0]
+    assert "id" not in data[0]
+    assert "feedback" not in data[0]
+
+
 def test_load_history_returns_all_records(history_file):
     append_message("human", "q1")
     append_message("ai", "a1")
     records = load_history()
     assert len(records) == 2
     assert records[0]["content"] == "q1"
+
+
+def test_record_message_feedback_writes_first_rating(history_file):
+    record = append_ai_message("reply")
+
+    result = record_message_feedback(record["id"], "like")
+    data = json.loads(history_file.read_text())
+
+    assert result.status == "updated"
+    assert result.feedback == "like"
+    assert data[0]["feedback"] == "like"
+
+
+def test_record_message_feedback_rejects_second_rating(history_file):
+    record = append_ai_message("reply")
+    record_message_feedback(record["id"], "like")
+
+    result = record_message_feedback(record["id"], "dislike")
+    data = json.loads(history_file.read_text())
+
+    assert result.status == "already_rated"
+    assert result.feedback == "like"
+    assert data[0]["feedback"] == "like"
+
+
+def test_record_message_feedback_returns_not_found(history_file):
+    result = record_message_feedback("ai_missing", "like")
+
+    assert result.status == "not_found"
+    assert result.feedback == ""
+
+
+def test_record_message_feedback_rejects_human_message(history_file):
+    append_message("human", "hello")
+    data = json.loads(history_file.read_text())
+    data[0]["id"] = "human_1"
+    history_file.write_text(json.dumps(data))
+
+    result = record_message_feedback("human_1", "like")
+
+    assert result.status == "not_ai"
+    assert result.feedback == ""
+
+
+def test_record_message_feedback_rejects_invalid_value(history_file):
+    record = append_ai_message("reply")
+
+    result = record_message_feedback(record["id"], "neutral")
+
+    assert result.status == "invalid_feedback"
+    assert result.feedback == ""
 
 
 def test_append_message_write_failure_does_not_crash(history_file, capsys):
