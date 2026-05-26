@@ -84,6 +84,38 @@ body {
   color: var(--text);
 }
 
+.message.ai {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.feedback-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.feedback-button {
+  min-width: 36px;
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.feedback-button:hover:not(:disabled) {
+  border-color: var(--human);
+  color: var(--human);
+}
+
+.feedback-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .composer {
   display: grid;
   grid-template-columns: 1fr auto;

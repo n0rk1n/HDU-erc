@@ -807,6 +807,173 @@ setImmediate(() => {
     assert result.returncode == 0, result.stderr
 
 
+def test_static_app_js_renders_and_submits_feedback_controls():
+    root = Path(__file__).resolve().parents[1]
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior test")
+
+    script = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+class Element {
+  constructor(name) {
+    this.name = name;
+    this.children = [];
+    this.parent = null;
+    this.textContent = "";
+    this.className = "";
+    this.disabled = false;
+    this.value = "";
+    this.scrollTop = 0;
+    this.scrollHeight = 0;
+    this.listeners = {};
+    this.attributes = {};
+  }
+
+  appendChild(child) {
+    child.parent = this;
+    this.children.push(child);
+    return child;
+  }
+
+  addEventListener(name, callback) {
+    this.listeners[name] = callback;
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = value;
+  }
+
+  remove() {
+    if (!this.parent) {
+      return;
+    }
+    this.parent.children = this.parent.children.filter((child) => child !== this);
+    this.parent = null;
+  }
+
+  requestSubmit() {}
+
+  focus() {}
+
+  set innerHTML(value) {
+    this.children = [];
+    this._innerHTML = value;
+  }
+
+  get innerHTML() {
+    return this._innerHTML || "";
+  }
+}
+
+const messagesEl = new Element("messages");
+const formEl = new Element("form");
+const inputEl = new Element("input");
+const buttonEl = new Element("button");
+const emotionStatusEl = new Element("emotion");
+const fetchCalls = [];
+
+const elements = {
+  "#messages": messagesEl,
+  "#chat-form": formEl,
+  "#message-input": inputEl,
+  "#send-button": buttonEl,
+  "#emotion-status": emotionStatusEl,
+};
+
+const context = {
+  console,
+  encodeURIComponent,
+  EventSource: function EventSource() {},
+  fetch: async (url, options) => {
+    fetchCalls.push({url, options});
+    if (url === "/api/session?limit=10") {
+      return {
+        ok: true,
+        json: async () => ({
+          messages: [
+            {role: "ai", content: "old"},
+            {role: "ai", content: "new", id: "ai_1", feedback: null},
+            {role: "ai", content: "rated", id: "ai_2", feedback: "like"},
+          ],
+          emotion: null,
+        }),
+      };
+    }
+    if (url === "/api/messages/ai_1/feedback") {
+      return {
+        ok: true,
+        json: async () => ({status: "updated", message_id: "ai_1", feedback: "like"}),
+      };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  },
+  document: {
+    querySelector: (selector) => elements[selector],
+    createElement: (name) => new Element(name),
+  },
+};
+
+context.EventSource.prototype.addEventListener = function addEventListener() {};
+context.EventSource.prototype.close = function close() {};
+
+const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
+vm.runInNewContext(code, context);
+
+setImmediate(async () => {
+  try {
+    if (messagesEl.children.length !== 3) {
+      throw new Error(`expected 3 messages, got ${messagesEl.children.length}`);
+    }
+    if (messagesEl.children[0].children.length !== 1) {
+      throw new Error("old AI message should not show feedback controls");
+    }
+    if (messagesEl.children[1].children.length !== 2) {
+      throw new Error("new AI message should show feedback controls");
+    }
+    if (messagesEl.children[2].children.length !== 1) {
+      throw new Error("rated AI message should not show feedback controls");
+    }
+
+    const controls = messagesEl.children[1].children[1];
+    const likeButton = controls.children[0];
+    if (likeButton.textContent !== "赞") {
+      throw new Error(`unexpected like button text: ${likeButton.textContent}`);
+    }
+
+    await likeButton.listeners.click();
+
+    if (fetchCalls[1].url !== "/api/messages/ai_1/feedback") {
+      throw new Error(`unexpected feedback url: ${fetchCalls[1].url}`);
+    }
+    if (fetchCalls[1].options.method !== "POST") {
+      throw new Error(`unexpected feedback method: ${fetchCalls[1].options.method}`);
+    }
+    if (fetchCalls[1].options.body !== JSON.stringify({feedback: "like"})) {
+      throw new Error(`unexpected feedback body: ${fetchCalls[1].options.body}`);
+    }
+    if (messagesEl.children[1].children.length !== 1) {
+      throw new Error("feedback controls should be removed after successful rating");
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+});
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_endpoint_returns_html():
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)

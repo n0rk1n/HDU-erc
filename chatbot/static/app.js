@@ -13,7 +13,72 @@ function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
-function addMessage(role, content = "") {
+function shouldShowFeedback(metadata) {
+  return Boolean(metadata.id) && !metadata.feedback;
+}
+
+function renderFeedbackControls(wrapper, metadata) {
+  if (!shouldShowFeedback(metadata)) {
+    return;
+  }
+
+  const controls = document.createElement("div");
+  controls.className = "feedback-controls";
+
+  const likeButton = document.createElement("button");
+  likeButton.type = "button";
+  likeButton.className = "feedback-button";
+  likeButton.textContent = "赞";
+  likeButton.setAttribute("aria-label", "点赞");
+
+  const dislikeButton = document.createElement("button");
+  dislikeButton.type = "button";
+  dislikeButton.className = "feedback-button";
+  dislikeButton.textContent = "踩";
+  dislikeButton.setAttribute("aria-label", "点踩");
+
+  const status = document.createElement("span");
+  status.className = "feedback-status";
+
+  const buttons = [likeButton, dislikeButton];
+  likeButton.addEventListener("click", () => (
+    submitFeedback(metadata.id, "like", controls, status, buttons)
+  ));
+  dislikeButton.addEventListener("click", () => (
+    submitFeedback(metadata.id, "dislike", controls, status, buttons)
+  ));
+
+  controls.appendChild(likeButton);
+  controls.appendChild(dislikeButton);
+  controls.appendChild(status);
+  wrapper.appendChild(controls);
+}
+
+async function submitFeedback(messageId, feedback, controls, status, buttons = []) {
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  status.textContent = "";
+
+  try {
+    const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/feedback`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({feedback}),
+    });
+    if (!response.ok) {
+      throw new Error("Feedback request failed.");
+    }
+    controls.remove();
+  } catch (error) {
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+    status.textContent = "评价保存失败";
+  }
+}
+
+function addMessage(role, content = "", metadata = {}) {
   const wrapper = document.createElement("article");
   wrapper.className = `message ${role}`;
 
@@ -22,9 +87,12 @@ function addMessage(role, content = "") {
   bubble.textContent = content;
 
   wrapper.appendChild(bubble);
+  if (role === "ai") {
+    renderFeedbackControls(wrapper, metadata);
+  }
   messagesEl.appendChild(wrapper);
   scrollToBottom();
-  return bubble;
+  return {wrapper, bubble};
 }
 
 function renderEmotion(emotion) {
@@ -45,7 +113,7 @@ async function loadSession() {
   messagesEl.innerHTML = "";
   payload.messages.forEach((message) => {
     const role = message.role === "human" ? "human" : "ai";
-    addMessage(role, message.content);
+    addMessage(role, message.content, message);
   });
   renderEmotion(payload.emotion);
 }
@@ -61,7 +129,7 @@ async function initialize() {
 
 function streamMessage(message) {
   setLocked(true);
-  let aiBubble = null;
+  let aiMessage = null;
   const source = new EventSource(`/api/chat/stream?message=${encodeURIComponent(message)}`);
 
   source.addEventListener("user_message", (event) => {
@@ -84,28 +152,32 @@ function streamMessage(message) {
 
   source.addEventListener("token", (event) => {
     const payload = JSON.parse(event.data);
-    if (!aiBubble) {
-      aiBubble = addMessage("ai", "");
+    if (!aiMessage) {
+      aiMessage = addMessage("ai", "");
     }
-    aiBubble.textContent += payload.content;
+    aiMessage.bubble.textContent += payload.content;
     scrollToBottom();
   });
 
-  source.addEventListener("done", () => {
+  source.addEventListener("done", (event) => {
+    const payload = event.data ? JSON.parse(event.data) : {};
+    if (aiMessage && payload.message_id) {
+      renderFeedbackControls(aiMessage.wrapper, {id: payload.message_id, feedback: null});
+    }
     source.close();
     setLocked(false);
     inputEl.focus();
   });
 
   source.addEventListener("error", (event) => {
-    if (!aiBubble) {
-      aiBubble = addMessage("ai", "");
+    if (!aiMessage) {
+      aiMessage = addMessage("ai", "");
     }
     if (event.data) {
       const payload = JSON.parse(event.data);
-      aiBubble.textContent = payload.message;
+      aiMessage.bubble.textContent = payload.message;
     } else {
-      aiBubble.textContent = "连接中断，请稍后重试";
+      aiMessage.bubble.textContent = "连接中断，请稍后重试";
     }
     source.close();
     setLocked(false);
