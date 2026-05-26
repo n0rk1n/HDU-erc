@@ -19,7 +19,7 @@ class FakeService:
         self.messages.append(message)
         yield ChatEvent("user_message", {"role": "human", "content": message})
         yield ChatEvent("token", {"content": "hi"})
-        yield ChatEvent("done", {"content": "hi"})
+        yield ChatEvent("done", {"content": "hi", "message_id": "ai_1"})
 
 
 def test_build_service_does_not_duplicate_session_history(monkeypatch):
@@ -648,6 +648,7 @@ def test_stream_endpoint_returns_sse_events():
     assert 'data: {"role": "human", "content": "hello"}' in response.text
     assert "event: token" in response.text
     assert "event: done" in response.text
+    assert 'data: {"content": "hi", "message_id": "ai_1"}' in response.text
     assert service.messages == ["hello"]
 
 

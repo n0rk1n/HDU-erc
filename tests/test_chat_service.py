@@ -63,11 +63,19 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
     chain = FakeChain(replies=["reply 1", "reply 2"])
     emotion_llm = FakeEmotionLlm()
     stored_messages = []
+    stored_ai_messages = []
     analysis_file = tmp_path / "emotion_analysis.json"
 
     monkeypatch.setattr(
         "chatbot.chat_service.append_message",
         lambda role, content: stored_messages.append((role, content)),
+    )
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: stored_ai_messages.append(content) or {
+            "role": "ai",
+            "content": content,
+        },
     )
     monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
 
@@ -83,10 +91,9 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
     assert analysis_file.exists()
     assert stored_messages == [
         ("human", "q1"),
-        ("ai", "reply 1"),
         ("human", "q2"),
-        ("ai", "reply 2"),
     ]
+    assert stored_ai_messages == ["reply 1", "reply 2"]
 
 
 def test_generate_reply_does_not_trigger_before_interval(tmp_path, monkeypatch):
@@ -96,6 +103,10 @@ def test_generate_reply_does_not_trigger_before_interval(tmp_path, monkeypatch):
     analysis_file = tmp_path / "emotion_analysis.json"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
     monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
@@ -112,6 +123,10 @@ def test_generate_reply_uses_initial_emotion_context(monkeypatch):
     emotion_llm = FakeEmotionLlm()
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
 
     service = ChatService(
         chain,
@@ -156,6 +171,10 @@ def test_generate_reply_counts_interval_from_current_runtime(monkeypatch):
     initial_records = [{"role": "human", "content": "old q"}]
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
 
     service = ChatService(chain, config, emotion_llm, initial_records=initial_records)
 
@@ -174,6 +193,15 @@ def test_stream_reply_falls_back_to_invoke_and_writes_ai_message(monkeypatch):
         "chatbot.chat_service.append_message",
         lambda role, content: stored_messages.append((role, content)),
     )
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "feedback": None,
+        },
+    )
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -182,9 +210,9 @@ def test_stream_reply_falls_back_to_invoke_and_writes_ai_message(monkeypatch):
     assert [(event.event, event.data) for event in events] == [
         ("user_message", {"role": "human", "content": "hello"}),
         ("token", {"content": "full reply"}),
-        ("done", {"content": "full reply"}),
+        ("done", {"content": "full reply", "message_id": "ai_1"}),
     ]
-    assert stored_messages == [("human", "hello"), ("ai", "full reply")]
+    assert stored_messages == [("human", "hello")]
 
 
 def test_stream_reply_emits_user_tokens_and_done(monkeypatch):
@@ -196,6 +224,15 @@ def test_stream_reply_emits_user_tokens_and_done(monkeypatch):
     monkeypatch.setattr(
         "chatbot.chat_service.append_message",
         lambda role, content: stored_messages.append((role, content)),
+    )
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "feedback": None,
+        },
     )
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
@@ -216,8 +253,42 @@ def test_stream_reply_emits_user_tokens_and_done(monkeypatch):
     assert stored_messages == [("human", "hello")]
     done = next(events)
 
-    assert (done.event, done.data) == ("done", {"content": "hello world"})
-    assert stored_messages == [("human", "hello"), ("ai", "hello world")]
+    assert (done.event, done.data) == (
+        "done",
+        {"content": "hello world", "message_id": "ai_1"},
+    )
+    assert stored_messages == [("human", "hello")]
+
+
+def test_stream_reply_records_ai_session_message_with_metadata(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = StreamingFakeChain()
+    emotion_llm = FakeEmotionLlm()
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "timestamp": "t1",
+            "feedback": None,
+        },
+    )
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    events = list(service.stream_reply("hello"))
+
+    assert events[-1].data == {"content": "hello world", "message_id": "ai_1"}
+    assert service.session_records[-1] == {
+        "id": "ai_1",
+        "role": "ai",
+        "content": "hello world",
+        "timestamp": "t1",
+        "feedback": None,
+    }
 
 
 def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
@@ -227,6 +298,15 @@ def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
     analysis_file = tmp_path / "emotion_analysis.json"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "feedback": None,
+        },
+    )
     monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
@@ -251,6 +331,15 @@ def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
     analysis_file = tmp_path / "emotion_analysis.json"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "feedback": None,
+        },
+    )
     monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
@@ -266,7 +355,7 @@ def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
         "done",
     ]
     assert "Failed to parse" in events[2].data["error"]
-    assert events[-1].data == {"content": "hello world"}
+    assert events[-1].data == {"content": "hello world", "message_id": "ai_1"}
 
 
 def test_stream_reply_emits_error_without_ai_history_after_partial_stream(monkeypatch):

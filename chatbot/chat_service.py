@@ -6,7 +6,7 @@ from typing import Any
 
 from chatbot.config import ChatConfig
 from chatbot.emotion import analyze_emotion
-from chatbot.history import append_message
+from chatbot.history import append_ai_message, append_message
 from chatbot.llm import format_emotion_context
 
 
@@ -40,6 +40,16 @@ class ChatService:
         append_message("human", message)
         self.session_records.append({"role": "human", "content": message})
         self.turn_count += 1
+
+    def _append_ai_message(self, answer: str) -> str | None:
+        record = append_ai_message(answer)
+        if record is None:
+            record = {"role": "ai", "content": answer}
+        self.session_records.append(record)
+        message_id = record.get("id")
+        if isinstance(message_id, str) and message_id:
+            return message_id
+        return None
 
     def _analyze_if_due(self, message: str) -> ChatEvent | None:
         if self.turn_count % self.config.emotion_interval != 0:
@@ -75,8 +85,7 @@ class ChatService:
             config={"configurable": {"session_id": self.session_id}},
         )
         answer = result.content if hasattr(result, "content") else str(result)
-        append_message("ai", answer)
-        self.session_records.append({"role": "ai", "content": answer})
+        self._append_ai_message(answer)
         return answer
 
     def stream_reply(self, message: str) -> Iterator[ChatEvent]:
@@ -120,6 +129,8 @@ class ChatService:
             return
 
         answer = "".join(answer_parts)
-        append_message("ai", answer)
-        self.session_records.append({"role": "ai", "content": answer})
-        yield ChatEvent("done", {"content": answer})
+        message_id = self._append_ai_message(answer)
+        data = {"content": answer}
+        if message_id:
+            data["message_id"] = message_id
+        yield ChatEvent("done", data)
