@@ -188,12 +188,43 @@ EMOTION_INTERVAL=5
 
 当新的 `LLM_*` 变量不存在时，项目仍然兼容旧的 `OPENAI_*` 变量。
 
+## 本地长期记忆
+
+项目支持一个轻量本地 memory adapter，用来记住稳定的用户偏好、画像信息、长期目标和明确约束。默认实现使用 Python 标准库 `sqlite3`，不需要单独安装数据库，也不需要启动数据库服务。
+
+默认记忆文件位置：
+
+```text
+data/records/memory.sqlite3
+```
+
+这套记忆机制不会使用 Mem0 Platform，也不会把记忆内容存到第三方托管存储。第一版也不使用 embedding 或云端向量数据库。后续如果要接入 Mem0 OSS，可以通过 `MemoryProvider` 协议增加新的 provider，而不改变聊天主流程。
+
+相关环境变量：
+
+| 变量 | 默认值 | 作用 |
+| --- | --- | --- |
+| `MEMORY_ENABLED` | `true` | 是否启用本地长期记忆。 |
+| `MEMORY_DB_PATH` | `data/records/memory.sqlite3` | SQLite 记忆文件路径。 |
+| `MEMORY_MAX_RESULTS` | `5` | 每次回复最多注入多少条相关记忆。 |
+
+聊天时，系统会先根据当前用户输入检索相关记忆，并把它们注入 prompt：
+
+```text
+Relevant Long-term Memory:
+- 用户希望回答使用中文。
+- 用户希望项目保持本地优先，不引入第三方托管存储。
+```
+
+回复成功后，系统会从用户消息中保守提取可长期保存的信息，例如偏好、目标或明确边界。临时闲聊和一次性情绪不会被主动写入长期记忆。
+
 ## 数据文件
 
 应用运行时数据保存在 `data/records/` 下：
 
 - `chat_history.json` 保存 human 和 AI 消息。AI 消息会包含生成的 `id` 和可为空的 `feedback` 字段。
 - `emotion_analysis.json` 保存每次情绪分析的 prompt、模型输出、解析得到的情绪、成功标记，以及失败时的错误信息。
+- `memory.sqlite3` 保存本地长期记忆，包括用户偏好、稳定画像、长期目标和明确约束。
 
 这些文件属于本地应用状态。如果想重置对话，可以删除或备份这些文件。
 
