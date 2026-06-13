@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from chatbot.emotion_prompt import build_emotion_analysis_prompt
+
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "records" / "emotion_analysis.json")
 DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "emotion_analysis.json")
@@ -78,6 +80,7 @@ def build_emotion_prompt(
     current_input: str,
     *,
     previous_emotion: str = "",
+    likely_emotions: list[str] | None = None,
     max_turns: int = 5,
 ) -> str:
     utterances = _recent_contents(records, max_turns)
@@ -85,18 +88,14 @@ def build_emotion_prompt(
     if current_input:
         utterances.append(current_input)
     dialogue_context = "</s>".join(utterances)
-    labels = ", ".join(EMOTION_LABELS)
-    likely_line = ""
-    if previous_emotion:
-        likely_line = f"\n- More likely emotion label: {previous_emotion}"
-
-    return f"""Infer the user's current emotion from the dialogue context.
-- Dialogue context: The conversation history between user and assistant, with utterances separated by </s>.
-- Emotion labels: {labels}
-- Choose a single inferred emotion from the provided Emotion labels, not outside of them.
-- Response Format: Emotion: [a single inferred emotion]{likely_line}
-
-Dialogue context: {dialogue_context}""".strip()
+    return build_emotion_analysis_prompt(
+        emotion_labels=EMOTION_LABELS,
+        emotion_label_set=EMOTION_LABEL_SET,
+        dialogue_context=dialogue_context,
+        current_input=current_input,
+        previous_emotion=previous_emotion,
+        likely_emotions=likely_emotions,
+    )
 
 
 def parse_emotion_output(output: str) -> str | None:
@@ -190,6 +189,7 @@ def analyze_emotion(
     current_input: str,
     *,
     previous_emotion: str = "",
+    likely_emotions: list[str] | None = None,
     turn_count: int,
     emotion_interval: int,
 ) -> EmotionAnalysisResult:
@@ -198,6 +198,7 @@ def analyze_emotion(
         records,
         current_input,
         previous_emotion=previous_emotion,
+        likely_emotions=likely_emotions,
         max_turns=emotion_interval,
     )
     try:

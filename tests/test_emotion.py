@@ -27,10 +27,25 @@ def test_build_emotion_prompt_uses_recent_history_and_current_input():
 
     assert "Emotion labels:" in prompt
     assert "Response Format: Emotion: [a single inferred emotion]" in prompt
-    assert "More likely emotion label: anxious" in prompt
+    assert "More likely emotion labels: anxious" in prompt
+    assert "Labeled examples:" in prompt
+    assert "True emotion label: anxious" in prompt
     assert "Dialogue context:" in prompt
     assert "first question" not in prompt
     assert "second question</s>second answer</s>current question" in prompt
+
+
+def test_build_emotion_prompt_accepts_multiple_likely_emotions():
+    prompt = build_emotion_prompt(
+        [],
+        "I feel let down but still nervous about tomorrow.",
+        previous_emotion="anxious",
+        likely_emotions=["disappointed", "sad", "unknown", "anxious"],
+    )
+
+    assert "More likely emotion labels: anxious, disappointed, sad" in prompt
+    assert "True emotion label: anxious" in prompt
+    assert "True emotion label: disappointed" in prompt
 
 
 def test_parse_emotion_output_accepts_known_label():

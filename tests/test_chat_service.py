@@ -324,6 +324,40 @@ def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
     assert events[2].data == {"emotion": "anxious"}
 
 
+def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monkeypatch):
+    config = make_test_config(emotion_interval=1)
+    chain = StreamingFakeChain()
+    emotion_llm = FakeEmotionLlm(output="Emotion: disappointed")
+    analysis_file = tmp_path / "emotion_analysis.json"
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "feedback": None,
+        },
+    )
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        initial_emotion="anxious",
+    )
+
+    events = list(service.stream_reply("I thought this would go better."))
+
+    assert events[2].data == {"emotion": "disappointed"}
+    assert "More likely emotion labels: anxious" in emotion_llm.prompts[0]
+    assert "True emotion label: anxious" in emotion_llm.prompts[0]
+    assert service.recent_emotions == ["disappointed", "anxious"]
+
+
 def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=1)
     chain = StreamingFakeChain()

@@ -35,6 +35,7 @@ class ChatService:
         self.session_id = session_id
         self.turn_count = 0
         self.current_emotion = initial_emotion
+        self.recent_emotions = [initial_emotion] if initial_emotion else []
 
     def _append_user_message(self, message: str) -> None:
         append_message("human", message)
@@ -59,13 +60,25 @@ class ChatService:
             self.session_records[:-1],
             message,
             previous_emotion=self.current_emotion,
+            likely_emotions=self.recent_emotions,
             turn_count=self.turn_count,
             emotion_interval=self.config.emotion_interval,
         )
         if emotion_result.success:
             self.current_emotion = emotion_result.emotion
+            self._remember_emotion(emotion_result.emotion)
             return ChatEvent("emotion_done", {"emotion": emotion_result.emotion})
         return ChatEvent("emotion_error", {"error": emotion_result.error})
+
+    def _remember_emotion(self, emotion: str) -> None:
+        emotion = emotion.strip()
+        if not emotion:
+            return
+        self.recent_emotions = [
+            item for item in self.recent_emotions if item != emotion
+        ]
+        self.recent_emotions.insert(0, emotion)
+        self.recent_emotions = self.recent_emotions[:3]
 
     def _payload(self, message: str) -> dict[str, str]:
         return {
