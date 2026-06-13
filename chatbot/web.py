@@ -14,8 +14,10 @@ from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.history import load_history, record_message_feedback
+from chatbot.local_memory import build_memory_provider
 from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
+from chatbot.memory import load_memory_config
 from chatbot.profile import format_profile, load_profile
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -36,6 +38,8 @@ def build_service() -> ChatService:
     profile_text = format_profile(load_profile())
     chat_llm, emotion_llm = build_runtime_llms(config)
     latest_emotion = _latest_emotion_for_records(records)
+    memory_config = load_memory_config()
+    memory_provider = build_memory_provider(memory_config)
     init_session_history("default", records)
     chain = build_chain(chat_llm, profile_text)
     return ChatService(
@@ -44,6 +48,8 @@ def build_service() -> ChatService:
         emotion_llm,
         initial_records=records,
         initial_emotion=(latest_emotion or {}).get("emotion", ""),
+        memory_provider=memory_provider,
+        memory_max_results=memory_config.max_results,
     )
 
 

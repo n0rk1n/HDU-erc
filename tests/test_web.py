@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+import chatbot.web as web
 from chatbot.chat_service import ChatEvent
 from chatbot.history import FeedbackUpdateResult
 from chatbot.web import build_service, create_app, format_sse
@@ -42,6 +43,15 @@ def test_build_service_does_not_duplicate_session_history(monkeypatch):
         lambda config: (FakeLlm(), FakeLlm()),
     )
     monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    monkeypatch.setattr(
+        "chatbot.web.load_memory_config",
+        lambda: type(
+            "MemoryConfig",
+            (),
+            {"enabled": False, "db_path": "ignored", "max_results": 5},
+        )(),
+    )
+    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
     store.clear()
 
     build_service()
@@ -49,6 +59,39 @@ def test_build_service_does_not_duplicate_session_history(monkeypatch):
 
     history = get_session_history("default")
     assert [message.content for message in history.messages] == ["hello", "hi"]
+
+
+def test_build_service_passes_memory_provider(monkeypatch):
+    captured = {}
+
+    class FakeConfig:
+        emotion_interval = 5
+        chat_llm = object()
+        emotion_llm = object()
+
+    class FakeService:
+        def __init__(self, chain, config, emotion_llm, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("chatbot.web.load_config", lambda argv: FakeConfig())
+    monkeypatch.setattr("chatbot.web.load_history", lambda: [])
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
+    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
+    monkeypatch.setattr("chatbot.web.build_runtime_llms", lambda config: (object(), object()))
+    monkeypatch.setattr("chatbot.web.init_session_history", lambda session_id, records: None)
+    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    monkeypatch.setattr("chatbot.web._latest_emotion_for_records", lambda records: None)
+    monkeypatch.setattr("chatbot.web.load_memory_config", lambda: type(
+        "MemoryConfig",
+        (),
+        {"enabled": False, "db_path": "ignored", "max_results": 3},
+    )())
+    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: "memory-provider")
+    monkeypatch.setattr("chatbot.web.ChatService", FakeService)
+
+    assert web.build_service() is not None
+    assert captured["memory_provider"] == "memory-provider"
+    assert captured["memory_max_results"] == 3
 
 
 def test_build_service_uses_latest_successful_emotion(monkeypatch):
@@ -69,6 +112,7 @@ def test_build_service_uses_latest_successful_emotion(monkeypatch):
         initial_records=None,
         initial_emotion="",
         session_id="default",
+        **kwargs,
     ):
         captured["initial_records"] = initial_records
         captured["initial_emotion"] = initial_emotion
@@ -94,6 +138,15 @@ def test_build_service_uses_latest_successful_emotion(monkeypatch):
         lambda config: (FakeLlm(), FakeLlm()),
     )
     monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    monkeypatch.setattr(
+        "chatbot.web.load_memory_config",
+        lambda: type(
+            "MemoryConfig",
+            (),
+            {"enabled": False, "db_path": "ignored", "max_results": 5},
+        )(),
+    )
+    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
     monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
 
     build_service()
@@ -120,6 +173,7 @@ def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
         initial_records=None,
         initial_emotion="",
         session_id="default",
+        **kwargs,
     ):
         captured["initial_emotion"] = initial_emotion
         return object()
@@ -144,6 +198,15 @@ def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
         lambda config: (FakeLlm(), FakeLlm()),
     )
     monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    monkeypatch.setattr(
+        "chatbot.web.load_memory_config",
+        lambda: type(
+            "MemoryConfig",
+            (),
+            {"enabled": False, "db_path": "ignored", "max_results": 5},
+        )(),
+    )
+    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
     monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
 
     build_service()

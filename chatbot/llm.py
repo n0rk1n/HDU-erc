@@ -60,7 +60,7 @@ def build_system_message(profile_text: str = "") -> str:
     )
     if profile_text:
         system_message += f"\n\nUser Profile:\n{profile_text}"
-    system_message += "\n\n{emotion_context}"
+    system_message += "\n\n{memory_context}\n\n{emotion_context}"
     return system_message
 
 
@@ -87,7 +87,8 @@ def build_chain(llm: Any, profile_text: str = "") -> RunnableWithMessageHistory:
     ])
     chain = (
         RunnablePassthrough.assign(
-            emotion_context=lambda input_data: input_data.get("emotion_context", "")
+            memory_context=lambda input_data: input_data.get("memory_context", ""),
+            emotion_context=lambda input_data: input_data.get("emotion_context", ""),
         )
         | prompt
         | llm

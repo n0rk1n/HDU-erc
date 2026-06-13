@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from chatbot.chat_service import ChatService
 from chatbot.config import ChatConfig, LlmConfig
+from chatbot.memory import Memory, MemoryCandidate
 
 
 class FakeChain:
@@ -44,6 +45,27 @@ class FailingStreamingFakeChain(FakeChain):
         raise RuntimeError("stream failed")
 
 
+class FakeMemoryProvider:
+    def __init__(self, memories=None, search_error=None, remember_error=None):
+        self.memories = list(memories or [])
+        self.search_error = search_error
+        self.remember_error = remember_error
+        self.searches = []
+        self.remembered = []
+
+    def search(self, query, *, limit):
+        self.searches.append((query, limit))
+        if self.search_error:
+            raise self.search_error
+        return self.memories[:limit]
+
+    def remember(self, candidates):
+        self.remembered.append(candidates)
+        if self.remember_error:
+            raise self.remember_error
+        return []
+
+
 def make_test_config(emotion_interval=2):
     llm_config = LlmConfig(
         provider="openai",
@@ -56,6 +78,110 @@ def make_test_config(emotion_interval=2):
         emotion_llm=llm_config,
         emotion_interval=emotion_interval,
     )
+
+
+def make_memory(content):
+    return Memory(
+        id="mem_1",
+        content=content,
+        category="preference",
+        source="chat",
+        confidence=0.9,
+        created_at="2026-06-13T10:00:00+00:00",
+        updated_at="2026-06-13T10:00:00+00:00",
+        last_used_at=None,
+        use_count=0,
+    )
+
+
+def test_generate_reply_injects_memory_context(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["reply 1"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider([
+        make_memory("用户希望回答使用中文。")
+    ])
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        memory_provider=memory_provider,
+        memory_max_results=5,
+    )
+
+    assert service.generate_reply("请介绍一下项目") == "reply 1"
+    assert memory_provider.searches == [("请介绍一下项目", 5)]
+    assert chain.payloads[0]["memory_context"] == (
+        "Relevant Long-term Memory:\n"
+        "- 用户希望回答使用中文。"
+    )
+
+
+def test_generate_reply_remembers_candidates_after_success(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["好的"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider()
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        memory_provider=memory_provider,
+        memory_max_results=5,
+    )
+
+    service.generate_reply("我希望以后都用中文回答。")
+
+    assert len(memory_provider.remembered) == 1
+    assert memory_provider.remembered[0] == [
+        MemoryCandidate(
+            content="用户希望以后都用中文回答。",
+            category="preference",
+            source="chat",
+            confidence=0.85,
+        )
+    ]
+
+
+def test_generate_reply_continues_when_memory_fails(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["reply 1"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider(search_error=RuntimeError("memory failed"))
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        memory_provider=memory_provider,
+        memory_max_results=5,
+    )
+
+    assert service.generate_reply("hello") == "reply 1"
+    assert chain.payloads[0]["memory_context"] == ""
 
 
 def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypatch):

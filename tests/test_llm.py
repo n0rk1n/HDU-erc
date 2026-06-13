@@ -39,6 +39,13 @@ def test_build_system_message_includes_dynamic_emotion_placeholder():
     assert "{emotion_context}" in message
 
 
+def test_build_system_message_includes_memory_context_placeholder():
+    message = build_system_message()
+
+    assert "{memory_context}" in message
+    assert "{emotion_context}" in message
+
+
 def test_build_chain_injects_emotion_context_into_system_message():
     captured_messages = []
 
@@ -60,6 +67,7 @@ def test_build_chain_injects_emotion_context_into_system_message():
     assert captured_messages[0].content == (
         f"{EXPECTED_CHATBOT_SYSTEM_MESSAGE}\n\n"
         "User Profile:\n- name: Alice\n\n"
+        "\n\n"
         "Current detected user emotion: anxious"
     )
 
@@ -82,6 +90,7 @@ def test_build_chain_defaults_missing_emotion_context_to_empty_string():
     assert captured_messages[0].content == (
         f"{EXPECTED_CHATBOT_SYSTEM_MESSAGE}\n\n"
         "User Profile:\n- name: Alice\n\n"
+        "\n\n"
     )
 
 

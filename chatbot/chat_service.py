@@ -8,6 +8,8 @@ from chatbot.config import ChatConfig
 from chatbot.emotion import analyze_emotion
 from chatbot.history import append_ai_message, append_message
 from chatbot.llm import format_emotion_context
+from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
+from chatbot.memory_extractor import extract_memory_candidates
 
 
 @dataclass(frozen=True)
@@ -27,6 +29,8 @@ class ChatService:
         initial_records: list[dict] | None = None,
         session_id: str = "default",
         initial_emotion: str = "",
+        memory_provider: MemoryProvider | None = None,
+        memory_max_results: int = 5,
     ):
         self.chain = chain
         self.config = config
@@ -35,6 +39,9 @@ class ChatService:
         self.session_id = session_id
         self.turn_count = 0
         self.current_emotion = initial_emotion
+        self.memory_provider = memory_provider or DisabledMemoryProvider()
+        self.memory_max_results = memory_max_results
+        self.current_memory_context = ""
         self.recent_emotions = [initial_emotion] if initial_emotion else []
 
     def _append_user_message(self, message: str) -> None:
@@ -80,9 +87,30 @@ class ChatService:
         self.recent_emotions.insert(0, emotion)
         self.recent_emotions = self.recent_emotions[:3]
 
+    def _refresh_memory_context(self, message: str) -> None:
+        try:
+            memories = self.memory_provider.search(
+                message,
+                limit=self.memory_max_results,
+            )
+        except Exception as exc:
+            print(f"Warning: memory search failed: {exc}")
+            memories = []
+        self.current_memory_context = format_memory_context(memories)
+
+    def _remember_from_turn(self, message: str, answer: str) -> None:
+        candidates = extract_memory_candidates(message, answer)
+        if not candidates:
+            return
+        try:
+            self.memory_provider.remember(candidates)
+        except Exception as exc:
+            print(f"Warning: memory write failed: {exc}")
+
     def _payload(self, message: str) -> dict[str, str]:
         return {
             "input": message,
+            "memory_context": self.current_memory_context,
             "emotion_context": format_emotion_context(self.current_emotion),
         }
 
@@ -92,6 +120,7 @@ class ChatService:
             raise ValueError("Message must not be empty.")
 
         self._append_user_message(message)
+        self._refresh_memory_context(message)
         self._analyze_if_due(message)
         result = self.chain.invoke(
             self._payload(message),
@@ -99,6 +128,7 @@ class ChatService:
         )
         answer = result.content if hasattr(result, "content") else str(result)
         self._append_ai_message(answer)
+        self._remember_from_turn(message, answer)
         return answer
 
     def stream_reply(self, message: str) -> Iterator[ChatEvent]:
@@ -109,6 +139,7 @@ class ChatService:
 
         self._append_user_message(message)
         yield ChatEvent("user_message", {"role": "human", "content": message})
+        self._refresh_memory_context(message)
 
         if self.turn_count % self.config.emotion_interval == 0:
             yield ChatEvent("emotion_start", {})
@@ -143,6 +174,7 @@ class ChatService:
 
         answer = "".join(answer_parts)
         message_id = self._append_ai_message(answer)
+        self._remember_from_turn(message, answer)
         data = {"content": answer}
         if message_id:
             data["message_id"] = message_id
