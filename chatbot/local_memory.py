@@ -39,7 +39,7 @@ class SQLiteLocalMemoryProvider:
                 scored = []
                 for row in rows:
                     memory = _memory_from_row(row)
-                    score = _score(memory.content, tokens)
+                    score = _ranking_score(memory, query, tokens)
                     if score > 0:
                         scored.append((score, memory.updated_at, memory.use_count, memory))
                 scored.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
@@ -586,10 +586,54 @@ def _tokens(value: str) -> set[str]:
     return {token for token in tokens if token}
 
 
-def _score(content: str, query_tokens: set[str]) -> int:
+CATEGORY_WEIGHTS = {
+    "boundary": 5.0,
+    "preference": 3.0,
+    "goal": 1.5,
+    "profile": 1.0,
+}
+
+
+def _lexical_score(content: str, query: str, query_tokens: set[str]) -> float:
     content_tokens = _tokens(content)
-    return len(content_tokens & query_tokens)
+    if not content_tokens:
+        return 0.0
+    overlap = content_tokens & query_tokens
+    score = float(len(overlap))
+    normalized_content = _normalize_for_compare(content)
+    normalized_query = _normalize_for_compare(query)
+    if normalized_query and normalized_query in normalized_content:
+        score += 3.0
+    for token in overlap:
+        if len(token) >= 2 and token in normalized_content:
+            score += 0.25
+    return score
+
+
+def _recency_score(value: str) -> float:
+    try:
+        updated_at = datetime.fromisoformat(value)
+    except ValueError:
+        return 0.0
+    age_seconds = max(0.0, (_now() - updated_at).total_seconds())
+    age_days = age_seconds / 86400
+    return max(0.0, 1.0 - min(age_days, 30.0) / 30.0)
+
+
+def _ranking_score(memory: Memory, query: str, query_tokens: set[str]) -> float:
+    lexical = _lexical_score(memory.content, query, query_tokens)
+    if lexical <= 0:
+        return 0.0
+    category = CATEGORY_WEIGHTS.get(memory.category, 0.5)
+    confidence = max(0.0, min(memory.confidence, 1.0))
+    recency = _recency_score(memory.updated_at)
+    usage = min(memory.use_count, 10) * 0.05
+    return lexical + category + confidence + recency + usage
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return _now().isoformat(timespec="seconds")

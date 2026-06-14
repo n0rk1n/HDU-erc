@@ -687,6 +687,41 @@ def test_search_excludes_superseded_memories(tmp_path):
     assert provider.search("中文回答", limit=5) == []
 
 
+def test_search_prioritizes_boundary_over_preference(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+    provider.remember([
+        MemoryCandidate(
+            content="用户喜欢项目资料里的简洁说明。",
+            category="preference",
+            confidence=0.8,
+        ),
+        MemoryCandidate(
+            content="用户要求在项目资料里标注来源。",
+            category="boundary",
+            confidence=0.9,
+        ),
+    ])
+
+    results = provider.search("项目资料说明来源", limit=5)
+
+    assert results[0].category == "boundary"
+
+
+def test_search_prioritizes_more_specific_phrase_match(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+    provider.remember([
+        MemoryCandidate(
+            content="User project chatbot answer concise emotion recognition.",
+            category="profile",
+        ),
+        MemoryCandidate(content="chatbot answer concise", category="preference"),
+    ])
+
+    results = provider.search("chatbot answer concise", limit=5)
+
+    assert results[0].content == "chatbot answer concise"
+
+
 def test_search_returns_empty_for_unmatched_query(tmp_path):
     provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
     provider.remember([
