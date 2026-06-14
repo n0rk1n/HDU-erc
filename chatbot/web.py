@@ -13,7 +13,11 @@ from pydantic import BaseModel
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
-from chatbot.history import load_history, record_message_feedback
+from chatbot.history import (
+    REGENERATION_REASONS,
+    load_history,
+    record_message_feedback,
+)
 from chatbot.local_memory import build_memory_provider
 from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
@@ -25,6 +29,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 class FeedbackRequest(BaseModel):
     feedback: Literal["like", "dislike"]
+
+
+class RegenerateRequest(BaseModel):
+    reason: str
 
 
 def format_sse(event: ChatEvent) -> str:
@@ -67,6 +75,10 @@ def _structured_messages(records: list[dict], limit: int) -> list[dict]:
             message["id"] = record["id"]
         if "feedback" in record:
             message["feedback"] = record["feedback"]
+        if "regeneration" in record:
+            message["regeneration"] = record["regeneration"]
+        if "regenerated_from" in record:
+            message["regenerated_from"] = record["regenerated_from"]
         messages.append(message)
     return messages[-limit:]
 
@@ -207,6 +219,41 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         if result.status == "write_failed":
             raise HTTPException(status_code=500, detail="Could not save feedback.")
         raise HTTPException(status_code=400, detail="Invalid feedback.")
+
+    @app.post("/api/messages/{message_id}/regenerate")
+    def regenerate_message(
+        message_id: str,
+        request: RegenerateRequest,
+        service: ChatService = Depends(get_service),
+    ):
+        if request.reason not in REGENERATION_REASONS:
+            raise HTTPException(status_code=400, detail="Invalid regeneration reason.")
+
+        result = service.regenerate_reply(message_id, request.reason)
+        if result.status == "updated":
+            return {
+                "status": "regenerated",
+                "original_message_id": message_id,
+                "message_id": result.message_id,
+                "content": result.content,
+                "reason": result.reason,
+            }
+        if result.status == "not_found":
+            raise HTTPException(status_code=404, detail="Message not found.")
+        if result.status == "not_ai":
+            raise HTTPException(
+                status_code=400,
+                detail="Regeneration is only supported for AI messages.",
+            )
+        if result.status == "invalid_reason":
+            raise HTTPException(status_code=400, detail="Invalid regeneration reason.")
+        if result.status == "already_regenerated":
+            raise HTTPException(status_code=409, detail="Message already regenerated.")
+        if result.status == "missing_prompt":
+            raise HTTPException(status_code=400, detail="Original prompt is unavailable.")
+        if result.status in {"write_failed", "generation_failed"}:
+            raise HTTPException(status_code=500, detail="Could not regenerate message.")
+        raise HTTPException(status_code=500, detail="Could not regenerate message.")
 
     @app.get("/api/chat/stream")
     def chat_stream(message: str, service: ChatService = Depends(get_service)):

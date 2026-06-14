@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 import chatbot.web as web
 from chatbot.chat_service import ChatEvent
-from chatbot.history import FeedbackUpdateResult
+from chatbot.history import FeedbackUpdateResult, RegenerationUpdateResult
 from chatbot.web import build_service, create_app, format_sse
 
 
@@ -21,6 +21,16 @@ class FakeService:
         yield ChatEvent("user_message", {"role": "human", "content": message})
         yield ChatEvent("token", {"content": "hi"})
         yield ChatEvent("done", {"content": "hi", "message_id": "ai_1"})
+
+    def regenerate_reply(self, message_id, reason):
+        return RegenerationUpdateResult(
+            "updated",
+            original_message_id=message_id,
+            message_id="ai_regenerated",
+            content="regenerated reply",
+            reason=reason,
+            original_user_message="hello",
+        )
 
 
 def test_build_service_does_not_duplicate_session_history(monkeypatch):
@@ -382,6 +392,44 @@ def test_session_endpoint_preserves_message_feedback_metadata(monkeypatch):
     assert response.json()["messages"] == records
 
 
+def test_session_endpoint_preserves_regeneration_metadata(monkeypatch):
+    records = [
+        {"role": "human", "content": "q1", "timestamp": "t1"},
+        {
+            "id": "ai_1",
+            "role": "ai",
+            "content": "bad",
+            "timestamp": "t2",
+            "feedback": None,
+            "regeneration": {
+                "reason": "不准确",
+                "regenerated_message_id": "ai_2",
+                "timestamp": "t3",
+                "original_user_message": "q1",
+                "original_ai_content": "bad",
+            },
+        },
+        {
+            "id": "ai_2",
+            "role": "ai",
+            "content": "better",
+            "timestamp": "t4",
+            "feedback": None,
+            "regenerated_from": "ai_1",
+        },
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [])
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["messages"] == records
+
+
 def test_session_endpoint_returns_null_for_stale_emotion(monkeypatch):
     records = [
         {"role": "human", "content": "q1", "timestamp": "t1"},
@@ -696,6 +744,45 @@ def test_feedback_endpoint_returns_write_failure(monkeypatch):
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Could not save feedback."}
+
+
+def test_regenerate_endpoint_returns_new_message(monkeypatch):
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post("/api/messages/ai_1/regenerate", json={"reason": "不准确"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "regenerated",
+        "original_message_id": "ai_1",
+        "message_id": "ai_regenerated",
+        "content": "regenerated reply",
+        "reason": "不准确",
+    }
+
+
+def test_regenerate_endpoint_maps_history_errors(monkeypatch):
+    statuses = {
+        "not_found": 404,
+        "not_ai": 400,
+        "invalid_reason": 400,
+        "already_regenerated": 409,
+        "missing_prompt": 400,
+        "write_failed": 500,
+    }
+
+    for status, expected_code in statuses.items():
+        class RejectingService(FakeService):
+            def regenerate_reply(self, message_id, reason):
+                return RegenerationUpdateResult(status)
+
+        app = create_app(service_factory=lambda: RejectingService())
+        client = TestClient(app)
+
+        response = client.post("/api/messages/ai_1/regenerate", json={"reason": "不准确"})
+
+        assert response.status_code == expected_code
 
 
 def test_stream_endpoint_returns_sse_events():
