@@ -770,6 +770,8 @@ def test_regenerate_endpoint_maps_history_errors(monkeypatch):
         "already_regenerated": 409,
         "missing_prompt": 400,
         "write_failed": 500,
+        "generation_failed": 500,
+        "unexpected_status": 500,
     }
 
     for status, expected_code in statuses.items():
