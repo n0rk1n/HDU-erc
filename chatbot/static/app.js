@@ -27,11 +27,38 @@ function collapseRegeneratedMessage(wrapper, reason) {
   wrapper.appendChild(summary);
 }
 
+function nextSiblingOf(wrapper) {
+  if ("nextSibling" in wrapper) {
+    return wrapper.nextSibling;
+  }
+  if (!wrapper.parent) {
+    return null;
+  }
+  const siblings = Array.from(wrapper.parent.children || []);
+  const index = siblings.indexOf(wrapper);
+  return siblings[index + 1] || null;
+}
+
 function insertMessageAfter(referenceWrapper, role, content, metadata = {}) {
   const inserted = createMessageElement(role, content, metadata);
-  messagesEl.insertBefore(inserted.wrapper, referenceWrapper.nextSibling);
+  messagesEl.insertBefore(inserted.wrapper, nextSiblingOf(referenceWrapper));
   scrollToBottom();
   return inserted;
+}
+
+function allControlButtons(controls) {
+  const buttons = [];
+  const visit = (element) => {
+    Array.from(element.children || []).forEach((child) => {
+      const tagName = child.tagName ? child.tagName.toLowerCase() : "";
+      if (tagName === "button" || child.name === "button") {
+        buttons.push(child);
+      }
+      visit(child);
+    });
+  };
+  visit(controls);
+  return buttons;
 }
 
 function renderFeedbackControls(wrapper, metadata) {
@@ -65,10 +92,10 @@ function renderFeedbackControls(wrapper, metadata) {
 
   const buttons = [likeButton, dislikeButton, regenerateButton];
   likeButton.addEventListener("click", () => (
-    submitFeedback(metadata.id, "like", controls, status, buttons)
+    submitFeedback(metadata.id, "like", controls, status)
   ));
   dislikeButton.addEventListener("click", () => (
-    submitFeedback(metadata.id, "dislike", controls, status, buttons)
+    submitFeedback(metadata.id, "dislike", controls, status)
   ));
   regenerateButton.addEventListener("click", () => (
     renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
@@ -81,8 +108,9 @@ function renderFeedbackControls(wrapper, metadata) {
   wrapper.appendChild(controls);
 }
 
-async function submitFeedback(messageId, feedback, controls, status, buttons = []) {
-  buttons.forEach((button) => {
+async function submitFeedback(messageId, feedback, controls, status) {
+  const pendingButtons = allControlButtons(controls);
+  pendingButtons.forEach((button) => {
     button.disabled = true;
   });
   status.textContent = "";
@@ -98,7 +126,7 @@ async function submitFeedback(messageId, feedback, controls, status, buttons = [
     }
     controls.remove();
   } catch (error) {
-    buttons.forEach((button) => {
+    pendingButtons.forEach((button) => {
       button.disabled = false;
     });
     status.textContent = "评价保存失败";
@@ -120,30 +148,22 @@ function renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
 
   reasons = document.createElement("div");
   reasons.className = "regeneration-reasons";
-  const reasonButtons = [];
   regenerationReasons.forEach((reason) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "feedback-button regeneration-reason";
     button.textContent = reason;
     button.addEventListener("click", () => (
-      submitRegeneration(
-        wrapper,
-        metadata.id,
-        reason,
-        controls,
-        status,
-        [...buttons, ...reasonButtons],
-      )
+      submitRegeneration(wrapper, metadata.id, reason, controls, status)
     ));
-    reasonButtons.push(button);
     reasons.appendChild(button);
   });
   controls.insertBefore(reasons, status);
 }
 
-async function submitRegeneration(wrapper, messageId, reason, controls, status, buttons = []) {
-  buttons.forEach((button) => {
+async function submitRegeneration(wrapper, messageId, reason, controls, status) {
+  const pendingButtons = allControlButtons(controls);
+  pendingButtons.forEach((button) => {
     button.disabled = true;
   });
   status.textContent = "";
@@ -166,7 +186,7 @@ async function submitRegeneration(wrapper, messageId, reason, controls, status, 
       regenerated_from: payload.original_message_id,
     });
   } catch (error) {
-    buttons.forEach((button) => {
+    pendingButtons.forEach((button) => {
       button.disabled = false;
     });
     status.textContent = "重新生成失败";
@@ -215,10 +235,21 @@ async function loadSession() {
   }
   const payload = await response.json();
   messagesEl.innerHTML = "";
+  const renderedById = {};
   payload.messages.forEach((message) => {
     const role = message.role === "human" ? "human" : "ai";
-    addMessage(role, message.content, message);
+    const rendered = createMessageElement(role, message.content, message);
+    const original = message.regenerated_from ? renderedById[message.regenerated_from] : null;
+    if (original) {
+      messagesEl.insertBefore(rendered.wrapper, nextSiblingOf(original.wrapper));
+    } else {
+      messagesEl.appendChild(rendered.wrapper);
+    }
+    if (message.id) {
+      renderedById[message.id] = rendered;
+    }
   });
+  scrollToBottom();
   renderEmotion(payload.emotion);
 }
 
