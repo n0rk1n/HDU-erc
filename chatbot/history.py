@@ -12,11 +12,29 @@ DEFAULT_LEGACY_HISTORY_FILE = str(DATA_DIR / "chat_history.json")
 HISTORY_FILE = DEFAULT_HISTORY_FILE
 LEGACY_HISTORY_FILE = DEFAULT_LEGACY_HISTORY_FILE
 
+REGENERATION_REASONS = {
+    "不准确",
+    "不完整",
+    "没有理解我的问题",
+    "语气不合适",
+    "其他",
+}
+
 
 @dataclass(frozen=True)
 class FeedbackUpdateResult:
     status: str
     feedback: str = ""
+
+
+@dataclass(frozen=True)
+class RegenerationUpdateResult:
+    status: str
+    original_message_id: str = ""
+    message_id: str = ""
+    content: str = ""
+    reason: str = ""
+    original_user_message: str = ""
 
 
 def load_history() -> list[dict]:
@@ -93,6 +111,14 @@ def append_message(role: str, content: str) -> dict | None:
 
 def append_ai_message(content: str) -> dict | None:
     records = load_history()
+    record = _new_ai_record(content)
+    records.append(record)
+    if _save_history(records):
+        return record
+    return None
+
+
+def _new_ai_record(content: str, **extra: str) -> dict:
     record = {
         "id": f"ai_{uuid4().hex}",
         "role": "ai",
@@ -100,10 +126,17 @@ def append_ai_message(content: str) -> dict | None:
         "timestamp": _now_iso(),
         "feedback": None,
     }
-    records.append(record)
-    if _save_history(records):
-        return record
-    return None
+    record.update(extra)
+    return record
+
+
+def _nearest_preceding_human_content(records: list[dict], index: int) -> str:
+    for record in reversed(records[:index]):
+        if record.get("role") == "human":
+            content = str(record.get("content", "")).strip()
+            if content:
+                return content
+    return ""
 
 
 def record_message_feedback(message_id: str, feedback: str) -> FeedbackUpdateResult:
@@ -126,6 +159,62 @@ def record_message_feedback(message_id: str, feedback: str) -> FeedbackUpdateRes
         return FeedbackUpdateResult("write_failed")
 
     return FeedbackUpdateResult("not_found")
+
+
+def record_message_regeneration(
+    message_id: str,
+    reason: str,
+    new_content: str,
+) -> RegenerationUpdateResult:
+    if reason not in REGENERATION_REASONS:
+        return RegenerationUpdateResult("invalid_reason")
+
+    records = load_history()
+    for index, record in enumerate(records):
+        if record.get("id") != message_id:
+            continue
+        if record.get("role") != "ai":
+            return RegenerationUpdateResult("not_ai")
+        existing_regeneration = record.get("regeneration")
+        if isinstance(existing_regeneration, dict):
+            return RegenerationUpdateResult(
+                "already_regenerated",
+                original_message_id=message_id,
+                message_id=str(existing_regeneration.get("regenerated_message_id", "")),
+                reason=str(existing_regeneration.get("reason", "")),
+                original_user_message=str(
+                    existing_regeneration.get("original_user_message", "")
+                ),
+            )
+
+        original_user_message = _nearest_preceding_human_content(records, index)
+        if not original_user_message:
+            return RegenerationUpdateResult(
+                "missing_prompt",
+                original_message_id=message_id,
+            )
+
+        new_record = _new_ai_record(new_content, regenerated_from=message_id)
+        record["regeneration"] = {
+            "reason": reason,
+            "regenerated_message_id": new_record["id"],
+            "timestamp": _now_iso(),
+            "original_user_message": original_user_message,
+            "original_ai_content": str(record.get("content", "")),
+        }
+        records.append(new_record)
+        if _save_history(records):
+            return RegenerationUpdateResult(
+                "updated",
+                original_message_id=message_id,
+                message_id=new_record["id"],
+                content=new_content,
+                reason=reason,
+                original_user_message=original_user_message,
+            )
+        return RegenerationUpdateResult("write_failed", original_message_id=message_id)
+
+    return RegenerationUpdateResult("not_found")
 
 
 def format_recent(records: list[dict], n: int = 10) -> str:
