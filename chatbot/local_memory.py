@@ -73,7 +73,21 @@ class SQLiteLocalMemoryProvider:
                         continue
                     existing = self._find_existing(connection, candidate, normalized)
                     if existing is None:
-                        stored.append(self._insert(connection, candidate, normalized))
+                        conflict = self._find_conflict(connection, candidate, normalized)
+                        if conflict is not None and _can_supersede(conflict, candidate):
+                            self._mark_superseded(connection, conflict)
+                            stored.append(
+                                self._insert(
+                                    connection,
+                                    candidate,
+                                    normalized,
+                                    supersedes_id=conflict.id,
+                                )
+                            )
+                        elif conflict is not None:
+                            continue
+                        else:
+                            stored.append(self._insert(connection, candidate, normalized))
                     else:
                         stored.append(self._update(connection, existing, candidate, normalized))
                 return stored
@@ -147,11 +161,38 @@ class SQLiteLocalMemoryProvider:
                 return memory
         return None
 
+    def _find_conflict(
+        self,
+        connection: sqlite3.Connection,
+        candidate: MemoryCandidate,
+        normalized: str,
+    ) -> Memory | None:
+        rows = connection.execute(
+            """
+            select id, content, category, source, confidence,
+                   created_at, updated_at, last_used_at, use_count
+            from memories
+            where status = 'active'
+            """
+        ).fetchall()
+        for row in rows:
+            memory = _memory_from_row(row)
+            if _conflicts(memory, candidate, normalized):
+                return memory
+        return None
+
+    def _mark_superseded(self, connection: sqlite3.Connection, memory: Memory) -> None:
+        connection.execute(
+            "update memories set status = 'superseded' where id = ?",
+            (memory.id,),
+        )
+
     def _insert(
         self,
         connection: sqlite3.Connection,
         candidate: MemoryCandidate,
         content: str,
+        supersedes_id: str | None = None,
     ) -> Memory:
         now = _now_iso()
         memory = Memory(
@@ -169,8 +210,9 @@ class SQLiteLocalMemoryProvider:
             """
             insert into memories (
                 id, content, category, source, confidence,
-                created_at, updated_at, last_used_at, use_count
-            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, updated_at, last_used_at, use_count,
+                status, supersedes_id, metadata_json
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 memory.id,
@@ -182,6 +224,9 @@ class SQLiteLocalMemoryProvider:
                 memory.updated_at,
                 memory.last_used_at,
                 memory.use_count,
+                "active",
+                supersedes_id,
+                "{}",
             ),
         )
         return memory
@@ -276,6 +321,16 @@ def _has_pattern(value: str, *patterns: str) -> bool:
 
 def _has_any(value: str, words: tuple[str, ...]) -> bool:
     return any(word in value for word in words)
+
+
+CONFLICTING_TOPICS = {
+    "reply_length:concise": "reply_length:detailed",
+    "reply_length:detailed": "reply_length:concise",
+    "reply_language:chinese": "reply_language:english",
+    "reply_language:english": "reply_language:chinese",
+    "reply_tone:formal": "reply_tone:casual",
+    "reply_tone:casual": "reply_tone:formal",
+}
 
 
 def _memory_topics(value: str) -> set[str]:
@@ -429,6 +484,27 @@ def _is_similar_memory(existing: Memory, candidate: MemoryCandidate, content: st
     existing_topics = _memory_topics(existing.content)
     candidate_topics = _memory_topics(content)
     return bool(existing_topics) and existing_topics == candidate_topics
+
+
+def _conflicts(existing: Memory, candidate: MemoryCandidate, content: str) -> bool:
+    existing_topics = _memory_topics(existing.content)
+    candidate_topics = _memory_topics(content)
+    for topic in existing_topics:
+        if CONFLICTING_TOPICS.get(topic) in candidate_topics:
+            return True
+    if (
+        "memory_storage:hosted" in existing_topics
+        and "memory_storage:hosted" in candidate_topics
+        and existing.category != candidate.category
+    ):
+        return True
+    return False
+
+
+def _can_supersede(existing: Memory, candidate: MemoryCandidate) -> bool:
+    if existing.category == "boundary" and candidate.category != "boundary":
+        return False
+    return True
 
 
 def _tokens(value: str) -> set[str]:

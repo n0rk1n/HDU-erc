@@ -155,11 +155,61 @@ def test_remember_does_not_merge_conflicting_known_preferences(tmp_path):
     results = provider.search("回答简洁详细", limit=5)
 
     assert first[0].id != second[0].id
-    assert len(results) == 2
-    assert {memory.content for memory in results} == {
-        "用户希望回答简洁。",
-        "用户希望回答详细。",
-    }
+    assert [memory.content for memory in results] == ["用户希望回答详细。"]
+
+
+def test_conflicting_preferences_supersede_older_memory(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    detailed = provider.remember([
+        MemoryCandidate(content="用户喜欢详细解释。", category="preference")
+    ])[0]
+    concise = provider.remember([
+        MemoryCandidate(content="用户希望回答简洁。", category="preference")
+    ])[0]
+    results = provider.search("回答解释简洁详细", limit=5)
+
+    assert concise.id != detailed.id
+    assert [memory.content for memory in results] == ["用户希望回答简洁。"]
+    with sqlite3.connect(provider.db_path) as connection:
+        status = connection.execute(
+            "select status from memories where id = ?",
+            (detailed.id,),
+        ).fetchone()[0]
+        supersedes_id = connection.execute(
+            "select supersedes_id from memories where id = ?",
+            (concise.id,),
+        ).fetchone()[0]
+    assert status == "superseded"
+    assert supersedes_id == detailed.id
+
+
+def test_boundary_is_not_superseded_by_weaker_preference(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    boundary = provider.remember([
+        MemoryCandidate(
+            content="用户要求不要使用第三方托管记忆服务。",
+            category="boundary",
+            confidence=0.9,
+        )
+    ])[0]
+    provider.remember([
+        MemoryCandidate(
+            content="用户喜欢方便的第三方托管服务。",
+            category="preference",
+            confidence=0.8,
+        )
+    ])
+    results = provider.search("第三方托管记忆服务", limit=5)
+
+    assert any(memory.id == boundary.id for memory in results)
+    with sqlite3.connect(provider.db_path) as connection:
+        status = connection.execute(
+            "select status from memories where id = ?",
+            (boundary.id,),
+        ).fetchone()[0]
+    assert status == "active"
 
 
 def test_remember_does_not_merge_mixed_language_preferences(tmp_path):
@@ -174,11 +224,9 @@ def test_remember_does_not_merge_mixed_language_preferences(tmp_path):
     results = provider.search("concise English Chinese", limit=5)
 
     assert first[0].id != second[0].id
-    assert len(results) == 2
-    assert {memory.content for memory in results} == {
-        "User prefers concise answers in English.",
-        "User prefers concise answers in Chinese.",
-    }
+    assert [memory.content for memory in results] == [
+        "User prefers concise answers in Chinese."
+    ]
 
 
 def test_remember_does_not_merge_boilerplate_overlap_with_known_topic(tmp_path):
@@ -212,11 +260,7 @@ def test_remember_does_not_merge_formal_and_informal_tone_preferences(tmp_path):
     results = provider.search("formal informal tone", limit=5)
 
     assert first[0].id != second[0].id
-    assert len(results) == 2
-    assert {memory.content for memory in results} == {
-        "User prefers formal tone.",
-        "User prefers informal tone.",
-    }
+    assert [memory.content for memory in results] == ["User prefers informal tone."]
 
 
 def test_remember_does_not_treat_nlp_as_casual_tone(tmp_path):
