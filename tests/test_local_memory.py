@@ -16,6 +16,60 @@ def test_provider_creates_schema(tmp_path):
     assert rows == [("memories",)]
 
 
+def test_provider_migrates_existing_schema(tmp_path):
+    db_path = tmp_path / "memory.sqlite3"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            create table memories (
+                id text primary key,
+                content text not null,
+                category text not null,
+                source text not null,
+                confidence real not null,
+                created_at text not null,
+                updated_at text not null,
+                last_used_at text,
+                use_count integer not null default 0
+            )
+            """
+        )
+        connection.execute(
+            """
+            insert into memories (
+                id, content, category, source, confidence,
+                created_at, updated_at, last_used_at, use_count
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "mem_old",
+                "用户希望回答使用中文。",
+                "preference",
+                "chat",
+                0.9,
+                "2026-06-14T00:00:00+00:00",
+                "2026-06-14T00:00:00+00:00",
+                None,
+                0,
+            ),
+        )
+
+    provider = SQLiteLocalMemoryProvider(str(db_path))
+
+    with sqlite3.connect(db_path) as connection:
+        columns = {
+            row[1] for row in connection.execute("pragma table_info(memories)").fetchall()
+        }
+        status = connection.execute(
+            "select status from memories where id = ?",
+            ("mem_old",),
+        ).fetchone()[0]
+
+    assert {"status", "supersedes_id", "metadata_json"} <= columns
+    assert status == "active"
+    assert provider.search("中文回答", limit=5)[0].id == "mem_old"
+
+
 def test_remember_inserts_and_search_finds_memory(tmp_path):
     provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
 
@@ -56,6 +110,18 @@ def test_remember_updates_duplicate_memory(tmp_path):
     assert first[0].id == second[0].id
     assert len(all_rows) == 1
     assert all_rows[0].confidence == 0.95
+
+
+def test_search_excludes_superseded_memories(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+    provider.remember([
+        MemoryCandidate(content="用户希望回答使用中文。", category="preference")
+    ])
+
+    with sqlite3.connect(provider.db_path) as connection:
+        connection.execute("update memories set status = 'superseded'")
+
+    assert provider.search("中文回答", limit=5) == []
 
 
 def test_search_returns_empty_for_unmatched_query(tmp_path):

@@ -33,6 +33,7 @@ class SQLiteLocalMemoryProvider:
                     select id, content, category, source, confidence,
                            created_at, updated_at, last_used_at, use_count
                     from memories
+                    where status = 'active'
                     """
                 ).fetchall()
                 scored = []
@@ -96,13 +97,35 @@ class SQLiteLocalMemoryProvider:
                     created_at text not null,
                     updated_at text not null,
                     last_used_at text,
-                    use_count integer not null default 0
+                    use_count integer not null default 0,
+                    status text not null default 'active',
+                    supersedes_id text,
+                    metadata_json text not null default '{}'
                 )
                 """
             )
+            self._migrate_schema(connection)
             connection.execute(
                 "create index if not exists idx_memories_updated_at on memories(updated_at)"
             )
+            connection.execute(
+                "create index if not exists idx_memories_status on memories(status)"
+            )
+
+    def _migrate_schema(self, connection: sqlite3.Connection) -> None:
+        columns = {
+            row[1] for row in connection.execute("pragma table_info(memories)").fetchall()
+        }
+        migrations = {
+            "status": "alter table memories add column status text not null default 'active'",
+            "supersedes_id": "alter table memories add column supersedes_id text",
+            "metadata_json": (
+                "alter table memories add column metadata_json text not null default '{}'"
+            ),
+        }
+        for column, statement in migrations.items():
+            if column not in columns:
+                connection.execute(statement)
 
     def _find_existing(self, connection: sqlite3.Connection, normalized: str) -> Memory | None:
         rows = connection.execute(
@@ -110,6 +133,7 @@ class SQLiteLocalMemoryProvider:
             select id, content, category, source, confidence,
                    created_at, updated_at, last_used_at, use_count
             from memories
+            where status = 'active'
             """
         ).fetchall()
         for row in rows:
