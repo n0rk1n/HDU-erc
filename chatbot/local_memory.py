@@ -74,6 +74,13 @@ class SQLiteLocalMemoryProvider:
                     existing = self._find_existing(connection, candidate, normalized)
                     if existing is None:
                         conflicts = self._find_conflicts(connection, candidate, normalized)
+                        blocked = [
+                            conflict
+                            for conflict in conflicts
+                            if not _can_supersede(conflict, candidate)
+                        ]
+                        if blocked:
+                            continue
                         superseded = [
                             conflict
                             for conflict in conflicts
