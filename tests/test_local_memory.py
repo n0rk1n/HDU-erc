@@ -239,6 +239,74 @@ def test_negated_boundary_language_does_not_supersede_compatible_preference(tmp_
     assert english_status == "active"
 
 
+def test_negated_same_language_boundary_blocks_weaker_preference(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    boundary = provider.remember([
+        MemoryCandidate(
+            content="User requested not to reply in English.",
+            category="boundary",
+        )
+    ])[0]
+    stored = provider.remember([
+        MemoryCandidate(
+            content="User prefers replies in English.",
+            category="preference",
+        )
+    ])
+    results = provider.search("English replies", limit=5)
+
+    assert stored == []
+    assert [memory.id for memory in results] == [boundary.id]
+    with sqlite3.connect(provider.db_path) as connection:
+        boundary_status = connection.execute(
+            "select status from memories where id = ?",
+            (boundary.id,),
+        ).fetchone()[0]
+        preference_count = connection.execute(
+            "select count(*) from memories where content = ?",
+            ("User prefers replies in English.",),
+        ).fetchone()[0]
+    assert boundary_status == "active"
+    assert preference_count == 0
+
+
+def test_negated_same_language_boundary_supersedes_existing_preference(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    preference = provider.remember([
+        MemoryCandidate(
+            content="User prefers replies in English.",
+            category="preference",
+        )
+    ])[0]
+    boundary = provider.remember([
+        MemoryCandidate(
+            content="User requested not to reply in English.",
+            category="boundary",
+        )
+    ])[0]
+    results = provider.search("English replies", limit=5)
+
+    assert [memory.id for memory in results] == [boundary.id]
+    with sqlite3.connect(provider.db_path) as connection:
+        statuses = dict(
+            connection.execute(
+                "select id, status from memories where id in (?, ?)",
+                (preference.id, boundary.id),
+            ).fetchall()
+        )
+        supersedes_id = connection.execute(
+            "select supersedes_id from memories where id = ?",
+            (boundary.id,),
+        ).fetchone()[0]
+    assert statuses == {
+        preference.id: "superseded",
+        boundary.id: "active",
+    }
+    assert supersedes_id == preference.id
+
+
 def test_hosted_profile_fact_does_not_conflict_with_hosted_preference(tmp_path):
     provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
 

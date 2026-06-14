@@ -519,9 +519,34 @@ def _is_reply_language_topic(topic: str) -> bool:
     return topic.startswith("reply_language:")
 
 
+def _negated_boundary_language_topics(
+    category: str,
+    content: str,
+    topics: set[str],
+) -> set[str]:
+    if category != "boundary" or not _is_negative_request(content):
+        return set()
+    return {topic for topic in topics if _is_reply_language_topic(topic)}
+
+
 def _conflicts(existing: Memory, candidate: MemoryCandidate, content: str) -> bool:
     existing_topics = _memory_topics(existing.content)
     candidate_topics = _memory_topics(content)
+    existing_negated_boundary_languages = _negated_boundary_language_topics(
+        existing.category,
+        existing.content,
+        existing_topics,
+    )
+    candidate_negated_boundary_languages = _negated_boundary_language_topics(
+        candidate.category,
+        content,
+        candidate_topics,
+    )
+    if {existing.category, candidate.category} == {"boundary", "preference"}:
+        if existing_negated_boundary_languages & candidate_topics:
+            return True
+        if candidate_negated_boundary_languages & existing_topics:
+            return True
     for topic in existing_topics:
         opposite = CONFLICTING_TOPICS.get(topic)
         if opposite in candidate_topics:
