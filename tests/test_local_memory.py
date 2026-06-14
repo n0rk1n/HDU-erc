@@ -212,6 +212,97 @@ def test_boundary_is_not_superseded_by_weaker_preference(tmp_path):
     assert status == "active"
 
 
+def test_negated_boundary_language_does_not_supersede_compatible_preference(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    english = provider.remember([
+        MemoryCandidate(
+            content="User prefers replies in English.",
+            category="preference",
+        )
+    ])[0]
+    boundary = provider.remember([
+        MemoryCandidate(
+            content="User requested not to reply in Chinese.",
+            category="boundary",
+        )
+    ])[0]
+    results = provider.search("English Chinese replies", limit=5)
+
+    assert any(memory.id == english.id for memory in results)
+    assert any(memory.id == boundary.id for memory in results)
+    with sqlite3.connect(provider.db_path) as connection:
+        english_status = connection.execute(
+            "select status from memories where id = ?",
+            (english.id,),
+        ).fetchone()[0]
+    assert english_status == "active"
+
+
+def test_hosted_profile_fact_does_not_conflict_with_hosted_preference(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    profile = provider.remember([
+        MemoryCandidate(
+            content="User stated that my job is at a third-party hosted platform.",
+            category="profile",
+        )
+    ])[0]
+    preference = provider.remember([
+        MemoryCandidate(
+            content="User likes third-party hosted services.",
+            category="preference",
+        )
+    ])[0]
+    results = provider.search("third-party hosted platform services", limit=5)
+
+    assert any(memory.id == profile.id for memory in results)
+    assert any(memory.id == preference.id for memory in results)
+    with sqlite3.connect(provider.db_path) as connection:
+        profile_status = connection.execute(
+            "select status from memories where id = ?",
+            (profile.id,),
+        ).fetchone()[0]
+    assert profile_status == "active"
+
+
+def test_new_memory_supersedes_all_active_conflicts(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    english = provider.remember([
+        MemoryCandidate(content="User prefers replies in English.", category="preference")
+    ])[0]
+    detailed = provider.remember([
+        MemoryCandidate(content="User prefers detailed answers.", category="preference")
+    ])[0]
+    concise_chinese = provider.remember([
+        MemoryCandidate(
+            content="User prefers concise replies in Chinese.",
+            category="preference",
+        )
+    ])[0]
+    results = provider.search("concise Chinese English detailed replies answers", limit=5)
+
+    assert [memory.id for memory in results] == [concise_chinese.id]
+    with sqlite3.connect(provider.db_path) as connection:
+        statuses = dict(
+            connection.execute(
+                "select id, status from memories where id in (?, ?, ?)",
+                (english.id, detailed.id, concise_chinese.id),
+            ).fetchall()
+        )
+        supersedes_id = connection.execute(
+            "select supersedes_id from memories where id = ?",
+            (concise_chinese.id,),
+        ).fetchone()[0]
+    assert statuses == {
+        english.id: "superseded",
+        detailed.id: "superseded",
+        concise_chinese.id: "active",
+    }
+    assert supersedes_id == english.id
+
+
 def test_remember_does_not_merge_mixed_language_preferences(tmp_path):
     provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
 

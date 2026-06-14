@@ -73,18 +73,24 @@ class SQLiteLocalMemoryProvider:
                         continue
                     existing = self._find_existing(connection, candidate, normalized)
                     if existing is None:
-                        conflict = self._find_conflict(connection, candidate, normalized)
-                        if conflict is not None and _can_supersede(conflict, candidate):
-                            self._mark_superseded(connection, conflict)
+                        conflicts = self._find_conflicts(connection, candidate, normalized)
+                        superseded = [
+                            conflict
+                            for conflict in conflicts
+                            if _can_supersede(conflict, candidate)
+                        ]
+                        if superseded:
+                            for conflict in superseded:
+                                self._mark_superseded(connection, conflict)
                             stored.append(
                                 self._insert(
                                     connection,
                                     candidate,
                                     normalized,
-                                    supersedes_id=conflict.id,
+                                    supersedes_id=superseded[0].id,
                                 )
                             )
-                        elif conflict is not None:
+                        elif conflicts:
                             continue
                         else:
                             stored.append(self._insert(connection, candidate, normalized))
@@ -161,25 +167,27 @@ class SQLiteLocalMemoryProvider:
                 return memory
         return None
 
-    def _find_conflict(
+    def _find_conflicts(
         self,
         connection: sqlite3.Connection,
         candidate: MemoryCandidate,
         normalized: str,
-    ) -> Memory | None:
+    ) -> list[Memory]:
         rows = connection.execute(
             """
             select id, content, category, source, confidence,
                    created_at, updated_at, last_used_at, use_count
             from memories
             where status = 'active'
+            order by created_at, rowid
             """
         ).fetchall()
+        conflicts = []
         for row in rows:
             memory = _memory_from_row(row)
             if _conflicts(memory, candidate, normalized):
-                return memory
-        return None
+                conflicts.append(memory)
+        return conflicts
 
     def _mark_superseded(self, connection: sqlite3.Connection, memory: Memory) -> None:
         connection.execute(
@@ -486,16 +494,44 @@ def _is_similar_memory(existing: Memory, candidate: MemoryCandidate, content: st
     return bool(existing_topics) and existing_topics == candidate_topics
 
 
+def _is_negative_request(value: str) -> bool:
+    normalized = _normalize_for_compare(value)
+    return (
+        _has_any(normalized, ("不要", "别", "禁止"))
+        or _has_pattern(
+            normalized,
+            r"\bnot\s+to\b",
+            r"\bdo\s+not\b",
+            r"\bdon't\b",
+            r"\bdont\b",
+        )
+    )
+
+
+def _is_reply_language_topic(topic: str) -> bool:
+    return topic.startswith("reply_language:")
+
+
 def _conflicts(existing: Memory, candidate: MemoryCandidate, content: str) -> bool:
     existing_topics = _memory_topics(existing.content)
     candidate_topics = _memory_topics(content)
     for topic in existing_topics:
-        if CONFLICTING_TOPICS.get(topic) in candidate_topics:
+        opposite = CONFLICTING_TOPICS.get(topic)
+        if opposite in candidate_topics:
+            if (
+                _is_reply_language_topic(topic)
+                and (existing.category == "boundary" or candidate.category == "boundary")
+                and (
+                    _is_negative_request(existing.content)
+                    or _is_negative_request(content)
+                )
+            ):
+                continue
             return True
     if (
         "memory_storage:hosted" in existing_topics
         and "memory_storage:hosted" in candidate_topics
-        and existing.category != candidate.category
+        and {existing.category, candidate.category} == {"boundary", "preference"}
     ):
         return True
     return False
