@@ -71,7 +71,7 @@ class SQLiteLocalMemoryProvider:
                     normalized = _normalize_content(candidate.content)
                     if not normalized or candidate.category not in MEMORY_CATEGORIES:
                         continue
-                    existing = self._find_existing(connection, normalized)
+                    existing = self._find_existing(connection, candidate, normalized)
                     if existing is None:
                         stored.append(self._insert(connection, candidate, normalized))
                     else:
@@ -127,7 +127,12 @@ class SQLiteLocalMemoryProvider:
             if column not in columns:
                 connection.execute(statement)
 
-    def _find_existing(self, connection: sqlite3.Connection, normalized: str) -> Memory | None:
+    def _find_existing(
+        self,
+        connection: sqlite3.Connection,
+        candidate: MemoryCandidate,
+        normalized: str,
+    ) -> Memory | None:
         rows = connection.execute(
             """
             select id, content, category, source, confidence,
@@ -138,7 +143,7 @@ class SQLiteLocalMemoryProvider:
         ).fetchall()
         for row in rows:
             memory = _memory_from_row(row)
-            if _normalize_content(memory.content) == normalized:
+            if _is_similar_memory(memory, candidate, normalized):
                 return memory
         return None
 
@@ -252,6 +257,178 @@ def _memory_from_row(row) -> Memory:
 
 def _normalize_content(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip())
+
+
+def _normalize_for_compare(value: str) -> str:
+    normalized = _normalize_content(value).lower()
+    normalized = re.sub(r"[。.!！?？]+$", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized
+
+
+def _has_word(value: str, *words: str) -> bool:
+    return any(re.search(rf"\b{re.escape(word)}\b", value) for word in words)
+
+
+def _has_pattern(value: str, *patterns: str) -> bool:
+    return any(re.search(pattern, value) for pattern in patterns)
+
+
+def _has_any(value: str, words: tuple[str, ...]) -> bool:
+    return any(word in value for word in words)
+
+
+def _memory_topics(value: str) -> set[str]:
+    normalized = _normalize_for_compare(value)
+    topics = set()
+    chinese_reply_context = ("回答", "回复", "答复", "解释")
+    if (
+        (
+            ("简洁" in normalized or "简短" in normalized)
+            and _has_any(normalized, chinese_reply_context)
+        )
+        or _has_pattern(
+            normalized,
+            r"\b(?:brief|concise)\s+(?:reply|replies|answer|answers|response|responses)\b",
+            r"\b(?:reply|replies|answer|answers|respond|response|responses)\s+(?:briefly|concisely)\b",
+        )
+    ):
+        topics.add("reply_length:concise")
+    if (
+        (
+            ("详细" in normalized or "展开" in normalized)
+            and _has_any(normalized, chinese_reply_context)
+        )
+        or _has_pattern(
+            normalized,
+            r"\b(?:detailed|expanded)\s+(?:reply|replies|answer|answers|response|responses)\b",
+            r"\b(?:reply|replies|answer|answers|respond|response|responses)\s+(?:in\s+detail|with\s+detail)\b",
+        )
+    ):
+        topics.add("reply_length:detailed")
+    if (
+        _has_any(
+            normalized,
+            (
+                "用中文回答",
+                "用中文回复",
+                "中文回答",
+                "中文回复",
+                "回答使用中文",
+                "回复使用中文",
+            ),
+        )
+        or _has_pattern(
+            normalized,
+            r"\b(?:reply|replies|answer|answers|respond|response|responses)\s+in\s+chinese\b",
+            r"\buse\s+chinese\s+for\s+(?:reply|replies|answer|answers|response|responses)\b",
+            r"\bchinese\s+(?:reply|replies|answer|answers|response|responses)\b",
+        )
+    ):
+        topics.add("reply_language:chinese")
+    if (
+        _has_any(
+            normalized,
+            (
+                "用英文回答",
+                "用英文回复",
+                "用英语回答",
+                "用英语回复",
+                "英文回答",
+                "英文回复",
+                "英语回答",
+                "英语回复",
+                "回答使用英文",
+                "回复使用英文",
+                "回答使用英语",
+                "回复使用英语",
+            ),
+        )
+        or _has_pattern(
+            normalized,
+            r"\b(?:reply|replies|answer|answers|respond|response|responses)\s+in\s+english\b",
+            r"\buse\s+english\s+for\s+(?:reply|replies|answer|answers|response|responses)\b",
+            r"\benglish\s+(?:reply|replies|answer|answers|response|responses)\b",
+        )
+    ):
+        topics.add("reply_language:english")
+    if (
+        _has_any(
+            normalized,
+            (
+                "语气正式",
+                "正式语气",
+                "风格正式",
+                "正式风格",
+                "回复正式",
+                "回答正式",
+                "答复正式",
+                "解释正式",
+            ),
+        )
+        or _has_pattern(
+            normalized,
+            r"\bformal\s+(?:tone|style)\b",
+            r"\b(?:tone|style)\s+formal\b",
+            r"\b(?:reply|replies|answer|answers|respond|response|responses)\s+formally\b",
+        )
+    ):
+        topics.add("reply_tone:formal")
+    if (
+        _has_any(
+            normalized,
+            (
+                "语气随意",
+                "随意语气",
+                "风格随意",
+                "随意风格",
+                "回复随意",
+                "回答随意",
+                "回复随意一点",
+                "回答随意一点",
+                "语气轻松",
+                "轻松语气",
+                "风格轻松",
+                "轻松风格",
+                "回复轻松",
+                "回答轻松",
+                "回复轻松一点",
+                "回答轻松一点",
+                "语气自然",
+                "语气自然一点",
+                "语气自然些",
+                "自然语气",
+                "风格自然",
+                "自然风格",
+                "回复自然一点",
+                "回答自然一点",
+            ),
+        )
+        or _has_pattern(
+            normalized,
+            r"\b(?:informal|casual)\s+(?:tone|style)\b",
+            r"\b(?:tone|style)\s+(?:informal|casual)\b",
+            r"\b(?:reply|replies|answer|answers|respond|response|responses)\s+(?:informally|casually)\b",
+        )
+    ):
+        topics.add("reply_tone:casual")
+    if (
+        "第三方" in normalized
+        or "托管" in normalized
+        or _has_word(normalized, "hosted", "third-party", "third party")
+    ):
+        topics.add("memory_storage:hosted")
+    return topics
+
+
+def _is_similar_memory(existing: Memory, candidate: MemoryCandidate, content: str) -> bool:
+    if existing.category != candidate.category:
+        return False
+    if _normalize_for_compare(existing.content) == _normalize_for_compare(content):
+        return True
+    existing_topics = _memory_topics(existing.content)
+    candidate_topics = _memory_topics(content)
+    return bool(existing_topics) and existing_topics == candidate_topics
 
 
 def _tokens(value: str) -> set[str]:
