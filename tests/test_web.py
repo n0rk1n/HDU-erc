@@ -1352,6 +1352,204 @@ setImmediate(async () => {
     assert result.returncode == 0, result.stderr
 
 
+def test_static_app_js_recovers_controls_when_regeneration_fails():
+    root = Path(__file__).resolve().parents[1]
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior test")
+
+    script = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+class Element {
+  constructor(name) {
+    this.name = name;
+    this.children = [];
+    this.parent = null;
+    this.textContent = "";
+    this.className = "";
+    this.disabled = false;
+    this.value = "";
+    this.scrollTop = 0;
+    this.scrollHeight = 0;
+    this.listeners = {};
+    this.attributes = {};
+  }
+
+  appendChild(child) {
+    child.parent = this;
+    this.children.push(child);
+    return child;
+  }
+
+  insertBefore(child, nextSibling) {
+    child.parent = this;
+    const index = this.children.indexOf(nextSibling);
+    if (index === -1) {
+      this.children.push(child);
+    } else {
+      this.children.splice(index, 0, child);
+    }
+    return child;
+  }
+
+  addEventListener(name, callback) {
+    this.listeners[name] = callback;
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = value;
+  }
+
+  remove() {
+    if (!this.parent) {
+      return;
+    }
+    this.parent.children = this.parent.children.filter((child) => child !== this);
+    this.parent = null;
+  }
+
+  get nextSibling() {
+    if (!this.parent) {
+      return null;
+    }
+    const index = this.parent.children.indexOf(this);
+    return this.parent.children[index + 1] || null;
+  }
+
+  requestSubmit() {}
+  focus() {}
+
+  set innerHTML(value) {
+    this.children = [];
+    this._innerHTML = value;
+  }
+
+  get innerHTML() {
+    return this._innerHTML || "";
+  }
+}
+
+const messagesEl = new Element("messages");
+const formEl = new Element("form");
+const inputEl = new Element("input");
+const buttonEl = new Element("button");
+const emotionStatusEl = new Element("emotion");
+const fetchCalls = [];
+let resolveRegenerate;
+const regenerateResponse = new Promise((resolve) => {
+  resolveRegenerate = resolve;
+});
+
+const elements = {
+  "#messages": messagesEl,
+  "#chat-form": formEl,
+  "#message-input": inputEl,
+  "#send-button": buttonEl,
+  "#emotion-status": emotionStatusEl,
+};
+
+const context = {
+  console,
+  encodeURIComponent,
+  EventSource: function EventSource() {},
+  fetch: async (url, options) => {
+    fetchCalls.push({url, options});
+    if (url === "/api/session?limit=10") {
+      return {
+        ok: true,
+        json: async () => ({
+          messages: [
+            {role: "human", content: "q1"},
+            {role: "ai", content: "bad", id: "ai_1", feedback: null},
+          ],
+          emotion: null,
+        }),
+      };
+    }
+    if (url === "/api/messages/ai_1/regenerate") {
+      return regenerateResponse;
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  },
+  document: {
+    querySelector: (selector) => elements[selector],
+    createElement: (name) => new Element(name),
+  },
+};
+
+context.EventSource.prototype.addEventListener = function addEventListener() {};
+context.EventSource.prototype.close = function close() {};
+
+const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
+vm.runInNewContext(code, context);
+
+setImmediate(async () => {
+  try {
+    const original = messagesEl.children[1];
+    const controls = original.children[1];
+    const likeButton = controls.children[0];
+    const dislikeButton = controls.children[1];
+    const regenerateButton = controls.children[2];
+
+    regenerateButton.listeners.click();
+    const reasons = controls.children[3];
+    const firstReason = reasons.children[0];
+    const secondReason = reasons.children[1];
+
+    const pendingRegeneration = firstReason.listeners.click();
+    const disabledButtons = [
+      likeButton,
+      dislikeButton,
+      regenerateButton,
+      firstReason,
+      secondReason,
+    ].filter((button) => button.disabled);
+    if (disabledButtons.length !== 5) {
+      throw new Error(`expected controls disabled while pending, got ${disabledButtons.length}`);
+    }
+
+    resolveRegenerate({ok: false, json: async () => ({})});
+    await pendingRegeneration;
+
+    const status = controls.children[4];
+    if (status.textContent !== "重新生成失败") {
+      throw new Error(`unexpected failure status: ${status.textContent}`);
+    }
+    const reenabledButtons = [
+      likeButton,
+      dislikeButton,
+      regenerateButton,
+      firstReason,
+      secondReason,
+    ].filter((button) => !button.disabled);
+    if (reenabledButtons.length !== 5) {
+      throw new Error(`expected controls re-enabled after failure, got ${reenabledButtons.length}`);
+    }
+    if (original.className.includes("regenerated")) {
+      throw new Error(`original should not be collapsed after failure: ${original.className}`);
+    }
+    if (messagesEl.children.length !== 2) {
+      throw new Error(`expected no regenerated message inserted, got ${messagesEl.children.length}`);
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+});
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_endpoint_returns_html():
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)
