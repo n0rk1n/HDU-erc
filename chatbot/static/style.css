@@ -116,6 +116,22 @@ body {
   font-size: 13px;
 }
 
+.message.regenerated .bubble {
+  display: none;
+}
+
+.regeneration-summary {
+  color: #6b7280;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.regeneration-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .composer {
   display: grid;
   grid-template-columns: 1fr auto;

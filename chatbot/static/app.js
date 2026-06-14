@@ -3,6 +3,7 @@ const formEl = document.querySelector("#chat-form");
 const inputEl = document.querySelector("#message-input");
 const buttonEl = document.querySelector("#send-button");
 const emotionStatusEl = document.querySelector("#emotion-status");
+const regenerationReasons = ["不准确", "不完整", "没有理解我的问题", "语气不合适", "其他"];
 
 function setLocked(locked) {
   inputEl.disabled = locked;
@@ -15,6 +16,22 @@ function scrollToBottom() {
 
 function shouldShowFeedback(metadata) {
   return Boolean(metadata.id) && !metadata.feedback;
+}
+
+function collapseRegeneratedMessage(wrapper, reason) {
+  wrapper.className = `${wrapper.className} regenerated`;
+  wrapper.setAttribute("data-regeneration-reason", reason);
+  const summary = document.createElement("div");
+  summary.className = "regeneration-summary";
+  summary.textContent = `已重新生成：${reason}`;
+  wrapper.appendChild(summary);
+}
+
+function insertMessageAfter(referenceWrapper, role, content, metadata = {}) {
+  const inserted = createMessageElement(role, content, metadata);
+  messagesEl.insertBefore(inserted.wrapper, referenceWrapper.nextSibling);
+  scrollToBottom();
+  return inserted;
 }
 
 function renderFeedbackControls(wrapper, metadata) {
@@ -37,19 +54,29 @@ function renderFeedbackControls(wrapper, metadata) {
   dislikeButton.textContent = "Bad";
   dislikeButton.setAttribute("aria-label", "Bad");
 
+  const regenerateButton = document.createElement("button");
+  regenerateButton.type = "button";
+  regenerateButton.className = "feedback-button";
+  regenerateButton.textContent = "Regenerate";
+  regenerateButton.setAttribute("aria-label", "Regenerate");
+
   const status = document.createElement("span");
   status.className = "feedback-status";
 
-  const buttons = [likeButton, dislikeButton];
+  const buttons = [likeButton, dislikeButton, regenerateButton];
   likeButton.addEventListener("click", () => (
     submitFeedback(metadata.id, "like", controls, status, buttons)
   ));
   dislikeButton.addEventListener("click", () => (
     submitFeedback(metadata.id, "dislike", controls, status, buttons)
   ));
+  regenerateButton.addEventListener("click", () => (
+    renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
+  ));
 
   controls.appendChild(likeButton);
   controls.appendChild(dislikeButton);
+  controls.appendChild(regenerateButton);
   controls.appendChild(status);
   wrapper.appendChild(controls);
 }
@@ -78,7 +105,66 @@ async function submitFeedback(messageId, feedback, controls, status, buttons = [
   }
 }
 
-function addMessage(role, content = "", metadata = {}) {
+function findChildByClass(parent, className) {
+  return Array.from(parent.children).find((child) => (
+    child.className && child.className.split(" ").includes(className)
+  ));
+}
+
+function renderRegenerationReasons(wrapper, metadata, controls, status, buttons) {
+  let reasons = findChildByClass(controls, "regeneration-reasons");
+  if (reasons) {
+    reasons.remove();
+    return;
+  }
+
+  reasons = document.createElement("div");
+  reasons.className = "regeneration-reasons";
+  regenerationReasons.forEach((reason) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "feedback-button regeneration-reason";
+    button.textContent = reason;
+    button.addEventListener("click", () => (
+      submitRegeneration(wrapper, metadata.id, reason, controls, status, buttons)
+    ));
+    reasons.appendChild(button);
+  });
+  controls.insertBefore(reasons, status);
+}
+
+async function submitRegeneration(wrapper, messageId, reason, controls, status, buttons = []) {
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  status.textContent = "";
+
+  try {
+    const response = await fetch(`/api/messages/${encodeURIComponent(messageId)}/regenerate`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({reason}),
+    });
+    if (!response.ok) {
+      throw new Error("Regeneration request failed.");
+    }
+    const payload = await response.json();
+    controls.remove();
+    collapseRegeneratedMessage(wrapper, payload.reason);
+    insertMessageAfter(wrapper, "ai", payload.content, {
+      id: payload.message_id,
+      feedback: null,
+      regenerated_from: payload.original_message_id,
+    });
+  } catch (error) {
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+    status.textContent = "重新生成失败";
+  }
+}
+
+function createMessageElement(role, content = "", metadata = {}) {
   const wrapper = document.createElement("article");
   wrapper.className = `message ${role}`;
 
@@ -88,11 +174,20 @@ function addMessage(role, content = "", metadata = {}) {
 
   wrapper.appendChild(bubble);
   if (role === "ai") {
-    renderFeedbackControls(wrapper, metadata);
+    if (metadata.regeneration) {
+      collapseRegeneratedMessage(wrapper, metadata.regeneration.reason);
+    } else {
+      renderFeedbackControls(wrapper, metadata);
+    }
   }
-  messagesEl.appendChild(wrapper);
-  scrollToBottom();
   return {wrapper, bubble};
+}
+
+function addMessage(role, content = "", metadata = {}) {
+  const message = createMessageElement(role, content, metadata);
+  messagesEl.appendChild(message.wrapper);
+  scrollToBottom();
+  return message;
 }
 
 function renderEmotion(emotion) {

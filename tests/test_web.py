@@ -1151,6 +1151,194 @@ setImmediate(async () => {
     assert result.returncode == 0, result.stderr
 
 
+def test_static_app_js_regenerates_reply_with_reason_and_collapses_original():
+    root = Path(__file__).resolve().parents[1]
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is required for app.js behavior test")
+
+    script = r"""
+const fs = require("fs");
+const vm = require("vm");
+
+class Element {
+  constructor(name) {
+    this.name = name;
+    this.children = [];
+    this.parent = null;
+    this.textContent = "";
+    this.className = "";
+    this.disabled = false;
+    this.value = "";
+    this.scrollTop = 0;
+    this.scrollHeight = 0;
+    this.listeners = {};
+    this.attributes = {};
+  }
+
+  appendChild(child) {
+    child.parent = this;
+    this.children.push(child);
+    return child;
+  }
+
+  insertBefore(child, nextSibling) {
+    child.parent = this;
+    const index = this.children.indexOf(nextSibling);
+    if (index === -1) {
+      this.children.push(child);
+    } else {
+      this.children.splice(index, 0, child);
+    }
+    return child;
+  }
+
+  addEventListener(name, callback) {
+    this.listeners[name] = callback;
+  }
+
+  setAttribute(name, value) {
+    this.attributes[name] = value;
+  }
+
+  remove() {
+    if (!this.parent) {
+      return;
+    }
+    this.parent.children = this.parent.children.filter((child) => child !== this);
+    this.parent = null;
+  }
+
+  get nextSibling() {
+    if (!this.parent) {
+      return null;
+    }
+    const index = this.parent.children.indexOf(this);
+    return this.parent.children[index + 1] || null;
+  }
+
+  requestSubmit() {}
+  focus() {}
+
+  set innerHTML(value) {
+    this.children = [];
+    this._innerHTML = value;
+  }
+
+  get innerHTML() {
+    return this._innerHTML || "";
+  }
+}
+
+const messagesEl = new Element("messages");
+const formEl = new Element("form");
+const inputEl = new Element("input");
+const buttonEl = new Element("button");
+const emotionStatusEl = new Element("emotion");
+const fetchCalls = [];
+
+const elements = {
+  "#messages": messagesEl,
+  "#chat-form": formEl,
+  "#message-input": inputEl,
+  "#send-button": buttonEl,
+  "#emotion-status": emotionStatusEl,
+};
+
+const context = {
+  console,
+  encodeURIComponent,
+  EventSource: function EventSource() {},
+  fetch: async (url, options) => {
+    fetchCalls.push({url, options});
+    if (url === "/api/session?limit=10") {
+      return {
+        ok: true,
+        json: async () => ({
+          messages: [
+            {role: "human", content: "q1"},
+            {role: "ai", content: "bad", id: "ai_1", feedback: null},
+          ],
+          emotion: null,
+        }),
+      };
+    }
+    if (url === "/api/messages/ai_1/regenerate") {
+      return {
+        ok: true,
+        json: async () => ({
+          status: "regenerated",
+          original_message_id: "ai_1",
+          message_id: "ai_2",
+          content: "better",
+          reason: "不准确",
+        }),
+      };
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  },
+  document: {
+    querySelector: (selector) => elements[selector],
+    createElement: (name) => new Element(name),
+  },
+};
+
+context.EventSource.prototype.addEventListener = function addEventListener() {};
+context.EventSource.prototype.close = function close() {};
+
+const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
+vm.runInNewContext(code, context);
+
+setImmediate(async () => {
+  try {
+    const original = messagesEl.children[1];
+    const controls = original.children[1];
+    const regenerateButton = controls.children[2];
+    if (regenerateButton.textContent !== "Regenerate") {
+      throw new Error(`unexpected regenerate text: ${regenerateButton.textContent}`);
+    }
+
+    regenerateButton.listeners.click();
+    const reasons = controls.children[3];
+    const firstReason = reasons.children[0];
+    if (firstReason.textContent !== "不准确") {
+      throw new Error(`unexpected first reason: ${firstReason.textContent}`);
+    }
+
+    await firstReason.listeners.click();
+
+    if (!original.className.includes("regenerated")) {
+      throw new Error(`original should be collapsed: ${original.className}`);
+    }
+    if (messagesEl.children.length !== 3) {
+      throw new Error(`expected regenerated message inserted, got ${messagesEl.children.length}`);
+    }
+    if (messagesEl.children[2].children[0].textContent !== "better") {
+      throw new Error("regenerated message content missing");
+    }
+    if (fetchCalls[1].url !== "/api/messages/ai_1/regenerate") {
+      throw new Error(`unexpected regenerate url: ${fetchCalls[1].url}`);
+    }
+    if (fetchCalls[1].options.body !== JSON.stringify({reason: "不准确"})) {
+      throw new Error(`unexpected regenerate body: ${fetchCalls[1].options.body}`);
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+});
+"""
+    result = subprocess.run(
+        [node, "-e", script],
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
 def test_index_endpoint_returns_html():
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)
