@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -118,7 +119,7 @@ def append_ai_message(content: str) -> dict | None:
     return None
 
 
-def _new_ai_record(content: str, **extra: str) -> dict:
+def _new_ai_record(content: str, **extra: Any) -> dict:
     record = {
         "id": f"ai_{uuid4().hex}",
         "role": "ai",
@@ -137,6 +138,41 @@ def _nearest_preceding_human_content(records: list[dict], index: int) -> str:
             if content:
                 return content
     return ""
+
+
+def _resolve_original_user_message(records: list[dict], index: int) -> str:
+    record = records[index]
+    seen_ids: set[str] = set()
+    while True:
+        regenerated_from = record.get("regenerated_from")
+        if not regenerated_from:
+            return _nearest_preceding_human_content(records, index)
+
+        parent_id = str(regenerated_from)
+        if parent_id in seen_ids:
+            return ""
+        seen_ids.add(parent_id)
+
+        parent_index = -1
+        parent_record: dict | None = None
+        for candidate_index, candidate in enumerate(records):
+            if candidate.get("id") == parent_id:
+                parent_index = candidate_index
+                parent_record = candidate
+                break
+        if parent_record is None:
+            return ""
+
+        parent_regeneration = parent_record.get("regeneration")
+        if isinstance(parent_regeneration, dict):
+            original_user_message = str(
+                parent_regeneration.get("original_user_message", "")
+            ).strip()
+            if original_user_message:
+                return original_user_message
+
+        record = parent_record
+        index = parent_index
 
 
 def record_message_feedback(message_id: str, feedback: str) -> FeedbackUpdateResult:
@@ -185,7 +221,7 @@ def prepare_message_regeneration(
                     existing_regeneration.get("original_user_message", "")
                 ),
             )
-        original_user_message = _nearest_preceding_human_content(records, index)
+        original_user_message = _resolve_original_user_message(records, index)
         if not original_user_message:
             return RegenerationUpdateResult(
                 "missing_prompt",
@@ -227,7 +263,7 @@ def record_message_regeneration(
                 ),
             )
 
-        original_user_message = _nearest_preceding_human_content(records, index)
+        original_user_message = _resolve_original_user_message(records, index)
         if not original_user_message:
             return RegenerationUpdateResult(
                 "missing_prompt",

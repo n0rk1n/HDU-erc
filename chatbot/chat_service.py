@@ -13,7 +13,7 @@ from chatbot.history import (
     prepare_message_regeneration,
     record_message_regeneration,
 )
-from chatbot.llm import format_emotion_context
+from chatbot.llm import format_emotion_context, get_session_history
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
 from chatbot.memory_extractor import extract_memory_candidates
 
@@ -127,6 +127,29 @@ class ChatService:
         )
         return result.content if hasattr(result, "content") else str(result)
 
+    def _regeneration_history_snapshot(self) -> list[Any]:
+        return list(get_session_history(self.session_id).messages)
+
+    def _restore_regeneration_history(self, snapshot: list[Any]) -> None:
+        get_session_history(self.session_id).messages = list(snapshot)
+
+    def _record_successful_regeneration(
+        self,
+        message_id: str,
+        answer: str,
+        result: RegenerationUpdateResult,
+    ) -> None:
+        get_session_history(self.session_id).add_ai_message(answer)
+        self.session_records.append(
+            {
+                "id": result.message_id,
+                "role": "ai",
+                "content": answer,
+                "feedback": None,
+                "regenerated_from": message_id,
+            }
+        )
+
     def generate_reply(self, message: str) -> str:
         message = message.strip()
         if not message:
@@ -147,19 +170,17 @@ class ChatService:
 
         message = prepared.original_user_message
         self._refresh_memory_context(message)
-        answer = self._generate_answer(message)
+        history_snapshot = self._regeneration_history_snapshot()
+        try:
+            answer = self._generate_answer(message)
+        except Exception:
+            self._restore_regeneration_history(history_snapshot)
+            raise
+        self._restore_regeneration_history(history_snapshot)
         result = record_message_regeneration(message_id, reason, answer)
         if result.status == "updated":
             self._remember_from_turn(message, answer)
-            self.session_records.append(
-                {
-                    "id": result.message_id,
-                    "role": "ai",
-                    "content": answer,
-                    "feedback": None,
-                    "regenerated_from": message_id,
-                }
-            )
+            self._record_successful_regeneration(message_id, answer, result)
         return result
 
     def stream_regenerated_reply(
@@ -174,6 +195,7 @@ class ChatService:
 
         message = prepared.original_user_message
         self._refresh_memory_context(message)
+        history_snapshot = self._regeneration_history_snapshot()
         answer_parts: list[str] = []
         try:
             stream = getattr(self.chain, "stream", None)
@@ -192,12 +214,14 @@ class ChatService:
                 answer_parts.append(content)
                 yield ChatEvent("token", {"content": content})
         except Exception as exc:
+            self._restore_regeneration_history(history_snapshot)
             yield ChatEvent(
                 "error",
                 {"status": "generation_failed", "message": str(exc)},
             )
             return
 
+        self._restore_regeneration_history(history_snapshot)
         answer = "".join(answer_parts)
         result = record_message_regeneration(message_id, reason, answer)
         if result.status != "updated":
@@ -205,6 +229,7 @@ class ChatService:
             return
 
         self._remember_from_turn(message, answer)
+        self._record_successful_regeneration(message_id, answer, result)
         yield ChatEvent(
             "done",
             {

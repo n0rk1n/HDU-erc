@@ -10,6 +10,7 @@ from chatbot.history import (
     append_message,
     format_recent,
     load_history,
+    prepare_message_regeneration,
     record_message_feedback,
     record_message_regeneration,
 )
@@ -159,6 +160,92 @@ def test_record_message_feedback_rejects_invalid_value(history_file):
     assert result.feedback == ""
 
 
+def test_prepare_message_regeneration_rejects_invalid_reason(history_file):
+    append_message("human", "q1")
+    record = append_ai_message("bad answer")
+
+    result = prepare_message_regeneration(record["id"], "too long")
+
+    assert result.status == "invalid_reason"
+    assert result.original_user_message == ""
+
+
+def test_prepare_message_regeneration_returns_not_found(history_file):
+    result = prepare_message_regeneration("ai_missing", "不准确")
+
+    assert result.status == "not_found"
+    assert result.message_id == ""
+
+
+def test_prepare_message_regeneration_rejects_human_message(history_file):
+    append_message("human", "hello")
+    data = json.loads(history_file.read_text())
+    data[0]["id"] = "human_1"
+    history_file.write_text(json.dumps(data))
+
+    result = prepare_message_regeneration("human_1", "不准确")
+
+    assert result.status == "not_ai"
+    assert result.message_id == ""
+
+
+def test_prepare_message_regeneration_rejects_existing_regeneration(history_file):
+    append_message("human", "q1")
+    original = append_ai_message("bad answer")
+    regenerated = record_message_regeneration(
+        original["id"],
+        "不准确",
+        "better answer",
+    )
+
+    result = prepare_message_regeneration(original["id"], "不完整")
+
+    assert result.status == "already_regenerated"
+    assert result.original_message_id == original["id"]
+    assert result.message_id == regenerated.message_id
+    assert result.reason == "不准确"
+    assert result.original_user_message == "q1"
+
+
+def test_prepare_message_regeneration_requires_prompt(history_file):
+    record = append_ai_message("bad answer")
+
+    result = prepare_message_regeneration(record["id"], "不准确")
+
+    assert result.status == "missing_prompt"
+    assert result.original_message_id == record["id"]
+
+
+def test_prepare_message_regeneration_returns_ready_with_original_prompt(history_file):
+    append_message("human", "q1")
+    record = append_ai_message("bad answer")
+
+    result = prepare_message_regeneration(record["id"], "不准确")
+
+    assert result.status == "ready"
+    assert result.original_message_id == record["id"]
+    assert result.reason == "不准确"
+    assert result.original_user_message == "q1"
+
+
+def test_prepare_message_regeneration_uses_original_prompt_for_regenerated_reply(history_file):
+    append_message("human", "q1")
+    original = append_ai_message("bad answer")
+    append_message("human", "q2")
+    append_ai_message("later answer")
+    regenerated = record_message_regeneration(
+        original["id"],
+        "不准确",
+        "better answer",
+    )
+
+    result = prepare_message_regeneration(regenerated.message_id, "不完整")
+
+    assert result.status == "ready"
+    assert result.original_message_id == regenerated.message_id
+    assert result.original_user_message == "q1"
+
+
 def test_record_message_regeneration_rejects_invalid_reason(history_file):
     append_message("human", "q1")
     record = append_ai_message("bad answer")
@@ -233,6 +320,28 @@ def test_record_message_regeneration_rejects_second_regeneration(history_file):
     assert result.status == "already_regenerated"
     assert result.message_id
     assert len(load_history()) == 3
+
+
+def test_record_message_regeneration_uses_original_prompt_for_regenerated_reply(history_file):
+    append_message("human", "q1")
+    original = append_ai_message("bad answer")
+    append_message("human", "q2")
+    append_ai_message("later answer")
+    regenerated = record_message_regeneration(
+        original["id"],
+        "不准确",
+        "better answer",
+    )
+
+    result = record_message_regeneration(
+        regenerated.message_id,
+        "不完整",
+        "third answer",
+    )
+
+    assert result.status == "updated"
+    assert result.original_message_id == regenerated.message_id
+    assert result.original_user_message == "q1"
 
 
 def test_regeneration_reasons_are_fixed():

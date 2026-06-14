@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from chatbot.chat_service import ChatService, ChatEvent
 from chatbot.config import ChatConfig, LlmConfig
 from chatbot.history import RegenerationUpdateResult
+from chatbot.llm import get_session_history
 from chatbot.memory import Memory, MemoryCandidate
 
 
@@ -44,6 +45,17 @@ class FailingStreamingFakeChain(FakeChain):
         self.payloads.append(payload)
         yield SimpleNamespace(content="partial")
         raise RuntimeError("stream failed")
+
+
+class LiveHistoryMutatingChain(FakeChain):
+    def invoke(self, payload, config):
+        self.payloads.append(payload)
+        session_id = config["configurable"]["session_id"]
+        history = get_session_history(session_id)
+        answer = self.replies.pop(0)
+        history.add_user_message(payload["input"])
+        history.add_ai_message(answer)
+        return SimpleNamespace(content=answer)
 
 
 class FakeMemoryProvider:
@@ -638,6 +650,66 @@ def test_regenerate_reply_does_not_call_llm_when_history_rejects(monkeypatch):
     assert chain.payloads == []
 
 
+def test_regenerate_reply_restores_live_history_and_appends_only_new_ai(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = LiveHistoryMutatingChain(replies=["better answer"])
+    emotion_llm = FakeEmotionLlm()
+    session_id = "regen-live-history"
+    history = get_session_history(session_id)
+    history.messages = []
+    history.add_user_message("q1")
+    history.add_ai_message("bad answer")
+    history.add_user_message("q2")
+    history.add_ai_message("later answer")
+
+    monkeypatch.setattr(
+        "chatbot.chat_service.prepare_message_regeneration",
+        lambda message_id, reason: RegenerationUpdateResult(
+            "ready",
+            original_message_id=message_id,
+            reason=reason,
+            original_user_message="q1",
+        ),
+    )
+    monkeypatch.setattr(
+        "chatbot.chat_service.record_message_regeneration",
+        lambda message_id, reason, content: RegenerationUpdateResult(
+            "updated",
+            original_message_id=message_id,
+            message_id="ai_new",
+            content=content,
+            reason=reason,
+            original_user_message="q1",
+        ),
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        session_id=session_id,
+    )
+
+    result = service.regenerate_reply("ai_old", "不准确")
+
+    assert result.status == "updated"
+    assert [message.content for message in history.messages] == [
+        "q1",
+        "bad answer",
+        "q2",
+        "later answer",
+        "better answer",
+    ]
+    assert [message.type for message in history.messages] == [
+        "human",
+        "ai",
+        "human",
+        "ai",
+        "ai",
+    ]
+
+
 def test_stream_regenerated_reply_emits_token_and_done(monkeypatch):
     config = make_test_config(emotion_interval=3)
     chain = StreamingFakeChain()
@@ -682,3 +754,10 @@ def test_stream_regenerated_reply_emits_token_and_done(monkeypatch):
             },
         ),
     ]
+    assert service.session_records[-1] == {
+        "id": "ai_new",
+        "role": "ai",
+        "content": "hello world",
+        "feedback": None,
+        "regenerated_from": "ai_old",
+    }
