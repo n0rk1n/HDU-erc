@@ -6,7 +6,13 @@ from typing import Any
 
 from chatbot.config import ChatConfig
 from chatbot.emotion import analyze_emotion
-from chatbot.history import append_ai_message, append_message
+from chatbot.history import (
+    RegenerationUpdateResult,
+    append_ai_message,
+    append_message,
+    prepare_message_regeneration,
+    record_message_regeneration,
+)
 from chatbot.llm import format_emotion_context
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
 from chatbot.memory_extractor import extract_memory_candidates
@@ -114,6 +120,13 @@ class ChatService:
             "emotion_context": format_emotion_context(self.current_emotion),
         }
 
+    def _generate_answer(self, message: str) -> str:
+        result = self.chain.invoke(
+            self._payload(message),
+            config={"configurable": {"session_id": self.session_id}},
+        )
+        return result.content if hasattr(result, "content") else str(result)
+
     def generate_reply(self, message: str) -> str:
         message = message.strip()
         if not message:
@@ -122,14 +135,86 @@ class ChatService:
         self._append_user_message(message)
         self._refresh_memory_context(message)
         self._analyze_if_due(message)
-        result = self.chain.invoke(
-            self._payload(message),
-            config={"configurable": {"session_id": self.session_id}},
-        )
-        answer = result.content if hasattr(result, "content") else str(result)
+        answer = self._generate_answer(message)
         self._append_ai_message(answer)
         self._remember_from_turn(message, answer)
         return answer
+
+    def regenerate_reply(self, message_id: str, reason: str) -> RegenerationUpdateResult:
+        prepared = prepare_message_regeneration(message_id, reason)
+        if prepared.status != "ready":
+            return prepared
+
+        message = prepared.original_user_message
+        self._refresh_memory_context(message)
+        answer = self._generate_answer(message)
+        result = record_message_regeneration(message_id, reason, answer)
+        if result.status == "updated":
+            self._remember_from_turn(message, answer)
+            self.session_records.append(
+                {
+                    "id": result.message_id,
+                    "role": "ai",
+                    "content": answer,
+                    "feedback": None,
+                    "regenerated_from": message_id,
+                }
+            )
+        return result
+
+    def stream_regenerated_reply(
+        self,
+        message_id: str,
+        reason: str,
+    ) -> Iterator[ChatEvent]:
+        prepared = prepare_message_regeneration(message_id, reason)
+        if prepared.status != "ready":
+            yield ChatEvent("error", {"status": prepared.status})
+            return
+
+        message = prepared.original_user_message
+        self._refresh_memory_context(message)
+        answer_parts: list[str] = []
+        try:
+            stream = getattr(self.chain, "stream", None)
+            if callable(stream):
+                chunks = stream(
+                    self._payload(message),
+                    config={"configurable": {"session_id": self.session_id}},
+                )
+                for chunk in chunks:
+                    content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if content:
+                        answer_parts.append(content)
+                        yield ChatEvent("token", {"content": content})
+            else:
+                content = self._generate_answer(message)
+                answer_parts.append(content)
+                yield ChatEvent("token", {"content": content})
+        except Exception as exc:
+            yield ChatEvent(
+                "error",
+                {"status": "generation_failed", "message": str(exc)},
+            )
+            return
+
+        answer = "".join(answer_parts)
+        result = record_message_regeneration(message_id, reason, answer)
+        if result.status != "updated":
+            yield ChatEvent("error", {"status": result.status})
+            return
+
+        self._remember_from_turn(message, answer)
+        yield ChatEvent(
+            "done",
+            {
+                "status": "regenerated",
+                "original_message_id": message_id,
+                "message_id": result.message_id,
+                "content": answer,
+                "reason": reason,
+            },
+        )
 
     def stream_reply(self, message: str) -> Iterator[ChatEvent]:
         message = message.strip()

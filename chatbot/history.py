@@ -161,6 +161,46 @@ def record_message_feedback(message_id: str, feedback: str) -> FeedbackUpdateRes
     return FeedbackUpdateResult("not_found")
 
 
+def prepare_message_regeneration(
+    message_id: str,
+    reason: str,
+) -> RegenerationUpdateResult:
+    if reason not in REGENERATION_REASONS:
+        return RegenerationUpdateResult("invalid_reason")
+
+    records = load_history()
+    for index, record in enumerate(records):
+        if record.get("id") != message_id:
+            continue
+        if record.get("role") != "ai":
+            return RegenerationUpdateResult("not_ai")
+        existing_regeneration = record.get("regeneration")
+        if isinstance(existing_regeneration, dict):
+            return RegenerationUpdateResult(
+                "already_regenerated",
+                original_message_id=message_id,
+                message_id=str(existing_regeneration.get("regenerated_message_id", "")),
+                reason=str(existing_regeneration.get("reason", "")),
+                original_user_message=str(
+                    existing_regeneration.get("original_user_message", "")
+                ),
+            )
+        original_user_message = _nearest_preceding_human_content(records, index)
+        if not original_user_message:
+            return RegenerationUpdateResult(
+                "missing_prompt",
+                original_message_id=message_id,
+            )
+        return RegenerationUpdateResult(
+            "ready",
+            original_message_id=message_id,
+            reason=reason,
+            original_user_message=original_user_message,
+        )
+
+    return RegenerationUpdateResult("not_found")
+
+
 def record_message_regeneration(
     message_id: str,
     reason: str,

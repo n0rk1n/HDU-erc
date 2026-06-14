@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 
-from chatbot.chat_service import ChatService
+from chatbot.chat_service import ChatService, ChatEvent
 from chatbot.config import ChatConfig, LlmConfig
+from chatbot.history import RegenerationUpdateResult
 from chatbot.memory import Memory, MemoryCandidate
 
 
@@ -560,3 +561,124 @@ def test_stream_reply_emits_error_without_ai_history(monkeypatch):
     assert events[-1].event == "error"
     assert events[-1].data == {"message": "chat failed"}
     assert stored_messages == [("human", "hello")]
+
+
+def test_regenerate_reply_uses_original_prompt_and_records_new_answer(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["better answer"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider([make_memory("用户喜欢简洁回答。")])
+    recorded = {}
+
+    def fake_prepare(message_id, reason):
+        assert message_id == "ai_old"
+        assert reason == "不准确"
+        return RegenerationUpdateResult(
+            "ready",
+            original_message_id="ai_old",
+            reason="不准确",
+            original_user_message="q1",
+        )
+
+    def fake_record(message_id, reason, content):
+        recorded.update({"message_id": message_id, "reason": reason, "content": content})
+        return RegenerationUpdateResult(
+            "updated",
+            original_message_id=message_id,
+            message_id="ai_new",
+            content=content,
+            reason=reason,
+            original_user_message="q1",
+        )
+
+    monkeypatch.setattr("chatbot.chat_service.prepare_message_regeneration", fake_prepare)
+    monkeypatch.setattr("chatbot.chat_service.record_message_regeneration", fake_record)
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[
+            {"role": "human", "content": "q1"},
+            {"id": "ai_old", "role": "ai", "content": "bad answer", "feedback": None},
+        ],
+        memory_provider=memory_provider,
+        memory_max_results=5,
+    )
+
+    result = service.regenerate_reply("ai_old", "不准确")
+
+    assert result.status == "updated"
+    assert result.message_id == "ai_new"
+    assert result.content == "better answer"
+    assert chain.payloads[0]["input"] == "q1"
+    assert "用户喜欢简洁回答。" in chain.payloads[0]["memory_context"]
+    assert recorded == {
+        "message_id": "ai_old",
+        "reason": "不准确",
+        "content": "better answer",
+    }
+
+
+def test_regenerate_reply_does_not_call_llm_when_history_rejects(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["should not be used"])
+    emotion_llm = FakeEmotionLlm()
+
+    monkeypatch.setattr(
+        "chatbot.chat_service.prepare_message_regeneration",
+        lambda message_id, reason: RegenerationUpdateResult("already_regenerated"),
+    )
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    result = service.regenerate_reply("ai_old", "不准确")
+
+    assert result.status == "already_regenerated"
+    assert chain.payloads == []
+
+
+def test_stream_regenerated_reply_emits_token_and_done(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = StreamingFakeChain()
+    emotion_llm = FakeEmotionLlm()
+
+    monkeypatch.setattr(
+        "chatbot.chat_service.prepare_message_regeneration",
+        lambda message_id, reason: RegenerationUpdateResult(
+            "ready",
+            original_message_id=message_id,
+            reason=reason,
+            original_user_message="q1",
+        ),
+    )
+    monkeypatch.setattr(
+        "chatbot.chat_service.record_message_regeneration",
+        lambda message_id, reason, content: RegenerationUpdateResult(
+            "updated",
+            original_message_id=message_id,
+            message_id="ai_new",
+            content=content,
+            reason=reason,
+            original_user_message="q1",
+        ),
+    )
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    events = list(service.stream_regenerated_reply("ai_old", "不准确"))
+
+    assert [(event.event, event.data) for event in events] == [
+        ("token", {"content": "hello"}),
+        ("token", {"content": " world"}),
+        (
+            "done",
+            {
+                "status": "regenerated",
+                "original_message_id": "ai_old",
+                "message_id": "ai_new",
+                "content": "hello world",
+                "reason": "不准确",
+            },
+        ),
+    ]
