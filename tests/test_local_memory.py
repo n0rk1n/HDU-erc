@@ -687,6 +687,23 @@ def test_search_excludes_superseded_memories(tmp_path):
     assert provider.search("中文回答", limit=5) == []
 
 
+def test_search_tolerates_offset_naive_updated_at(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+    stored = provider.remember([
+        MemoryCandidate(content="用户希望回答使用中文。", category="preference")
+    ])[0]
+
+    with sqlite3.connect(provider.db_path) as connection:
+        connection.execute(
+            "update memories set updated_at = ? where id = ?",
+            ("2026-06-14T00:00:00", stored.id),
+        )
+
+    results = provider.search("中文回答", limit=5)
+
+    assert [memory.id for memory in results] == [stored.id]
+
+
 def test_search_prioritizes_boundary_over_preference(tmp_path):
     provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
     provider.remember([

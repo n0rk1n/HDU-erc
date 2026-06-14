@@ -613,7 +613,9 @@ def _lexical_score(content: str, query: str, query_tokens: set[str]) -> float:
 def _recency_score(value: str) -> float:
     try:
         updated_at = datetime.fromisoformat(value)
-    except ValueError:
+    except (TypeError, ValueError):
+        return 0.0
+    if updated_at.tzinfo is None or updated_at.utcoffset() is None:
         return 0.0
     age_seconds = max(0.0, (_now() - updated_at).total_seconds())
     age_days = age_seconds / 86400
