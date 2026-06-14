@@ -229,7 +229,10 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         if request.reason not in REGENERATION_REASONS:
             raise HTTPException(status_code=400, detail="Invalid regeneration reason.")
 
-        result = service.regenerate_reply(message_id, request.reason)
+        try:
+            result = service.regenerate_reply(message_id, request.reason)
+        except Exception:
+            raise HTTPException(status_code=500, detail="Could not regenerate message.")
         if result.status == "updated":
             return {
                 "status": "regenerated",

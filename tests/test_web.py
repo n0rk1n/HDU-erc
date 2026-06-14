@@ -764,17 +764,17 @@ def test_regenerate_endpoint_returns_new_message(monkeypatch):
 
 def test_regenerate_endpoint_maps_history_errors(monkeypatch):
     statuses = {
-        "not_found": 404,
-        "not_ai": 400,
-        "invalid_reason": 400,
-        "already_regenerated": 409,
-        "missing_prompt": 400,
-        "write_failed": 500,
-        "generation_failed": 500,
-        "unexpected_status": 500,
+        "not_found": (404, "Message not found."),
+        "not_ai": (400, "Regeneration is only supported for AI messages."),
+        "invalid_reason": (400, "Invalid regeneration reason."),
+        "already_regenerated": (409, "Message already regenerated."),
+        "missing_prompt": (400, "Original prompt is unavailable."),
+        "write_failed": (500, "Could not regenerate message."),
+        "generation_failed": (500, "Could not regenerate message."),
+        "unexpected_status": (500, "Could not regenerate message."),
     }
 
-    for status, expected_code in statuses.items():
+    for status, (expected_code, expected_detail) in statuses.items():
         class RejectingService(FakeService):
             def regenerate_reply(self, message_id, reason):
                 return RegenerationUpdateResult(status)
@@ -785,6 +785,21 @@ def test_regenerate_endpoint_maps_history_errors(monkeypatch):
         response = client.post("/api/messages/ai_1/regenerate", json={"reason": "不准确"})
 
         assert response.status_code == expected_code
+        assert response.json() == {"detail": expected_detail}
+
+
+def test_regenerate_endpoint_maps_generation_exception_to_500(monkeypatch):
+    class FailingService(FakeService):
+        def regenerate_reply(self, message_id, reason):
+            raise RuntimeError("boom")
+
+    app = create_app(service_factory=lambda: FailingService())
+    client = TestClient(app)
+
+    response = client.post("/api/messages/ai_1/regenerate", json={"reason": "不准确"})
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not regenerate message."}
 
 
 def test_stream_endpoint_returns_sse_events():
