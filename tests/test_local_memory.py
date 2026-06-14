@@ -334,6 +334,78 @@ def test_hosted_profile_fact_does_not_conflict_with_hosted_preference(tmp_path):
     assert profile_status == "active"
 
 
+def test_preference_does_not_supersede_profile_fact_with_language_topic(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    profile = provider.remember([
+        MemoryCandidate(
+            content="User's team writes English responses for support tickets.",
+            category="profile",
+        )
+    ])[0]
+    preference = provider.remember([
+        MemoryCandidate(
+            content="User prefers replies in Chinese.",
+            category="preference",
+        )
+    ])[0]
+    results = provider.search("English Chinese responses replies support tickets", limit=5)
+
+    assert {memory.id for memory in results} == {profile.id, preference.id}
+    with sqlite3.connect(provider.db_path) as connection:
+        rows = connection.execute(
+            "select id, status, supersedes_id from memories where id in (?, ?)",
+            (profile.id, preference.id),
+        ).fetchall()
+
+    statuses = {row[0]: row[1] for row in rows}
+    supersedes_ids = {row[0]: row[2] for row in rows}
+    assert statuses == {
+        profile.id: "active",
+        preference.id: "active",
+    }
+    assert supersedes_ids == {
+        profile.id: None,
+        preference.id: None,
+    }
+
+
+def test_preference_does_not_supersede_goal_fact_with_length_topic(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    goal = provider.remember([
+        MemoryCandidate(
+            content="User's goal is to draft detailed answers for onboarding docs.",
+            category="goal",
+        )
+    ])[0]
+    preference = provider.remember([
+        MemoryCandidate(
+            content="User prefers concise replies.",
+            category="preference",
+        )
+    ])[0]
+    results = provider.search("detailed concise answers replies onboarding docs", limit=5)
+
+    assert {memory.id for memory in results} == {goal.id, preference.id}
+    with sqlite3.connect(provider.db_path) as connection:
+        rows = connection.execute(
+            "select id, status, supersedes_id from memories where id in (?, ?)",
+            (goal.id, preference.id),
+        ).fetchall()
+
+    statuses = {row[0]: row[1] for row in rows}
+    supersedes_ids = {row[0]: row[2] for row in rows}
+    assert statuses == {
+        goal.id: "active",
+        preference.id: "active",
+    }
+    assert supersedes_ids == {
+        goal.id: None,
+        preference.id: None,
+    }
+
+
 def test_new_memory_supersedes_all_active_conflicts(tmp_path):
     provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
 

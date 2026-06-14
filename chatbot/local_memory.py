@@ -347,6 +347,8 @@ CONFLICTING_TOPICS = {
     "reply_tone:casual": "reply_tone:formal",
 }
 
+PREFERENCE_CONFLICT_CATEGORIES = {"preference", "boundary"}
+
 
 def _memory_topics(value: str) -> set[str]:
     normalized = _normalize_for_compare(value)
@@ -519,6 +521,10 @@ def _is_reply_language_topic(topic: str) -> bool:
     return topic.startswith("reply_language:")
 
 
+def _can_have_preference_conflict(category: str) -> bool:
+    return category in PREFERENCE_CONFLICT_CATEGORIES
+
+
 def _negated_boundary_language_topics(
     category: str,
     content: str,
@@ -547,19 +553,23 @@ def _conflicts(existing: Memory, candidate: MemoryCandidate, content: str) -> bo
             return True
         if candidate_negated_boundary_languages & existing_topics:
             return True
-    for topic in existing_topics:
-        opposite = CONFLICTING_TOPICS.get(topic)
-        if opposite in candidate_topics:
-            if (
-                _is_reply_language_topic(topic)
-                and (existing.category == "boundary" or candidate.category == "boundary")
-                and (
-                    _is_negative_request(existing.content)
-                    or _is_negative_request(content)
-                )
-            ):
-                continue
-            return True
+    if (
+        _can_have_preference_conflict(existing.category)
+        and _can_have_preference_conflict(candidate.category)
+    ):
+        for topic in existing_topics:
+            opposite = CONFLICTING_TOPICS.get(topic)
+            if opposite in candidate_topics:
+                if (
+                    _is_reply_language_topic(topic)
+                    and (existing.category == "boundary" or candidate.category == "boundary")
+                    and (
+                        _is_negative_request(existing.content)
+                        or _is_negative_request(content)
+                    )
+                ):
+                    continue
+                return True
     if (
         "memory_storage:hosted" in existing_topics
         and "memory_storage:hosted" in candidate_topics
