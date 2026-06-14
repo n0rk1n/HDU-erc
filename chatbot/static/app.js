@@ -120,14 +120,23 @@ function renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
 
   reasons = document.createElement("div");
   reasons.className = "regeneration-reasons";
+  const reasonButtons = [];
   regenerationReasons.forEach((reason) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "feedback-button regeneration-reason";
     button.textContent = reason;
     button.addEventListener("click", () => (
-      submitRegeneration(wrapper, metadata.id, reason, controls, status, buttons)
+      submitRegeneration(
+        wrapper,
+        metadata.id,
+        reason,
+        controls,
+        status,
+        [...buttons, ...reasonButtons],
+      )
     ));
+    reasonButtons.push(button);
     reasons.appendChild(button);
   });
   controls.insertBefore(reasons, status);

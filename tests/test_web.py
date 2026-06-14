@@ -1236,6 +1236,10 @@ const inputEl = new Element("input");
 const buttonEl = new Element("button");
 const emotionStatusEl = new Element("emotion");
 const fetchCalls = [];
+let resolveRegenerate;
+const regenerateResponse = new Promise((resolve) => {
+  resolveRegenerate = resolve;
+});
 
 const elements = {
   "#messages": messagesEl,
@@ -1264,16 +1268,7 @@ const context = {
       };
     }
     if (url === "/api/messages/ai_1/regenerate") {
-      return {
-        ok: true,
-        json: async () => ({
-          status: "regenerated",
-          original_message_id: "ai_1",
-          message_id: "ai_2",
-          content: "better",
-          reason: "不准确",
-        }),
-      };
+      return regenerateResponse;
     }
     throw new Error(`unexpected fetch: ${url}`);
   },
@@ -1301,11 +1296,29 @@ setImmediate(async () => {
     regenerateButton.listeners.click();
     const reasons = controls.children[3];
     const firstReason = reasons.children[0];
+    const secondReason = reasons.children[1];
     if (firstReason.textContent !== "不准确") {
       throw new Error(`unexpected first reason: ${firstReason.textContent}`);
     }
 
-    await firstReason.listeners.click();
+    const pendingRegeneration = firstReason.listeners.click();
+    if (!firstReason.disabled) {
+      throw new Error("selected reason should be disabled while regenerate is pending");
+    }
+    if (!secondReason.disabled) {
+      throw new Error("other reasons should be disabled while regenerate is pending");
+    }
+    resolveRegenerate({
+      ok: true,
+      json: async () => ({
+        status: "regenerated",
+        original_message_id: "ai_1",
+        message_id: "ai_2",
+        content: "better",
+        reason: "不准确",
+      }),
+    });
+    await pendingRegeneration;
 
     if (!original.className.includes("regenerated")) {
       throw new Error(`original should be collapsed: ${original.className}`);
