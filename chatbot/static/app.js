@@ -28,14 +28,14 @@ function renderFeedbackControls(wrapper, metadata) {
   const likeButton = document.createElement("button");
   likeButton.type = "button";
   likeButton.className = "feedback-button";
-  likeButton.textContent = "赞";
-  likeButton.setAttribute("aria-label", "点赞");
+  likeButton.textContent = "Good";
+  likeButton.setAttribute("aria-label", "Good");
 
   const dislikeButton = document.createElement("button");
   dislikeButton.type = "button";
   dislikeButton.className = "feedback-button";
-  dislikeButton.textContent = "踩";
-  dislikeButton.setAttribute("aria-label", "点踩");
+  dislikeButton.textContent = "Bad";
+  dislikeButton.setAttribute("aria-label", "Bad");
 
   const status = document.createElement("span");
   status.className = "feedback-status";

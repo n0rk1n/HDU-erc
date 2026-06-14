@@ -1002,8 +1002,18 @@ setImmediate(async () => {
 
     const controls = messagesEl.children[1].children[1];
     const likeButton = controls.children[0];
-    if (likeButton.textContent !== "赞") {
+    const dislikeButton = controls.children[1];
+    if (likeButton.textContent !== "Good") {
       throw new Error(`unexpected like button text: ${likeButton.textContent}`);
+    }
+    if (likeButton.attributes["aria-label"] !== "Good") {
+      throw new Error(`unexpected like aria-label: ${likeButton.attributes["aria-label"]}`);
+    }
+    if (dislikeButton.textContent !== "Bad") {
+      throw new Error(`unexpected dislike button text: ${dislikeButton.textContent}`);
+    }
+    if (dislikeButton.attributes["aria-label"] !== "Bad") {
+      throw new Error(`unexpected dislike aria-label: ${dislikeButton.attributes["aria-label"]}`);
     }
 
     await likeButton.listeners.click();
