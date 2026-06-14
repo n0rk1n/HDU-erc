@@ -197,6 +197,8 @@ class ChatService:
         self._refresh_memory_context(message)
         history_snapshot = self._regeneration_history_snapshot()
         answer_parts: list[str] = []
+        generation_finished = False
+        generation_error = ""
         try:
             stream = getattr(self.chain, "stream", None)
             if callable(stream):
@@ -213,15 +215,22 @@ class ChatService:
                 content = self._generate_answer(message)
                 answer_parts.append(content)
                 yield ChatEvent("token", {"content": content})
+            generation_finished = True
         except Exception as exc:
+            generation_error = str(exc)
+        finally:
             self._restore_regeneration_history(history_snapshot)
+
+        if generation_error:
             yield ChatEvent(
                 "error",
-                {"status": "generation_failed", "message": str(exc)},
+                {"status": "generation_failed", "message": generation_error},
             )
             return
 
-        self._restore_regeneration_history(history_snapshot)
+        if not generation_finished:
+            return
+
         answer = "".join(answer_parts)
         result = record_message_regeneration(message_id, reason, answer)
         if result.status != "updated":

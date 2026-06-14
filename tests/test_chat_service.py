@@ -58,6 +58,17 @@ class LiveHistoryMutatingChain(FakeChain):
         return SimpleNamespace(content=answer)
 
 
+class StreamingLiveHistoryMutatingChain(FakeChain):
+    def stream(self, payload, config):
+        self.payloads.append(payload)
+        session_id = config["configurable"]["session_id"]
+        history = get_session_history(session_id)
+        history.add_user_message(payload["input"])
+        history.add_ai_message("partial answer")
+        yield SimpleNamespace(content="partial")
+        yield SimpleNamespace(content=" answer")
+
+
 class FakeMemoryProvider:
     def __init__(self, memories=None, search_error=None, remember_error=None):
         self.memories = list(memories or [])
@@ -761,3 +772,64 @@ def test_stream_regenerated_reply_emits_token_and_done(monkeypatch):
         "feedback": None,
         "regenerated_from": "ai_old",
     }
+
+
+def test_stream_regenerated_reply_restores_live_history_when_closed_early(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = StreamingLiveHistoryMutatingChain()
+    emotion_llm = FakeEmotionLlm()
+    session_id = "stream-regen-close"
+    history = get_session_history(session_id)
+    history.messages = []
+    history.add_user_message("q1")
+    history.add_ai_message("bad answer")
+    history.add_user_message("q2")
+    history.add_ai_message("later answer")
+
+    monkeypatch.setattr(
+        "chatbot.chat_service.prepare_message_regeneration",
+        lambda message_id, reason: RegenerationUpdateResult(
+            "ready",
+            original_message_id=message_id,
+            reason=reason,
+            original_user_message="q1",
+        ),
+    )
+    monkeypatch.setattr(
+        "chatbot.chat_service.record_message_regeneration",
+        lambda message_id, reason, content: RegenerationUpdateResult(
+            "updated",
+            original_message_id=message_id,
+            message_id="ai_new",
+            content=content,
+            reason=reason,
+            original_user_message="q1",
+        ),
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        session_id=session_id,
+    )
+
+    events = service.stream_regenerated_reply("ai_old", "不准确")
+    first = next(events)
+    events.close()
+
+    assert (first.event, first.data) == ("token", {"content": "partial"})
+    assert [message.content for message in history.messages] == [
+        "q1",
+        "bad answer",
+        "q2",
+        "later answer",
+    ]
+    assert [message.type for message in history.messages] == [
+        "human",
+        "ai",
+        "human",
+        "ai",
+    ]
+    assert service.session_records == []
