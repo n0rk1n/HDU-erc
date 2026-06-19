@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 from typing import Any
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.evaluate_emotion_analysis import evaluate_records, load_records
 
@@ -31,6 +35,7 @@ def markdown_table(results: dict[str, dict[str, Any]]) -> str:
 
 
 def write_csv(path: Path, results: dict[str, dict[str, Any]]) -> None:
+    _ensure_parent_dir(path)
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=["run", "samples", "correct", "accuracy", "macro_f1"])
         writer.writeheader()
@@ -53,6 +58,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _ensure_parent_dir(path: Path) -> None:
+    if path.parent != Path("."):
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     annotations = load_records(Path(args.labels_file))
@@ -64,10 +74,12 @@ def main(argv: list[str] | None = None) -> int:
         runs[name] = load_records(Path(path))
     results = compare_runs(runs, annotations)
     markdown = markdown_table(results)
-    Path(args.markdown_file).write_text(markdown + "\n", encoding="utf-8")
+    markdown_path = Path(args.markdown_file)
+    _ensure_parent_dir(markdown_path)
+    markdown_path.write_text(markdown + "\n", encoding="utf-8")
     write_csv(Path(args.csv_file), results)
     print(markdown)
-    return 0
+    return 0 if any(result["total"] > 0 for result in results.values()) else 1
 
 
 if __name__ == "__main__":
