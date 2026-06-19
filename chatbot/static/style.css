@@ -51,6 +51,29 @@ body {
   font-size: 14px;
 }
 
+.safety-status {
+  margin-top: 6px;
+  color: #9a3412;
+  font-size: 13px;
+}
+
+.emotion-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 10px 0 0;
+  list-style: none;
+}
+
+.emotion-timeline li {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .messages {
   overflow-y: auto;
   padding: 24px;

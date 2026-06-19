@@ -362,6 +362,34 @@ def test_session_endpoint_returns_null_emotion(monkeypatch):
     assert response.json() == {"messages": [], "emotion": None}
 
 
+def test_emotion_timeline_endpoint_returns_recent_states(monkeypatch):
+    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [
+        {
+            "timestamp": "t1",
+            "turn_count": 2,
+            "success": True,
+            "emotion": "anxious",
+            "state": {
+                "primary_emotion": "anxious",
+                "confidence": 0.8,
+                "secondary_emotions": ["sad"],
+                "evidence": "worried",
+                "reply_strategy": "be calm",
+                "trajectory_note": "",
+                "safety_level": "normal",
+            },
+        }
+    ])
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/emotion/timeline?limit=5")
+
+    assert response.status_code == 200
+    assert response.json()["timeline"][0]["primary_emotion"] == "anxious"
+
+
 def test_session_endpoint_preserves_message_feedback_metadata(monkeypatch):
     records = [
         {"role": "ai", "content": "old", "timestamp": "t1"},

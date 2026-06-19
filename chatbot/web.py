@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
+from chatbot.emotion_state import timeline_from_records
 from chatbot.history import (
     REGENERATION_REASONS,
     load_history,
@@ -199,6 +200,10 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.get("/api/session")
     def session(limit: int = Query(default=10, gt=0, le=100)):
         return _session_snapshot(limit)
+
+    @app.get("/api/emotion/timeline")
+    def emotion_timeline(limit: int = Query(default=10, gt=0, le=50)):
+        return {"timeline": timeline_from_records(load_analysis_records(), limit)}
 
     @app.post("/api/messages/{message_id}/feedback")
     def message_feedback(message_id: str, request: FeedbackRequest):

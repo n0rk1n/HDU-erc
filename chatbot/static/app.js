@@ -3,6 +3,8 @@ const formEl = document.querySelector("#chat-form");
 const inputEl = document.querySelector("#message-input");
 const buttonEl = document.querySelector("#send-button");
 const emotionStatusEl = document.querySelector("#emotion-status");
+const safetyStatusEl = document.querySelector("#safety-status");
+const emotionTimelineEl = document.querySelector("#emotion-timeline");
 const regenerationReasons = ["不准确", "不完整", "没有理解我的问题", "语气不合适", "其他"];
 
 function setLocked(locked) {
@@ -222,9 +224,57 @@ function addMessage(role, content = "", metadata = {}) {
 function renderEmotion(emotion) {
   if (emotion && emotion.emotion) {
     emotionStatusEl.textContent = `情感状态：${emotion.emotion}`;
+    if (safetyStatusEl) {
+      safetyStatusEl.hidden = true;
+    }
     return;
   }
   emotionStatusEl.textContent = "情感状态：暂无";
+  if (safetyStatusEl) {
+    safetyStatusEl.hidden = true;
+  }
+}
+
+function renderEmotionState(state) {
+  if (!state || !state.primary_emotion) {
+    emotionStatusEl.textContent = "情感状态：暂无";
+    if (safetyStatusEl) {
+      safetyStatusEl.hidden = true;
+    }
+    return;
+  }
+  const confidence = typeof state.confidence === "number" ? ` ${(state.confidence * 100).toFixed(0)}%` : "";
+  emotionStatusEl.textContent = `情感状态：${state.primary_emotion}${confidence}`;
+  if (safetyStatusEl && state.safety_level && state.safety_level !== "normal") {
+    safetyStatusEl.hidden = false;
+    safetyStatusEl.textContent = `安全提示：${state.safety_level}`;
+  } else if (safetyStatusEl) {
+    safetyStatusEl.hidden = true;
+  }
+}
+
+function renderTimeline(timeline) {
+  if (!emotionTimelineEl) {
+    return;
+  }
+  emotionTimelineEl.innerHTML = "";
+  timeline.slice(-5).forEach((item) => {
+    const row = document.createElement("li");
+    row.textContent = item.trajectory_note || `${item.turn_count}: ${item.primary_emotion}`;
+    emotionTimelineEl.appendChild(row);
+  });
+}
+
+async function loadEmotionTimeline() {
+  if (!emotionTimelineEl) {
+    return;
+  }
+  const response = await fetch("/api/emotion/timeline?limit=5");
+  if (!response.ok) {
+    return;
+  }
+  const payload = await response.json();
+  renderTimeline(payload.timeline || []);
 }
 
 async function loadSession() {
@@ -251,6 +301,7 @@ async function loadSession() {
   });
   scrollToBottom();
   renderEmotion(payload.emotion);
+  await loadEmotionTimeline();
 }
 
 async function initialize() {
@@ -278,7 +329,12 @@ function streamMessage(message) {
 
   source.addEventListener("emotion_done", (event) => {
     const payload = JSON.parse(event.data);
-    renderEmotion(payload);
+    if (payload.state) {
+      renderEmotionState(payload.state);
+    } else {
+      renderEmotion(payload);
+    }
+    loadEmotionTimeline();
   });
 
   source.addEventListener("emotion_error", () => {
