@@ -258,6 +258,36 @@ def test_load_latest_successful_emotion_returns_none_for_missing_file(tmp_path, 
     assert emotion.load_latest_successful_emotion() is None
 
 
+def test_analyze_emotion_persists_structured_state(tmp_path, monkeypatch):
+    analysis_file = tmp_path / "emotion_analysis.json"
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    class FakeLlm:
+        def invoke(self, prompt):
+            return type("Response", (), {"content": (
+                '{"primary_emotion":"anxious","confidence":0.8,'
+                '"secondary_emotions":["apprehensive"],'
+                '"evidence":"The user is worried.",'
+                '"reply_strategy":"Be calm.",'
+                '"trajectory_note":"","safety_level":"normal"}'
+            )})()
+
+    result = emotion.analyze_emotion(
+        FakeLlm(),
+        [],
+        "I am worried about tomorrow.",
+        turn_count=2,
+        emotion_interval=2,
+    )
+
+    assert result.success is True
+    assert result.emotion == "anxious"
+    assert result.state.primary_emotion == "anxious"
+    data = json.loads(analysis_file.read_text())
+    assert data[0]["emotion"] == "anxious"
+    assert data[0]["state"]["confidence"] == 0.8
+
+
 def test_emotion_labels_are_shared_from_label_module():
     from chatbot.emotion_labels import EMOTION_LABELS as SHARED_LABELS
     from chatbot.emotion_labels import EMOTION_LABEL_SET as SHARED_LABEL_SET

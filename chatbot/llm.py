@@ -11,6 +11,7 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 warnings.filterwarnings("ignore", message=".*RunnableWithMessageHistory is deprecated.*")
 
 from chatbot.config import ChatConfig, LlmConfig
+from chatbot.emotion_state import EmotionState, format_emotion_state_context
 from chatbot.llm_adapter import ChatModelAdapter, build_chat_model
 
 store: dict[str, InMemoryChatMessageHistory] = {}
@@ -35,8 +36,12 @@ def ask_once(llm: ChatModelAdapter, question: str) -> str:
     return str(content)
 
 
-def format_emotion_context(emotion: str) -> str:
+def format_emotion_context(emotion: str | EmotionState | None) -> str:
     """将当前检测到的情绪格式化为可注入系统提示词的上下文。"""
+    if emotion is None:
+        return ""
+    if isinstance(emotion, EmotionState):
+        return format_emotion_state_context(emotion)
     emotion = emotion.strip()
     if not emotion:
         return ""

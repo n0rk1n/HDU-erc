@@ -3,6 +3,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
 from chatbot.config import ChatConfig, LlmConfig
+from chatbot.emotion_state import EmotionState
 from chatbot.llm import build_chain, build_llm, build_system_message, format_emotion_context
 
 pytestmark = pytest.mark.filterwarnings("ignore:RunnableWithMessageHistory is deprecated.*")
@@ -29,6 +30,22 @@ def test_format_emotion_context_empty():
 
 def test_format_emotion_context_with_label():
     assert format_emotion_context("anxious") == "Current detected user emotion: anxious"
+
+
+def test_format_emotion_context_accepts_structured_state():
+    state = EmotionState(
+        primary_emotion="anxious",
+        confidence=0.8,
+        secondary_emotions=["sad"],
+        evidence="The user is worried.",
+        reply_strategy="Be calm.",
+    )
+
+    context = format_emotion_context(state)
+
+    assert "- primary: anxious" in context
+    assert "- confidence: 0.80" in context
+    assert "- reply strategy: Be calm." in context
 
 
 def test_build_system_message_includes_dynamic_emotion_placeholder():

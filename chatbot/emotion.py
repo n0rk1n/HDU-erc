@@ -9,6 +9,7 @@ from typing import Any
 
 from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
 from chatbot.emotion_prompt import build_emotion_analysis_prompt
+from chatbot.emotion_state import EmotionState, emotion_state_from_output
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "records" / "emotion_analysis.json")
@@ -24,6 +25,7 @@ class EmotionAnalysisResult:
     output: str
     success: bool
     error: str = ""
+    state: EmotionState | None = None
 
 
 def _now_iso() -> str:
@@ -170,7 +172,8 @@ def analyze_emotion(
         response = llm.invoke(prompt)
         content = response.content if hasattr(response, "content") else str(response)
         output = content if isinstance(content, str) else str(content)
-        emotion = parse_emotion_output(output)
+        state = emotion_state_from_output(output)
+        emotion = state.primary_emotion if state else parse_emotion_output(output)
         if emotion is None:
             append_analysis_record({
                 "turn_count": turn_count,
@@ -178,21 +181,25 @@ def analyze_emotion(
                 "input": prompt,
                 "output": output,
                 "emotion": "",
+                "state": {},
                 "success": False,
                 "error": "Failed to parse a known emotion label.",
             })
             return EmotionAnalysisResult("", prompt, output, False, "Failed to parse a known emotion label.")
 
+        if state is None:
+            state = EmotionState(primary_emotion=emotion)
         append_analysis_record({
             "turn_count": turn_count,
             "emotion_interval": emotion_interval,
             "input": prompt,
             "output": output,
             "emotion": emotion,
+            "state": state.to_dict(),
             "success": True,
             "error": "",
         })
-        return EmotionAnalysisResult(emotion, prompt, output, True)
+        return EmotionAnalysisResult(emotion, prompt, output, True, state=state)
     except Exception as exc:
         append_analysis_record({
             "turn_count": turn_count,
@@ -200,6 +207,7 @@ def analyze_emotion(
             "input": prompt,
             "output": "",
             "emotion": "",
+            "state": {},
             "success": False,
             "error": str(exc),
         })
