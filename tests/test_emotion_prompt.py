@@ -24,3 +24,25 @@ def test_build_emotion_analysis_prompt_renders_examples_and_candidates():
     assert "Labeled examples:" in prompt
     assert "True emotion label: anxious" in prompt
     assert "Dialogue context: I cannot sleep" in prompt
+
+
+def test_build_emotion_analysis_prompt_renders_dynamic_examples():
+    prompt = build_emotion_analysis_prompt(
+        emotion_labels=["anxious", "lonely"],
+        emotion_label_set={"anxious", "lonely"},
+        dialogue_context="I feel alone tonight",
+        examples=[
+            {
+                "dialogue": "I feel alone tonight.",
+                "emotion": "lonely",
+                "score": 2.0,
+                "reason": "overlap=alone,tonight",
+            }
+        ],
+    )
+
+    assert "Dynamic EICL examples:" in prompt
+    assert "- Dialogue: I feel alone tonight." in prompt
+    assert "True emotion label: lonely" in prompt
+    assert "Selection reason: overlap=alone,tonight (score=2.00)" in prompt
+    assert "Response Format: Return exactly one JSON object" in prompt

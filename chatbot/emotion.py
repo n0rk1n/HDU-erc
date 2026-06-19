@@ -7,8 +7,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from chatbot.emotion_examples import DEFAULT_EMOTION_EXAMPLES
 from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
 from chatbot.emotion_prompt import build_emotion_analysis_prompt
+from chatbot.emotion_retrieval import select_dynamic_examples
 from chatbot.emotion_state import EmotionState, emotion_state_from_output
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -55,6 +57,12 @@ def build_emotion_prompt(
     if current_input:
         utterances.append(current_input)
     dialogue_context = "</s>".join(utterances)
+    selected_examples = select_dynamic_examples(
+        examples=DEFAULT_EMOTION_EXAMPLES,
+        dialogue_context=dialogue_context,
+        likely_emotions=likely_emotions or ([previous_emotion] if previous_emotion else []),
+        limit=4,
+    )
     return build_emotion_analysis_prompt(
         emotion_labels=EMOTION_LABELS,
         emotion_label_set=EMOTION_LABEL_SET,
@@ -62,6 +70,7 @@ def build_emotion_prompt(
         current_input=current_input,
         previous_emotion=previous_emotion,
         likely_emotions=likely_emotions,
+        examples=selected_examples,
     )
 
 

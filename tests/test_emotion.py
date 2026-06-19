@@ -30,8 +30,9 @@ def test_build_emotion_prompt_uses_recent_history_and_current_input():
     assert '"primary_emotion": "anxious"' in prompt
     assert '"reply_strategy": "brief guidance for the next chatbot reply"' in prompt
     assert "More likely emotion labels: anxious" in prompt
-    assert "Labeled examples:" in prompt
+    assert "Dynamic EICL examples:" in prompt
     assert "True emotion label: anxious" in prompt
+    assert "recent-emotion-prior" in prompt
     assert "Dialogue context:" in prompt
     assert "first question" not in prompt
     assert "second question</s>second answer</s>current question" in prompt
