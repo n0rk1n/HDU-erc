@@ -110,6 +110,22 @@ class ChatService:
             )
         return ChatEvent("emotion_error", {"error": emotion_result.error})
 
+    def _apply_turn_safety(self, message: str) -> None:
+        safety = assess_safety(message, self.current_emotion_state)
+        if safety["level"] == "normal":
+            return
+        self.current_safety = safety
+        state = self.current_emotion_state or EmotionState(primary_emotion="sad")
+        self.current_emotion_state = EmotionState(
+            primary_emotion=state.primary_emotion,
+            confidence=state.confidence,
+            secondary_emotions=state.secondary_emotions,
+            evidence=state.evidence,
+            reply_strategy=safety["guidance"],
+            trajectory_note=state.trajectory_note,
+            safety_level=safety["level"],
+        )
+
     def _remember_emotion(self, emotion: str) -> None:
         emotion = emotion.strip()
         if not emotion:
@@ -187,6 +203,7 @@ class ChatService:
         self._append_user_message(message)
         self._refresh_memory_context(message)
         self._analyze_if_due(message)
+        self._apply_turn_safety(message)
         answer = self._generate_answer(message)
         self._append_ai_message(answer)
         self._remember_from_turn(message, answer)
@@ -294,6 +311,8 @@ class ChatService:
             emotion_event = self._analyze_if_due(message)
             if emotion_event is not None:
                 yield emotion_event
+
+        self._apply_turn_safety(message)
 
         answer_parts: list[str] = []
         try:
