@@ -37,6 +37,7 @@ class ChatService:
         initial_records: list[dict] | None = None,
         session_id: str = "default",
         initial_emotion: str = "",
+        initial_emotion_state: EmotionState | None = None,
         memory_provider: MemoryProvider | None = None,
         memory_max_results: int = 5,
     ):
@@ -46,15 +47,18 @@ class ChatService:
         self.session_records = list(initial_records or [])
         self.session_id = session_id
         self.turn_count = 0
-        self.current_emotion = initial_emotion
+        self.current_emotion = initial_emotion or (
+            initial_emotion_state.primary_emotion if initial_emotion_state else ""
+        )
         self.current_emotion_state = (
-            EmotionState(primary_emotion=initial_emotion) if initial_emotion else None
+            initial_emotion_state
+            or (EmotionState(primary_emotion=initial_emotion) if initial_emotion else None)
         )
         self.current_safety = {"level": "normal", "guidance": ""}
         self.memory_provider = memory_provider or DisabledMemoryProvider()
         self.memory_max_results = memory_max_results
         self.current_memory_context = ""
-        self.recent_emotions = [initial_emotion] if initial_emotion else []
+        self.recent_emotions = [self.current_emotion] if self.current_emotion else []
 
     def _append_user_message(self, message: str) -> None:
         append_message("human", message)
@@ -113,8 +117,11 @@ class ChatService:
     def _apply_turn_safety(self, message: str) -> None:
         safety = assess_safety(message, self.current_emotion_state)
         if safety["level"] == "normal":
+            had_local_safety_override = self.current_safety["level"] != "normal"
             self.current_safety = {"level": "normal", "guidance": ""}
             if (
+                had_local_safety_override
+                and
                 self.current_emotion_state is not None
                 and self.current_emotion_state.safety_level != "normal"
             ):

@@ -600,6 +600,38 @@ def test_stream_reply_applies_supportive_safety_guidance(tmp_path, monkeypatch):
     )
 
 
+def test_generate_reply_preserves_model_safety_when_local_policy_is_normal(tmp_path, monkeypatch):
+    config = make_test_config(emotion_interval=1)
+    chain = FakeChain(replies=["reply 1"])
+    emotion_llm = FakeEmotionLlm(
+        output=(
+            '{"primary_emotion":"sad","confidence":0.7,'
+            '"secondary_emotions":[],'
+            '"evidence":"The model noticed quiet distress.",'
+            '"reply_strategy":"Use model-provided crisis guidance.",'
+            '"trajectory_note":"","safety_level":"crisis"}'
+        )
+    )
+    analysis_file = tmp_path / "emotion_analysis.json"
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    service.generate_reply("I do not know how to describe this feeling.")
+
+    assert "- safety guidance: crisis" in chain.payloads[0]["emotion_context"]
+    assert (
+        "- reply strategy: Use model-provided crisis guidance."
+        in chain.payloads[0]["emotion_context"]
+    )
+
+
 def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=1)
     chain = StreamingFakeChain()

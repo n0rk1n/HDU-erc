@@ -14,7 +14,7 @@ from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.emotion_feedback import append_emotion_feedback
-from chatbot.emotion_state import timeline_from_records
+from chatbot.emotion_state import EmotionState, timeline_from_records
 from chatbot.history import (
     REGENERATION_REASONS,
     load_history,
@@ -62,6 +62,7 @@ def build_service() -> ChatService:
     profile_text = format_profile(load_profile())
     chat_llm, emotion_llm = build_runtime_llms(config)
     latest_emotion = _latest_emotion_for_records(records)
+    latest_emotion_state = _latest_emotion_state_for_records(records)
     memory_config = load_memory_config()
     memory_provider = build_memory_provider(memory_config)
     init_session_history("default", records)
@@ -72,6 +73,7 @@ def build_service() -> ChatService:
         emotion_llm,
         initial_records=records,
         initial_emotion=(latest_emotion or {}).get("emotion", ""),
+        initial_emotion_state=latest_emotion_state,
         memory_provider=memory_provider,
         memory_max_results=memory_config.max_results,
     )
@@ -113,6 +115,24 @@ def _latest_emotion_for_records(records: list[dict]) -> dict | None:
         if _emotion_record_matches_history(record, records, snapshot["turn_count"]):
             return snapshot
         return None
+    return None
+
+
+def _latest_emotion_state_for_records(records: list[dict]) -> EmotionState | None:
+    for record in reversed(load_analysis_records()):
+        if not isinstance(record, dict):
+            continue
+        snapshot = successful_emotion_snapshot(record)
+        if snapshot is None:
+            continue
+        if not _emotion_record_matches_history(record, records, snapshot["turn_count"]):
+            return None
+        state_data = record.get("state")
+        if isinstance(state_data, dict):
+            state = EmotionState.from_mapping(state_data)
+            if state is not None:
+                return state
+        return EmotionState(primary_emotion=snapshot["emotion"])
     return None
 
 

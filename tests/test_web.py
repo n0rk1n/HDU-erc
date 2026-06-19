@@ -165,6 +165,79 @@ def test_build_service_uses_latest_successful_emotion(monkeypatch):
     assert captured["initial_emotion"] == "sad"
 
 
+def test_build_service_restores_latest_structured_emotion_state(monkeypatch):
+    records = [
+        {"role": "human", "content": f"q{i}"}
+        for i in range(5)
+    ]
+
+    class FakeLlm:
+        pass
+
+    captured = {}
+
+    def fake_chat_service(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=None,
+        initial_emotion="",
+        initial_emotion_state=None,
+        session_id="default",
+        **kwargs,
+    ):
+        captured["initial_emotion"] = initial_emotion
+        captured["initial_emotion_state"] = initial_emotion_state
+        return object()
+
+    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [{
+            "timestamp": "t1",
+            "turn_count": 5,
+            "emotion_interval": 5,
+            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
+            "emotion": "anxious",
+            "success": True,
+            "state": {
+                "primary_emotion": "anxious",
+                "confidence": 0.83,
+                "secondary_emotions": ["apprehensive"],
+                "evidence": "The user sounds worried.",
+                "reply_strategy": "Use a calm tone.",
+                "trajectory_note": "hopeful -> anxious",
+                "safety_level": "normal",
+            },
+        }],
+    )
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
+    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
+    monkeypatch.setattr(
+        "chatbot.web.build_runtime_llms",
+        lambda config: (FakeLlm(), FakeLlm()),
+    )
+    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
+    monkeypatch.setattr(
+        "chatbot.web.load_memory_config",
+        lambda: type(
+            "MemoryConfig",
+            (),
+            {"enabled": False, "db_path": "ignored", "max_results": 5},
+        )(),
+    )
+    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
+    monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
+
+    build_service()
+
+    assert captured["initial_emotion"] == "anxious"
+    assert captured["initial_emotion_state"].primary_emotion == "anxious"
+    assert captured["initial_emotion_state"].confidence == 0.83
+    assert captured["initial_emotion_state"].reply_strategy == "Use a calm tone."
+
+
 def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
     records = [
         {"role": "human", "content": "hello"},
