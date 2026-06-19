@@ -26,7 +26,9 @@ def test_build_emotion_prompt_uses_recent_history_and_current_input():
     )
 
     assert "Emotion labels:" in prompt
-    assert "Response Format: Emotion: [a single inferred emotion]" in prompt
+    assert "Response Format: Return exactly one JSON object" in prompt
+    assert '"primary_emotion": "anxious"' in prompt
+    assert '"reply_strategy": "brief guidance for the next chatbot reply"' in prompt
     assert "More likely emotion labels: anxious" in prompt
     assert "Labeled examples:" in prompt
     assert "True emotion label: anxious" in prompt

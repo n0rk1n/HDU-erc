@@ -211,7 +211,15 @@ def test_generate_reply_continues_when_memory_fails(monkeypatch):
 def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=2)
     chain = FakeChain(replies=["reply 1", "reply 2"])
-    emotion_llm = FakeEmotionLlm()
+    emotion_llm = FakeEmotionLlm(
+        output=(
+            '{"primary_emotion":"anxious","confidence":0.8,'
+            '"secondary_emotions":["apprehensive"],'
+            '"evidence":"The user is worried.",'
+            '"reply_strategy":"Be calm.",'
+            '"trajectory_note":"","safety_level":"normal"}'
+        )
+    )
     stored_messages = []
     stored_ai_messages = []
     analysis_file = tmp_path / "emotion_analysis.json"
@@ -237,7 +245,8 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
     assert len(emotion_llm.prompts) == 1
     assert "q1</s>reply 1</s>q2" in emotion_llm.prompts[0]
     assert chain.payloads[0]["emotion_context"] == ""
-    assert chain.payloads[1]["emotion_context"] == "Current detected user emotion: anxious"
+    assert "- primary: anxious" in chain.payloads[1]["emotion_context"]
+    assert "- reply strategy: Be calm." in chain.payloads[1]["emotion_context"]
     assert analysis_file.exists()
     assert stored_messages == [
         ("human", "q1"),
@@ -287,7 +296,8 @@ def test_generate_reply_uses_initial_emotion_context(monkeypatch):
     )
 
     assert service.generate_reply("q1") == "reply 1"
-    assert chain.payloads[0]["emotion_context"] == "Current detected user emotion: sad"
+    assert "- primary: sad" in chain.payloads[0]["emotion_context"]
+    assert "- confidence: 0.00" in chain.payloads[0]["emotion_context"]
 
 
 def test_generate_reply_keeps_user_message_when_chat_fails(monkeypatch):

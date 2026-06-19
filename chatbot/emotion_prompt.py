@@ -34,7 +34,9 @@ def build_emotion_analysis_prompt(
 - Dialogue context: The conversation history between user and assistant, with utterances separated by </s>.
 - Emotion labels: {labels}
 - Choose a single inferred emotion from the provided Emotion labels, not outside of them.
-- Response Format: Emotion: [a single inferred emotion]{likely_line}
+- Response Format: Return exactly one JSON object with these fields:
+  {{"primary_emotion": "anxious", "confidence": 0.0, "secondary_emotions": [], "evidence": "short phrase from the dialogue", "reply_strategy": "brief guidance for the next chatbot reply", "trajectory_note": "optional change from prior emotion", "safety_level": "normal"}}
+  Use primary_emotion and secondary_emotions only from the provided Emotion labels. Use safety_level as one of: normal, supportive, crisis.{likely_line}
 {examples}
 
 Dialogue context: {dialogue_context}""".strip()

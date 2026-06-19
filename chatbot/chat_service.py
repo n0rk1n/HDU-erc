@@ -6,6 +6,7 @@ from typing import Any
 
 from chatbot.config import ChatConfig
 from chatbot.emotion import analyze_emotion
+from chatbot.emotion_state import EmotionState
 from chatbot.history import (
     RegenerationUpdateResult,
     append_ai_message,
@@ -45,6 +46,9 @@ class ChatService:
         self.session_id = session_id
         self.turn_count = 0
         self.current_emotion = initial_emotion
+        self.current_emotion_state = (
+            EmotionState(primary_emotion=initial_emotion) if initial_emotion else None
+        )
         self.memory_provider = memory_provider or DisabledMemoryProvider()
         self.memory_max_results = memory_max_results
         self.current_memory_context = ""
@@ -79,6 +83,9 @@ class ChatService:
         )
         if emotion_result.success:
             self.current_emotion = emotion_result.emotion
+            self.current_emotion_state = (
+                emotion_result.state or EmotionState(primary_emotion=emotion_result.emotion)
+            )
             self._remember_emotion(emotion_result.emotion)
             return ChatEvent("emotion_done", {"emotion": emotion_result.emotion})
         return ChatEvent("emotion_error", {"error": emotion_result.error})
@@ -117,7 +124,9 @@ class ChatService:
         return {
             "input": message,
             "memory_context": self.current_memory_context,
-            "emotion_context": format_emotion_context(self.current_emotion),
+            "emotion_context": format_emotion_context(
+                self.current_emotion_state or self.current_emotion
+            ),
         }
 
     def _generate_answer(self, message: str) -> str:
