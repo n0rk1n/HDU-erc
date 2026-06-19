@@ -322,6 +322,7 @@ function streamMessage(message) {
 
   source.addEventListener("user_message", (event) => {
     const payload = JSON.parse(event.data);
+    clearSafetyStatus();
     addMessage("human", payload.content);
   });
 

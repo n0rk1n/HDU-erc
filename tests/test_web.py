@@ -926,7 +926,12 @@ def test_static_app_js_clears_safety_status_during_analysis_transitions():
     app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
 
     assert "function clearSafetyStatus()" in app_js
-    assert app_js.count("clearSafetyStatus();") >= 4
+    assert app_js.count("clearSafetyStatus();") >= 5
+    assert (
+        'source.addEventListener("user_message", (event) => {\n'
+        "    const payload = JSON.parse(event.data);\n"
+        "    clearSafetyStatus();"
+    ) in app_js
     assert (
         'source.addEventListener("emotion_start", () => {\n'
         '    emotionStatusEl.textContent = "情感状态：正在分析情绪…";\n'
