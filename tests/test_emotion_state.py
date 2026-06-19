@@ -106,3 +106,38 @@ def test_timeline_from_records_uses_successful_state_records():
         "trajectory_note": "",
         "safety_level": "normal",
     }]
+
+
+def test_timeline_from_records_falls_back_to_legacy_emotion_record():
+    records = [{
+        "timestamp": "2026-06-20T11:00:00+08:00",
+        "turn_count": 3,
+        "success": True,
+        "emotion": "joyful",
+    }]
+
+    timeline = timeline_from_records(records)
+
+    assert timeline == [{
+        "timestamp": "2026-06-20T11:00:00+08:00",
+        "turn_count": 3,
+        "primary_emotion": "joyful",
+        "confidence": 0.0,
+        "secondary_emotions": [],
+        "evidence": "",
+        "reply_strategy": "",
+        "trajectory_note": "",
+        "safety_level": "normal",
+    }]
+
+
+def test_timeline_from_records_returns_empty_for_non_positive_limit():
+    records = [{
+        "timestamp": "2026-06-20T11:00:00+08:00",
+        "turn_count": 3,
+        "success": True,
+        "state": {"primary_emotion": "joyful"},
+    }]
+
+    assert timeline_from_records(records, limit=0) == []
+    assert timeline_from_records(records, limit=-1) == []

@@ -80,14 +80,18 @@ def format_emotion_state_context(state: EmotionState) -> str:
 
 
 def timeline_from_records(records: list[dict], limit: int = 10) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+
     timeline = []
     for record in records:
         if not isinstance(record, dict) or record.get("success") is not True:
             continue
         state_value = record.get("state")
-        if not isinstance(state_value, dict):
-            continue
-        state = EmotionState.from_mapping(state_value)
+        if isinstance(state_value, dict):
+            state = EmotionState.from_mapping(state_value)
+        else:
+            state = EmotionState.from_mapping({"primary_emotion": record.get("emotion")})
         if state is None:
             continue
         timeline.append({
@@ -95,7 +99,7 @@ def timeline_from_records(records: list[dict], limit: int = 10) -> list[dict[str
             "turn_count": record.get("turn_count", 0),
             **state.to_dict(),
         })
-    return timeline[-max(0, limit):]
+    return timeline[-limit:]
 
 
 def _normalize_label(value: Any) -> str:
