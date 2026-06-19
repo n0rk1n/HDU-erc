@@ -113,6 +113,20 @@ class ChatService:
     def _apply_turn_safety(self, message: str) -> None:
         safety = assess_safety(message, self.current_emotion_state)
         if safety["level"] == "normal":
+            self.current_safety = {"level": "normal", "guidance": ""}
+            if (
+                self.current_emotion_state is not None
+                and self.current_emotion_state.safety_level != "normal"
+            ):
+                self.current_emotion_state = EmotionState(
+                    primary_emotion=self.current_emotion_state.primary_emotion,
+                    confidence=self.current_emotion_state.confidence,
+                    secondary_emotions=self.current_emotion_state.secondary_emotions,
+                    evidence=self.current_emotion_state.evidence,
+                    reply_strategy="",
+                    trajectory_note=self.current_emotion_state.trajectory_note,
+                    safety_level="normal",
+                )
             return
         self.current_safety = safety
         state = self.current_emotion_state or EmotionState(primary_emotion="sad")

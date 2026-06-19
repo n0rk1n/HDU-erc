@@ -151,7 +151,7 @@ def test_generate_reply_injects_memory_context(monkeypatch):
 
 def test_generate_reply_applies_crisis_safety_before_interval(monkeypatch):
     config = make_test_config(emotion_interval=5)
-    chain = FakeChain(replies=["reply 1"])
+    chain = FakeChain(replies=["reply 1", "reply 2"])
     emotion_llm = FakeEmotionLlm()
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
@@ -167,6 +167,12 @@ def test_generate_reply_applies_crisis_safety_before_interval(monkeypatch):
     assert "- primary: sad" in chain.payloads[0]["emotion_context"]
     assert "- safety guidance: crisis" in chain.payloads[0]["emotion_context"]
     assert "Use immediate supportive language" in chain.payloads[0]["emotion_context"]
+
+    assert service.generate_reply("I am preparing slides") == "reply 2"
+    assert emotion_llm.prompts == []
+    assert service.current_safety == {"level": "normal", "guidance": ""}
+    assert "- safety guidance: crisis" not in chain.payloads[1]["emotion_context"]
+    assert "Use immediate supportive language" not in chain.payloads[1]["emotion_context"]
 
 
 def test_generate_reply_remembers_candidates_after_success(monkeypatch):
@@ -536,6 +542,19 @@ def test_stream_reply_applies_crisis_safety_before_interval(monkeypatch):
     assert "- primary: sad" in chain.payloads[0]["emotion_context"]
     assert "- safety guidance: crisis" in chain.payloads[0]["emotion_context"]
     assert "Use immediate supportive language" in chain.payloads[0]["emotion_context"]
+
+    events = list(service.stream_reply("I am preparing slides"))
+
+    assert [event.event for event in events] == [
+        "user_message",
+        "token",
+        "token",
+        "done",
+    ]
+    assert emotion_llm.prompts == []
+    assert service.current_safety == {"level": "normal", "guidance": ""}
+    assert "- safety guidance: crisis" not in chain.payloads[1]["emotion_context"]
+    assert "Use immediate supportive language" not in chain.payloads[1]["emotion_context"]
 
 
 def test_stream_reply_applies_supportive_safety_guidance(tmp_path, monkeypatch):
