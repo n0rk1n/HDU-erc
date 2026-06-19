@@ -363,12 +363,20 @@ def test_session_endpoint_returns_null_emotion(monkeypatch):
 
 
 def test_emotion_timeline_endpoint_returns_recent_states(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.web.load_history",
+        lambda: [
+            {"role": "human", "content": "worried", "timestamp": "t0"},
+            {"role": "ai", "content": "I will stay calm.", "timestamp": "t1"},
+        ],
+    )
     monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [
         {
             "timestamp": "t1",
-            "turn_count": 2,
+            "turn_count": 1,
             "success": True,
             "emotion": "anxious",
+            "input": "Dialogue context: worried</s>I will stay calm.",
             "state": {
                 "primary_emotion": "anxious",
                 "confidence": 0.8,
@@ -388,6 +396,42 @@ def test_emotion_timeline_endpoint_returns_recent_states(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["timeline"][0]["primary_emotion"] == "anxious"
+
+
+def test_emotion_timeline_endpoint_ignores_stale_states(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.web.load_history",
+        lambda: [
+            {"role": "human", "content": "current question", "timestamp": "t0"},
+            {"role": "ai", "content": "current reply", "timestamp": "t1"},
+        ],
+    )
+    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [
+        {
+            "timestamp": "old-time",
+            "turn_count": 1,
+            "success": True,
+            "emotion": "anxious",
+            "input": "Dialogue context: old question",
+            "state": {
+                "primary_emotion": "anxious",
+                "confidence": 0.8,
+                "secondary_emotions": [],
+                "evidence": "old",
+                "reply_strategy": "be calm",
+                "trajectory_note": "",
+                "safety_level": "normal",
+            },
+        }
+    ])
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/emotion/timeline?limit=5")
+
+    assert response.status_code == 200
+    assert response.json() == {"timeline": []}
 
 
 def test_session_endpoint_preserves_message_feedback_metadata(monkeypatch):
@@ -875,6 +919,24 @@ def test_static_app_js_loads_session_snapshot():
     assert "情感状态：暂无" in app_js
     assert "renderEmotion(payload);" in app_js
     assert "emotionStatusEl.textContent = `情感状态：${payload.emotion}`;" not in app_js
+
+
+def test_static_app_js_clears_safety_status_during_analysis_transitions():
+    root = Path(__file__).resolve().parents[1]
+    app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert "function clearSafetyStatus()" in app_js
+    assert app_js.count("clearSafetyStatus();") >= 4
+    assert (
+        'source.addEventListener("emotion_start", () => {\n'
+        '    emotionStatusEl.textContent = "情感状态：正在分析情绪…";\n'
+        "    clearSafetyStatus();"
+    ) in app_js
+    assert (
+        'source.addEventListener("emotion_error", () => {\n'
+        '    emotionStatusEl.textContent = "情感状态：情感分析失败，本轮继续回复";\n'
+        "    clearSafetyStatus();"
+    ) in app_js
 
 
 def test_static_app_js_initializes_from_session_snapshot():

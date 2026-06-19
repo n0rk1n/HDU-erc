@@ -221,26 +221,28 @@ function addMessage(role, content = "", metadata = {}) {
   return message;
 }
 
+function clearSafetyStatus() {
+  if (!safetyStatusEl) {
+    return;
+  }
+  safetyStatusEl.hidden = true;
+  safetyStatusEl.textContent = "";
+}
+
 function renderEmotion(emotion) {
   if (emotion && emotion.emotion) {
     emotionStatusEl.textContent = `情感状态：${emotion.emotion}`;
-    if (safetyStatusEl) {
-      safetyStatusEl.hidden = true;
-    }
+    clearSafetyStatus();
     return;
   }
   emotionStatusEl.textContent = "情感状态：暂无";
-  if (safetyStatusEl) {
-    safetyStatusEl.hidden = true;
-  }
+  clearSafetyStatus();
 }
 
 function renderEmotionState(state) {
   if (!state || !state.primary_emotion) {
     emotionStatusEl.textContent = "情感状态：暂无";
-    if (safetyStatusEl) {
-      safetyStatusEl.hidden = true;
-    }
+    clearSafetyStatus();
     return;
   }
   const confidence = typeof state.confidence === "number" ? ` ${(state.confidence * 100).toFixed(0)}%` : "";
@@ -249,7 +251,7 @@ function renderEmotionState(state) {
     safetyStatusEl.hidden = false;
     safetyStatusEl.textContent = `安全提示：${state.safety_level}`;
   } else if (safetyStatusEl) {
-    safetyStatusEl.hidden = true;
+    clearSafetyStatus();
   }
 }
 
@@ -325,6 +327,7 @@ function streamMessage(message) {
 
   source.addEventListener("emotion_start", () => {
     emotionStatusEl.textContent = "情感状态：正在分析情绪…";
+    clearSafetyStatus();
   });
 
   source.addEventListener("emotion_done", (event) => {
@@ -339,6 +342,7 @@ function streamMessage(message) {
 
   source.addEventListener("emotion_error", () => {
     emotionStatusEl.textContent = "情感状态：情感分析失败，本轮继续回复";
+    clearSafetyStatus();
   });
 
   source.addEventListener("token", (event) => {

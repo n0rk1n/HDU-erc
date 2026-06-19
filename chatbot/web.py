@@ -101,6 +101,19 @@ def _latest_emotion_for_records(records: list[dict]) -> dict | None:
     return None
 
 
+def _emotion_timeline_for_records(records: list[dict], limit: int) -> list[dict]:
+    filtered = []
+    for record in load_analysis_records():
+        if not isinstance(record, dict):
+            continue
+        snapshot = successful_emotion_snapshot(record)
+        if snapshot is None:
+            continue
+        if _emotion_record_matches_history(record, records, snapshot["turn_count"]):
+            filtered.append(record)
+    return timeline_from_records(filtered, limit)
+
+
 def _emotion_record_matches_history(
     emotion_record: dict,
     records: list[dict],
@@ -203,7 +216,7 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
 
     @app.get("/api/emotion/timeline")
     def emotion_timeline(limit: int = Query(default=10, gt=0, le=50)):
-        return {"timeline": timeline_from_records(load_analysis_records(), limit)}
+        return {"timeline": _emotion_timeline_for_records(load_history(), limit)}
 
     @app.post("/api/messages/{message_id}/feedback")
     def message_feedback(message_id: str, request: FeedbackRequest):
