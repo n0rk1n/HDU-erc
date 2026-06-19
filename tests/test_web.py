@@ -818,6 +818,24 @@ def test_feedback_endpoint_returns_write_failure(monkeypatch):
     assert response.json() == {"detail": "Could not save feedback."}
 
 
+def test_emotion_feedback_endpoint_saves_feedback(tmp_path, monkeypatch):
+    feedback_file = tmp_path / "emotion_feedback.json"
+    monkeypatch.setattr("chatbot.emotion_feedback.EMOTION_FEEDBACK_FILE", str(feedback_file))
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post("/api/emotion/feedback", json={
+        "message_id": "ai_1",
+        "feedback": "wrong_emotion",
+        "predicted_emotion": "sad",
+        "corrected_emotion": "anxious",
+    })
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "saved"
+
+
 def test_regenerate_endpoint_returns_new_message(monkeypatch):
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)
@@ -1170,6 +1188,12 @@ const context = {
         json: async () => ({status: "updated", message_id: "ai_1", feedback: "like"}),
       };
     }
+    if (url === "/api/emotion/feedback") {
+      return {
+        ok: true,
+        json: async () => ({status: "saved"}),
+      };
+    }
     throw new Error(`unexpected fetch: ${url}`);
   },
   document: {
@@ -1202,6 +1226,7 @@ setImmediate(async () => {
     const controls = messagesEl.children[1].children[1];
     const likeButton = controls.children[0];
     const dislikeButton = controls.children[1];
+    const emotionButton = controls.children[3];
     if (likeButton.textContent !== "Good") {
       throw new Error(`unexpected like button text: ${likeButton.textContent}`);
     }
@@ -1214,17 +1239,35 @@ setImmediate(async () => {
     if (dislikeButton.attributes["aria-label"] !== "Bad") {
       throw new Error(`unexpected dislike aria-label: ${dislikeButton.attributes["aria-label"]}`);
     }
+    if (emotionButton.textContent !== "Emotion?") {
+      throw new Error(`unexpected emotion feedback text: ${emotionButton.textContent}`);
+    }
+    if (emotionButton.attributes["aria-label"] !== "Emotion correctness feedback") {
+      throw new Error(`unexpected emotion aria-label: ${emotionButton.attributes["aria-label"]}`);
+    }
+
+    await emotionButton.listeners.click();
+
+    if (fetchCalls[1].url !== "/api/emotion/feedback") {
+      throw new Error(`unexpected emotion feedback url: ${fetchCalls[1].url}`);
+    }
+    if (fetchCalls[1].options.method !== "POST") {
+      throw new Error(`unexpected emotion feedback method: ${fetchCalls[1].options.method}`);
+    }
+    if (fetchCalls[1].options.body !== JSON.stringify({message_id: "ai_1", feedback: "wrong_emotion"})) {
+      throw new Error(`unexpected emotion feedback body: ${fetchCalls[1].options.body}`);
+    }
 
     await likeButton.listeners.click();
 
-    if (fetchCalls[1].url !== "/api/messages/ai_1/feedback") {
-      throw new Error(`unexpected feedback url: ${fetchCalls[1].url}`);
+    if (fetchCalls[2].url !== "/api/messages/ai_1/feedback") {
+      throw new Error(`unexpected feedback url: ${fetchCalls[2].url}`);
     }
-    if (fetchCalls[1].options.method !== "POST") {
-      throw new Error(`unexpected feedback method: ${fetchCalls[1].options.method}`);
+    if (fetchCalls[2].options.method !== "POST") {
+      throw new Error(`unexpected feedback method: ${fetchCalls[2].options.method}`);
     }
-    if (fetchCalls[1].options.body !== JSON.stringify({feedback: "like"})) {
-      throw new Error(`unexpected feedback body: ${fetchCalls[1].options.body}`);
+    if (fetchCalls[2].options.body !== JSON.stringify({feedback: "like"})) {
+      throw new Error(`unexpected feedback body: ${fetchCalls[2].options.body}`);
     }
     if (messagesEl.children[1].children.length !== 1) {
       throw new Error("feedback controls should be removed after successful rating");
@@ -1389,7 +1432,7 @@ setImmediate(async () => {
     }
 
     regenerateButton.listeners.click();
-    const reasons = controls.children[3];
+    const reasons = controls.children[4];
     const firstReason = reasons.children[0];
     const secondReason = reasons.children[1];
     if (firstReason.textContent !== "不准确") {
@@ -1589,7 +1632,7 @@ setImmediate(async () => {
     const regenerateButton = controls.children[2];
 
     regenerateButton.listeners.click();
-    const reasons = controls.children[3];
+    const reasons = controls.children[4];
     const firstReason = reasons.children[0];
     const secondReason = reasons.children[1];
 
@@ -1608,7 +1651,7 @@ setImmediate(async () => {
     resolveRegenerate({ok: false, json: async () => ({})});
     await pendingRegeneration;
 
-    const status = controls.children[4];
+    const status = controls.children[5];
     if (status.textContent !== "重新生成失败") {
       throw new Error(`unexpected failure status: ${status.textContent}`);
     }
@@ -1787,7 +1830,7 @@ setImmediate(async () => {
     const regenerateButton = controls.children[2];
 
     regenerateButton.listeners.click();
-    const reasons = controls.children[3];
+    const reasons = controls.children[4];
     const firstReason = reasons.children[0];
     const secondReason = reasons.children[1];
 
@@ -1806,7 +1849,7 @@ setImmediate(async () => {
     resolveFeedback({ok: false, json: async () => ({})});
     await pendingFeedback;
 
-    const status = controls.children[4];
+    const status = controls.children[5];
     if (status.textContent !== "评价保存失败") {
       throw new Error(`unexpected feedback failure status: ${status.textContent}`);
     }

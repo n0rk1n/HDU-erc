@@ -89,10 +89,16 @@ function renderFeedbackControls(wrapper, metadata) {
   regenerateButton.textContent = "Regenerate";
   regenerateButton.setAttribute("aria-label", "Regenerate");
 
+  const emotionButton = document.createElement("button");
+  emotionButton.type = "button";
+  emotionButton.className = "feedback-button";
+  emotionButton.textContent = "Emotion?";
+  emotionButton.setAttribute("aria-label", "Emotion correctness feedback");
+
   const status = document.createElement("span");
   status.className = "feedback-status";
 
-  const buttons = [likeButton, dislikeButton, regenerateButton];
+  const buttons = [likeButton, dislikeButton, regenerateButton, emotionButton];
   likeButton.addEventListener("click", () => (
     submitFeedback(metadata.id, "like", controls, status)
   ));
@@ -102,10 +108,14 @@ function renderFeedbackControls(wrapper, metadata) {
   regenerateButton.addEventListener("click", () => (
     renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
   ));
+  emotionButton.addEventListener("click", () => (
+    submitEmotionFeedback(metadata.id, "wrong_emotion", status)
+  ));
 
   controls.appendChild(likeButton);
   controls.appendChild(dislikeButton);
   controls.appendChild(regenerateButton);
+  controls.appendChild(emotionButton);
   controls.appendChild(status);
   wrapper.appendChild(controls);
 }
@@ -132,6 +142,23 @@ async function submitFeedback(messageId, feedback, controls, status) {
       button.disabled = false;
     });
     status.textContent = "评价保存失败";
+  }
+}
+
+async function submitEmotionFeedback(messageId, feedback, status) {
+  status.textContent = "";
+  try {
+    const response = await fetch("/api/emotion/feedback", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message_id: messageId, feedback}),
+    });
+    if (!response.ok) {
+      throw new Error("Emotion feedback failed.");
+    }
+    status.textContent = "情绪反馈已保存";
+  } catch (error) {
+    status.textContent = "情绪反馈保存失败";
   }
 }
 

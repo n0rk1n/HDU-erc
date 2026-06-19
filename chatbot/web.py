@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
+from chatbot.emotion_feedback import append_emotion_feedback
 from chatbot.emotion_state import timeline_from_records
 from chatbot.history import (
     REGENERATION_REASONS,
@@ -34,6 +35,14 @@ class FeedbackRequest(BaseModel):
 
 class RegenerateRequest(BaseModel):
     reason: str
+
+
+class EmotionFeedbackRequest(BaseModel):
+    feedback: Literal["accurate", "too_positive", "too_negative", "wrong_emotion"]
+    message_id: str = ""
+    turn_count: int | None = None
+    predicted_emotion: str = ""
+    corrected_emotion: str = ""
 
 
 def format_sse(event: ChatEvent) -> str:
@@ -237,6 +246,14 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         if result.status == "write_failed":
             raise HTTPException(status_code=500, detail="Could not save feedback.")
         raise HTTPException(status_code=400, detail="Invalid feedback.")
+
+    @app.post("/api/emotion/feedback")
+    def emotion_feedback(request: EmotionFeedbackRequest):
+        try:
+            record = append_emotion_feedback(request.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"status": "saved", "feedback": record}
 
     @app.post("/api/messages/{message_id}/regenerate")
     def regenerate_message(
