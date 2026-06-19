@@ -836,6 +836,17 @@ def test_emotion_feedback_endpoint_saves_feedback(tmp_path, monkeypatch):
     assert response.json()["status"] == "saved"
 
 
+def test_emotion_feedback_request_payload_supports_pydantic_v1_dict():
+    class LegacyRequest:
+        def dict(self):
+            return {"feedback": "accurate", "message_id": "ai_1"}
+
+    assert web._request_payload(LegacyRequest()) == {
+        "feedback": "accurate",
+        "message_id": "ai_1",
+    }
+
+
 def test_regenerate_endpoint_returns_new_message(monkeypatch):
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)
@@ -1118,6 +1129,17 @@ class Element {
     return child;
   }
 
+  insertBefore(child, nextSibling) {
+    child.parent = this;
+    const index = this.children.indexOf(nextSibling);
+    if (index === -1) {
+      this.children.push(child);
+    } else {
+      this.children.splice(index, 0, child);
+    }
+    return child;
+  }
+
   addEventListener(name, callback) {
     this.listeners[name] = callback;
   }
@@ -1178,7 +1200,7 @@ const context = {
             {role: "ai", content: "new", id: "ai_1", feedback: null},
             {role: "ai", content: "rated", id: "ai_2", feedback: "like"},
           ],
-          emotion: null,
+          emotion: {emotion: "sad"},
         }),
       };
     }
@@ -1246,7 +1268,15 @@ setImmediate(async () => {
       throw new Error(`unexpected emotion aria-label: ${emotionButton.attributes["aria-label"]}`);
     }
 
-    await emotionButton.listeners.click();
+    emotionButton.listeners.click();
+
+    const emotionChoices = controls.children[4];
+    const choiceLabels = emotionChoices.children.map((button) => button.textContent);
+    if (JSON.stringify(choiceLabels) !== JSON.stringify(["Accurate", "Too positive", "Too negative", "Wrong"])) {
+      throw new Error(`unexpected emotion choices: ${JSON.stringify(choiceLabels)}`);
+    }
+
+    await emotionChoices.children[2].listeners.click();
 
     if (fetchCalls[1].url !== "/api/emotion/feedback") {
       throw new Error(`unexpected emotion feedback url: ${fetchCalls[1].url}`);
@@ -1254,7 +1284,11 @@ setImmediate(async () => {
     if (fetchCalls[1].options.method !== "POST") {
       throw new Error(`unexpected emotion feedback method: ${fetchCalls[1].options.method}`);
     }
-    if (fetchCalls[1].options.body !== JSON.stringify({message_id: "ai_1", feedback: "wrong_emotion"})) {
+    if (fetchCalls[1].options.body !== JSON.stringify({
+      message_id: "ai_1",
+      feedback: "too_negative",
+      predicted_emotion: "sad",
+    })) {
       throw new Error(`unexpected emotion feedback body: ${fetchCalls[1].options.body}`);
     }
 

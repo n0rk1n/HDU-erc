@@ -45,6 +45,12 @@ class EmotionFeedbackRequest(BaseModel):
     corrected_emotion: str = ""
 
 
+def _request_payload(request: BaseModel) -> dict:
+    if hasattr(request, "model_dump"):
+        return request.model_dump()
+    return request.dict()
+
+
 def format_sse(event: ChatEvent) -> str:
     data = json.dumps(event.data, ensure_ascii=False)
     return f"event: {event.event}\ndata: {data}\n\n"
@@ -250,7 +256,7 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.post("/api/emotion/feedback")
     def emotion_feedback(request: EmotionFeedbackRequest):
         try:
-            record = append_emotion_feedback(request.model_dump())
+            record = append_emotion_feedback(_request_payload(request))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "saved", "feedback": record}

@@ -6,6 +6,13 @@ const emotionStatusEl = document.querySelector("#emotion-status");
 const safetyStatusEl = document.querySelector("#safety-status");
 const emotionTimelineEl = document.querySelector("#emotion-timeline");
 const regenerationReasons = ["不准确", "不完整", "没有理解我的问题", "语气不合适", "其他"];
+const emotionFeedbackChoices = [
+  ["Accurate", "accurate"],
+  ["Too positive", "too_positive"],
+  ["Too negative", "too_negative"],
+  ["Wrong", "wrong_emotion"],
+];
+let currentEmotionState = null;
 
 function setLocked(locked) {
   inputEl.disabled = locked;
@@ -109,7 +116,7 @@ function renderFeedbackControls(wrapper, metadata) {
     renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
   ));
   emotionButton.addEventListener("click", () => (
-    submitEmotionFeedback(metadata.id, "wrong_emotion", status)
+    renderEmotionFeedbackChoices(metadata.id, controls, status)
   ));
 
   controls.appendChild(likeButton);
@@ -147,11 +154,18 @@ async function submitFeedback(messageId, feedback, controls, status) {
 
 async function submitEmotionFeedback(messageId, feedback, status) {
   status.textContent = "";
+  const predictedEmotion = currentEmotionState && currentEmotionState.primary_emotion
+    ? currentEmotionState.primary_emotion
+    : "";
   try {
     const response = await fetch("/api/emotion/feedback", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({message_id: messageId, feedback}),
+      body: JSON.stringify({
+        message_id: messageId,
+        feedback,
+        predicted_emotion: predictedEmotion,
+      }),
     });
     if (!response.ok) {
       throw new Error("Emotion feedback failed.");
@@ -160,6 +174,28 @@ async function submitEmotionFeedback(messageId, feedback, status) {
   } catch (error) {
     status.textContent = "情绪反馈保存失败";
   }
+}
+
+function renderEmotionFeedbackChoices(messageId, controls, status) {
+  let choices = findChildByClass(controls, "emotion-feedback-choices");
+  if (choices) {
+    choices.remove();
+    return;
+  }
+
+  choices = document.createElement("div");
+  choices.className = "emotion-feedback-choices";
+  emotionFeedbackChoices.forEach(([label, feedback]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "feedback-button emotion-feedback-choice";
+    button.textContent = label;
+    button.addEventListener("click", () => (
+      submitEmotionFeedback(messageId, feedback, status)
+    ));
+    choices.appendChild(button);
+  });
+  controls.insertBefore(choices, status);
 }
 
 function findChildByClass(parent, className) {
@@ -258,20 +294,24 @@ function clearSafetyStatus() {
 
 function renderEmotion(emotion) {
   if (emotion && emotion.emotion) {
+    currentEmotionState = {primary_emotion: emotion.emotion};
     emotionStatusEl.textContent = `情感状态：${emotion.emotion}`;
     clearSafetyStatus();
     return;
   }
+  currentEmotionState = null;
   emotionStatusEl.textContent = "情感状态：暂无";
   clearSafetyStatus();
 }
 
 function renderEmotionState(state) {
   if (!state || !state.primary_emotion) {
+    currentEmotionState = null;
     emotionStatusEl.textContent = "情感状态：暂无";
     clearSafetyStatus();
     return;
   }
+  currentEmotionState = state;
   const confidence = typeof state.confidence === "number" ? ` ${(state.confidence * 100).toFixed(0)}%` : "";
   emotionStatusEl.textContent = `情感状态：${state.primary_emotion}${confidence}`;
   if (safetyStatusEl && state.safety_level && state.safety_level !== "normal") {
