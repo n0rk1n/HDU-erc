@@ -51,6 +51,19 @@ def test_build_emotion_prompt_accepts_multiple_likely_emotions():
     assert "True emotion label: disappointed" in prompt
 
 
+def test_build_emotion_prompt_uses_previous_and_likely_emotions_for_dynamic_examples():
+    prompt = build_emotion_prompt(
+        [],
+        "thank you",
+        previous_emotion="angry",
+        likely_emotions=["grateful"],
+    )
+
+    assert "More likely emotion labels: angry, grateful" in prompt
+    assert "True emotion label: angry" in prompt
+    assert "True emotion label: grateful" in prompt
+
+
 def test_parse_emotion_output_accepts_known_label():
     assert parse_emotion_output("Emotion: anxious") == "anxious"
 

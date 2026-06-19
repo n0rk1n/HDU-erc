@@ -57,10 +57,15 @@ def build_emotion_prompt(
     if current_input:
         utterances.append(current_input)
     dialogue_context = "</s>".join(utterances)
+    retrieval_likely_emotions = [
+        emotion
+        for emotion in [previous_emotion, *(likely_emotions or [])]
+        if emotion
+    ]
     selected_examples = select_dynamic_examples(
         examples=DEFAULT_EMOTION_EXAMPLES,
         dialogue_context=dialogue_context,
-        likely_emotions=likely_emotions or ([previous_emotion] if previous_emotion else []),
+        likely_emotions=retrieval_likely_emotions,
         limit=4,
     )
     return build_emotion_analysis_prompt(
