@@ -17,6 +17,7 @@ from chatbot.history import (
 from chatbot.llm import format_emotion_context, get_session_history
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
 from chatbot.memory_extractor import extract_memory_candidates
+from chatbot.safety import assess_safety
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ class ChatService:
         self.current_emotion_state = (
             EmotionState(primary_emotion=initial_emotion) if initial_emotion else None
         )
+        self.current_safety = {"level": "normal", "guidance": ""}
         self.memory_provider = memory_provider or DisabledMemoryProvider()
         self.memory_max_results = memory_max_results
         self.current_memory_context = ""
@@ -86,8 +88,26 @@ class ChatService:
             self.current_emotion_state = (
                 emotion_result.state or EmotionState(primary_emotion=emotion_result.emotion)
             )
+            self.current_safety = assess_safety(message, self.current_emotion_state)
+            if self.current_safety["level"] != "normal":
+                self.current_emotion_state = EmotionState(
+                    primary_emotion=self.current_emotion_state.primary_emotion,
+                    confidence=self.current_emotion_state.confidence,
+                    secondary_emotions=self.current_emotion_state.secondary_emotions,
+                    evidence=self.current_emotion_state.evidence,
+                    reply_strategy=self.current_safety["guidance"],
+                    trajectory_note=self.current_emotion_state.trajectory_note,
+                    safety_level=self.current_safety["level"],
+                )
             self._remember_emotion(emotion_result.emotion)
-            return ChatEvent("emotion_done", {"emotion": emotion_result.emotion})
+            return ChatEvent(
+                "emotion_done",
+                {
+                    "emotion": emotion_result.emotion,
+                    "state": self.current_emotion_state.to_dict(),
+                    "safety": self.current_safety,
+                },
+            )
         return ChatEvent("emotion_error", {"error": emotion_result.error})
 
     def _remember_emotion(self, emotion: str) -> None:

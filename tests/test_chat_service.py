@@ -481,7 +481,52 @@ def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
         "token",
         "done",
     ]
-    assert events[2].data == {"emotion": "anxious"}
+    assert events[2].data["emotion"] == "anxious"
+    assert events[2].data["state"]["primary_emotion"] == "anxious"
+    assert events[2].data["safety"] == {"level": "normal", "guidance": ""}
+
+
+def test_stream_reply_applies_supportive_safety_guidance(tmp_path, monkeypatch):
+    config = make_test_config(emotion_interval=1)
+    chain = StreamingFakeChain()
+    emotion_llm = FakeEmotionLlm(
+        output=(
+            '{"primary_emotion":"anxious","confidence":0.9,'
+            '"secondary_emotions":["afraid"],'
+            '"evidence":"The user feels stuck.",'
+            '"reply_strategy":"Be calm.",'
+            '"trajectory_note":"distress is rising","safety_level":"normal"}'
+        )
+    )
+    analysis_file = tmp_path / "emotion_analysis.json"
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "feedback": None,
+        },
+    )
+    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    events = list(service.stream_reply("I feel completely hopeless about this."))
+
+    assert events[2].event == "emotion_done"
+    assert events[2].data["state"]["safety_level"] == "supportive"
+    assert events[2].data["state"]["reply_strategy"] == (
+        "Use supportive validation before practical next steps."
+    )
+    assert events[2].data["safety"]["level"] == "supportive"
+    assert "- safety guidance: supportive" in chain.payloads[0]["emotion_context"]
+    assert (
+        "- reply strategy: Use supportive validation before practical next steps."
+        in chain.payloads[0]["emotion_context"]
+    )
 
 
 def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monkeypatch):
@@ -512,7 +557,9 @@ def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monke
 
     events = list(service.stream_reply("I thought this would go better."))
 
-    assert events[2].data == {"emotion": "disappointed"}
+    assert events[2].data["emotion"] == "disappointed"
+    assert events[2].data["state"]["primary_emotion"] == "disappointed"
+    assert events[2].data["safety"] == {"level": "normal", "guidance": ""}
     assert "More likely emotion labels: anxious" in emotion_llm.prompts[0]
     assert "True emotion label: anxious" in emotion_llm.prompts[0]
     assert service.recent_emotions == ["disappointed", "anxious"]
