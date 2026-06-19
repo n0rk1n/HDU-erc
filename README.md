@@ -233,15 +233,25 @@ python scripts/evaluate_emotion_ablation.py \
 
 当前情绪识别做了三层增强：
 
-- **Few-shot 示例**：`emotion_examples.py` 维护少量带标签的对话示例，prompt 会渲染为 `Labeled examples`。
-- **候选情绪提示**：`ChatService` 记录最近 3 个成功识别的情绪，并作为 `More likely emotion labels` 注入下一次情绪识别 prompt。
-- **独立 prompt 构造**：`emotion_prompt.py` 负责模板、示例渲染和候选情绪归一化；`emotion.py` 只负责分析流程、解析和持久化。
+- **Dynamic EICL 示例**：从本地 `emotion_examples.py` 示例库动态选择相关样例，prompt 会渲染为 `Dynamic EICL examples`，并包含 selection reason 和 score。
+- **候选情绪提示**：`ChatService` 记录最近 3 个成功识别的情绪，并作为 `More likely emotion labels` 注入下一次情绪识别 prompt；这些候选情绪也会影响动态示例选择。
+- **结构化 prompt 构造**：`emotion_prompt.py` 负责构建结构化 JSON 输出 prompt；`emotion.py` 负责解析、持久化结构化情绪状态，并保留 legacy 输出 fallback。
 
-模型必须输出：
+模型正常应输出一个结构化 JSON 对象：
 
-```text
-Emotion: label
+```json
+{
+  "primary_emotion": "anxious",
+  "confidence": 0.82,
+  "secondary_emotions": ["hopeful"],
+  "evidence": "I am worried about tomorrow's demo but I still want to try.",
+  "reply_strategy": "Acknowledge the worry, encourage a small next step, and keep the reply calm.",
+  "trajectory_note": "Anxiety is present, with some hopeful intent.",
+  "safety_level": "normal"
+}
 ```
+
+旧版 `Emotion: label` 输出仍会被接受为 fallback，但只会保存最小结构化状态。
 
 如果输出无法解析为已知标签，本轮聊天仍会继续，错误会记录到情绪分析文件。
 
