@@ -206,6 +206,31 @@ Relevant Long-term Memory:
 
 情绪识别模块负责把最近对话上下文分类到固定情绪标签中。它的结果会写入 `data/records/emotion_analysis.json`，并在后续回复中作为 `emotion_context` 注入聊天 prompt。
 
+### Emotion-Aware Chatbot v2
+
+The chatbot now stores structured emotion state in addition to the legacy primary label:
+
+- `primary_emotion`
+- `confidence`
+- `secondary_emotions`
+- `evidence`
+- `reply_strategy`
+- `trajectory_note`
+- `safety_level`
+
+Emotion analysis uses dynamic EICL-style example selection from the local example library. The Web UI exposes the latest emotion and a recent timeline, and `/api/emotion/timeline` returns the serialized timeline for demos or reports.
+
+Emotion-correctness feedback is saved locally in `data/records/emotion_feedback.json`. Ablation results can be compared with:
+
+```bash
+python scripts/evaluate_emotion_ablation.py \
+  --labels-file data/records/emotion_labels.json \
+  --run static=data/records/static_few_shot.json \
+  --run dynamic=data/records/dynamic_eicl.json \
+  --markdown-file data/records/ablation.md \
+  --csv-file data/records/ablation.csv
+```
+
 当前情绪识别做了三层增强：
 
 - **Few-shot 示例**：`emotion_examples.py` 维护少量带标签的对话示例，prompt 会渲染为 `Labeled examples`。
