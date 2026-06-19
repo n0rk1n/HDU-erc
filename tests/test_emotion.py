@@ -256,3 +256,12 @@ def test_load_latest_successful_emotion_returns_none_for_missing_file(tmp_path, 
     monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
 
     assert emotion.load_latest_successful_emotion() is None
+
+
+def test_emotion_labels_are_shared_from_label_module():
+    from chatbot.emotion_labels import EMOTION_LABELS as SHARED_LABELS
+    from chatbot.emotion_labels import EMOTION_LABEL_SET as SHARED_LABEL_SET
+
+    assert emotion.EMOTION_LABELS is SHARED_LABELS
+    assert emotion.EMOTION_LABEL_SET is SHARED_LABEL_SET
+    assert "anxious" in SHARED_LABEL_SET

@@ -1,0 +1,38 @@
+"""Shared emotion labels."""
+
+EMOTION_LABELS = [
+    "surprised",
+    "excited",
+    "annoyed",
+    "proud",
+    "angry",
+    "sad",
+    "grateful",
+    "lonely",
+    "impressed",
+    "afraid",
+    "disgusted",
+    "confident",
+    "terrified",
+    "hopeful",
+    "anxious",
+    "disappointed",
+    "joyful",
+    "prepared",
+    "guilty",
+    "furious",
+    "nostalgic",
+    "jealous",
+    "anticipating",
+    "embarrassed",
+    "content",
+    "devastated",
+    "sentimental",
+    "caring",
+    "trusting",
+    "ashamed",
+    "apprehensive",
+    "faithful",
+]
+
+EMOTION_LABEL_SET = set(EMOTION_LABELS)

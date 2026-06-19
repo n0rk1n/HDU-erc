@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
 from chatbot.emotion_prompt import build_emotion_analysis_prompt
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
@@ -14,42 +15,6 @@ DEFAULT_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "records" / "emotion_analysis.jso
 DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "emotion_analysis.json")
 EMOTION_ANALYSIS_FILE = DEFAULT_EMOTION_ANALYSIS_FILE
 LEGACY_EMOTION_ANALYSIS_FILE = DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE
-EMOTION_LABELS = [
-    "surprised",
-    "excited",
-    "annoyed",
-    "proud",
-    "angry",
-    "sad",
-    "grateful",
-    "lonely",
-    "impressed",
-    "afraid",
-    "disgusted",
-    "confident",
-    "terrified",
-    "hopeful",
-    "anxious",
-    "disappointed",
-    "joyful",
-    "prepared",
-    "guilty",
-    "furious",
-    "nostalgic",
-    "jealous",
-    "anticipating",
-    "embarrassed",
-    "content",
-    "devastated",
-    "sentimental",
-    "caring",
-    "trusting",
-    "ashamed",
-    "apprehensive",
-    "faithful",
-]
-
-EMOTION_LABEL_SET = set(EMOTION_LABELS)
 
 
 @dataclass(frozen=True)
