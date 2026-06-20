@@ -477,6 +477,38 @@ def test_stream_reply_records_ai_session_message_with_metadata(monkeypatch):
     }
 
 
+def test_stream_reply_records_emotion_metadata_on_ai_message(monkeypatch):
+    config = make_test_config(emotion_interval=1)
+    chain = StreamingFakeChain()
+    emotion_llm = FakeEmotionLlm()
+    captured = {}
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+
+    def fake_append_ai_message(content, **metadata):
+        captured.update(metadata)
+        return {
+            "id": "ai_1",
+            "role": "ai",
+            "content": content,
+            "timestamp": "t1",
+            "feedback": None,
+            **metadata,
+        }
+
+    monkeypatch.setattr("chatbot.chat_service.append_ai_message", fake_append_ai_message)
+
+    service = ChatService(chain, config, emotion_llm, initial_records=[])
+
+    events = list(service.stream_reply("hello"))
+
+    assert events[-1].data["turn_count"] == 1
+    assert events[-1].data["emotion_state"]["primary_emotion"] == "anxious"
+    assert captured["turn_count"] == 1
+    assert captured["emotion_state"]["primary_emotion"] == "anxious"
+    assert service.session_records[-1]["emotion_state"]["primary_emotion"] == "anxious"
+
+
 def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=1)
     chain = StreamingFakeChain()

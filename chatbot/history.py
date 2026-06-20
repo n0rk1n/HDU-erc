@@ -1,6 +1,7 @@
 """聊天历史持久化 —— 将对话记录读写到 JSON 文件，并提供格式化输出。"""
 
 import json
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -12,6 +13,7 @@ DEFAULT_HISTORY_FILE = str(DATA_DIR / "records" / "chat_history.json")
 DEFAULT_LEGACY_HISTORY_FILE = str(DATA_DIR / "chat_history.json")
 HISTORY_FILE = DEFAULT_HISTORY_FILE
 LEGACY_HISTORY_FILE = DEFAULT_LEGACY_HISTORY_FILE
+_HISTORY_LOCK = threading.RLock()
 
 REGENERATION_REASONS = {
     "不准确",
@@ -74,7 +76,7 @@ def _now_iso() -> str:
 
 def _save_history(records: list[dict]) -> bool:
     path = Path(HISTORY_FILE)
-    tmp = path.with_suffix(".tmp")
+    tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with tmp.open("w") as f:
@@ -94,29 +96,31 @@ def _save_history(records: list[dict]) -> bool:
 
 def append_message(role: str, content: str) -> dict | None:
     """追加一条消息到历史文件 —— 先写临时文件再原子替换，避免写坏 JSON。"""
-    try:
+    with _HISTORY_LOCK:
+        try:
+            records = load_history()
+            record = {
+                "role": role,
+                "content": content,
+                "timestamp": _now_iso(),
+            }
+            records.append(record)
+            if _save_history(records):
+                return record
+            return None
+        except OSError as exc:
+            print(f"Warning: could not save chat history: {exc}")
+            return None
+
+
+def append_ai_message(content: str, **extra: Any) -> dict | None:
+    with _HISTORY_LOCK:
         records = load_history()
-        record = {
-            "role": role,
-            "content": content,
-            "timestamp": _now_iso(),
-        }
+        record = _new_ai_record(content, **extra)
         records.append(record)
         if _save_history(records):
             return record
         return None
-    except OSError as exc:
-        print(f"Warning: could not save chat history: {exc}")
-        return None
-
-
-def append_ai_message(content: str) -> dict | None:
-    records = load_history()
-    record = _new_ai_record(content)
-    records.append(record)
-    if _save_history(records):
-        return record
-    return None
 
 
 def _new_ai_record(content: str, **extra: Any) -> dict:
@@ -179,20 +183,21 @@ def record_message_feedback(message_id: str, feedback: str) -> FeedbackUpdateRes
     if feedback not in {"like", "dislike"}:
         return FeedbackUpdateResult("invalid_feedback")
 
-    records = load_history()
-    for record in records:
-        if record.get("id") != message_id:
-            continue
-        if record.get("role") != "ai":
-            return FeedbackUpdateResult("not_ai")
-        existing_feedback = record.get("feedback")
-        if existing_feedback in {"like", "dislike"}:
-            return FeedbackUpdateResult("already_rated", existing_feedback)
+    with _HISTORY_LOCK:
+        records = load_history()
+        for record in records:
+            if record.get("id") != message_id:
+                continue
+            if record.get("role") != "ai":
+                return FeedbackUpdateResult("not_ai")
+            existing_feedback = record.get("feedback")
+            if existing_feedback in {"like", "dislike"}:
+                return FeedbackUpdateResult("already_rated", existing_feedback)
 
-        record["feedback"] = feedback
-        if _save_history(records):
-            return FeedbackUpdateResult("updated", feedback)
-        return FeedbackUpdateResult("write_failed")
+            record["feedback"] = feedback
+            if _save_history(records):
+                return FeedbackUpdateResult("updated", feedback)
+            return FeedbackUpdateResult("write_failed")
 
     return FeedbackUpdateResult("not_found")
 
@@ -204,35 +209,36 @@ def prepare_message_regeneration(
     if reason not in REGENERATION_REASONS:
         return RegenerationUpdateResult("invalid_reason")
 
-    records = load_history()
-    for index, record in enumerate(records):
-        if record.get("id") != message_id:
-            continue
-        if record.get("role") != "ai":
-            return RegenerationUpdateResult("not_ai")
-        existing_regeneration = record.get("regeneration")
-        if isinstance(existing_regeneration, dict):
+    with _HISTORY_LOCK:
+        records = load_history()
+        for index, record in enumerate(records):
+            if record.get("id") != message_id:
+                continue
+            if record.get("role") != "ai":
+                return RegenerationUpdateResult("not_ai")
+            existing_regeneration = record.get("regeneration")
+            if isinstance(existing_regeneration, dict):
+                return RegenerationUpdateResult(
+                    "already_regenerated",
+                    original_message_id=message_id,
+                    message_id=str(existing_regeneration.get("regenerated_message_id", "")),
+                    reason=str(existing_regeneration.get("reason", "")),
+                    original_user_message=str(
+                        existing_regeneration.get("original_user_message", "")
+                    ),
+                )
+            original_user_message = _resolve_original_user_message(records, index)
+            if not original_user_message:
+                return RegenerationUpdateResult(
+                    "missing_prompt",
+                    original_message_id=message_id,
+                )
             return RegenerationUpdateResult(
-                "already_regenerated",
+                "ready",
                 original_message_id=message_id,
-                message_id=str(existing_regeneration.get("regenerated_message_id", "")),
-                reason=str(existing_regeneration.get("reason", "")),
-                original_user_message=str(
-                    existing_regeneration.get("original_user_message", "")
-                ),
+                reason=reason,
+                original_user_message=original_user_message,
             )
-        original_user_message = _resolve_original_user_message(records, index)
-        if not original_user_message:
-            return RegenerationUpdateResult(
-                "missing_prompt",
-                original_message_id=message_id,
-            )
-        return RegenerationUpdateResult(
-            "ready",
-            original_message_id=message_id,
-            reason=reason,
-            original_user_message=original_user_message,
-        )
 
     return RegenerationUpdateResult("not_found")
 
@@ -245,50 +251,51 @@ def record_message_regeneration(
     if reason not in REGENERATION_REASONS:
         return RegenerationUpdateResult("invalid_reason")
 
-    records = load_history()
-    for index, record in enumerate(records):
-        if record.get("id") != message_id:
-            continue
-        if record.get("role") != "ai":
-            return RegenerationUpdateResult("not_ai")
-        existing_regeneration = record.get("regeneration")
-        if isinstance(existing_regeneration, dict):
-            return RegenerationUpdateResult(
-                "already_regenerated",
-                original_message_id=message_id,
-                message_id=str(existing_regeneration.get("regenerated_message_id", "")),
-                reason=str(existing_regeneration.get("reason", "")),
-                original_user_message=str(
-                    existing_regeneration.get("original_user_message", "")
-                ),
-            )
+    with _HISTORY_LOCK:
+        records = load_history()
+        for index, record in enumerate(records):
+            if record.get("id") != message_id:
+                continue
+            if record.get("role") != "ai":
+                return RegenerationUpdateResult("not_ai")
+            existing_regeneration = record.get("regeneration")
+            if isinstance(existing_regeneration, dict):
+                return RegenerationUpdateResult(
+                    "already_regenerated",
+                    original_message_id=message_id,
+                    message_id=str(existing_regeneration.get("regenerated_message_id", "")),
+                    reason=str(existing_regeneration.get("reason", "")),
+                    original_user_message=str(
+                        existing_regeneration.get("original_user_message", "")
+                    ),
+                )
 
-        original_user_message = _resolve_original_user_message(records, index)
-        if not original_user_message:
-            return RegenerationUpdateResult(
-                "missing_prompt",
-                original_message_id=message_id,
-            )
+            original_user_message = _resolve_original_user_message(records, index)
+            if not original_user_message:
+                return RegenerationUpdateResult(
+                    "missing_prompt",
+                    original_message_id=message_id,
+                )
 
-        new_record = _new_ai_record(new_content, regenerated_from=message_id)
-        record["regeneration"] = {
-            "reason": reason,
-            "regenerated_message_id": new_record["id"],
-            "timestamp": _now_iso(),
-            "original_user_message": original_user_message,
-            "original_ai_content": str(record.get("content", "")),
-        }
-        records.append(new_record)
-        if _save_history(records):
-            return RegenerationUpdateResult(
-                "updated",
-                original_message_id=message_id,
-                message_id=new_record["id"],
-                content=new_content,
-                reason=reason,
-                original_user_message=original_user_message,
-            )
-        return RegenerationUpdateResult("write_failed", original_message_id=message_id)
+            new_record = _new_ai_record(new_content, regenerated_from=message_id)
+            record["regeneration"] = {
+                "reason": reason,
+                "regenerated_message_id": new_record["id"],
+                "timestamp": _now_iso(),
+                "original_user_message": original_user_message,
+                "original_ai_content": str(record.get("content", "")),
+            }
+            records.append(new_record)
+            if _save_history(records):
+                return RegenerationUpdateResult(
+                    "updated",
+                    original_message_id=message_id,
+                    message_id=new_record["id"],
+                    content=new_content,
+                    reason=reason,
+                    original_user_message=original_user_message,
+                )
+            return RegenerationUpdateResult("write_failed", original_message_id=message_id)
 
     return RegenerationUpdateResult("not_found")
 

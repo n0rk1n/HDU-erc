@@ -168,10 +168,27 @@ def _load_chat_llm_config(args) -> LlmConfig:
 
 
 def _load_emotion_llm_config(args, chat_llm: LlmConfig) -> LlmConfig:
-    """加载情感 LLM 配置；仅设置 EMOTION_LLM_MODEL 时才独立配置，否则复用 chat_llm。"""
+    """加载情感 LLM 配置；任一独立情感配置出现时构建独立配置，否则复用 chat_llm。"""
+    has_emotion_override = any(
+        _clean(value) is not None
+        for value in (
+            args.emotion_provider,
+            args.emotion_model,
+            args.emotion_temperature,
+            args.emotion_base_url,
+            os.getenv("EMOTION_LLM_PROVIDER"),
+            os.getenv("EMOTION_LLM_MODEL"),
+            os.getenv("EMOTION_LLM_TEMPERATURE"),
+            os.getenv("EMOTION_LLM_BASE_URL"),
+            os.getenv("EMOTION_LLM_API_KEY"),
+        )
+    )
+    if not has_emotion_override:
+        return chat_llm
+
     emotion_model = _first_value(args.emotion_model, os.getenv("EMOTION_LLM_MODEL"))
     if emotion_model is None:
-        return chat_llm
+        emotion_model = chat_llm.model
 
     provider = _first_value(args.emotion_provider, os.getenv("EMOTION_LLM_PROVIDER")) or chat_llm.provider
     api_key = _first_value(os.getenv("EMOTION_LLM_API_KEY")) or chat_llm.api_key

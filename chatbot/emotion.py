@@ -2,10 +2,12 @@
 
 import json
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from chatbot.emotion_examples import DEFAULT_EMOTION_EXAMPLES
 from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
@@ -18,6 +20,7 @@ DEFAULT_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "records" / "emotion_analysis.jso
 DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "emotion_analysis.json")
 EMOTION_ANALYSIS_FILE = DEFAULT_EMOTION_ANALYSIS_FILE
 LEGACY_EMOTION_ANALYSIS_FILE = DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE
+_ANALYSIS_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -153,15 +156,24 @@ def load_latest_successful_emotion() -> dict[str, Any] | None:
 
 
 def append_analysis_record(record: dict[str, Any]) -> None:
-    path = Path(EMOTION_ANALYSIS_FILE)
-    records = load_analysis_records()
-    output_record = {"timestamp": _now_iso(), **record}
-    records.append(output_record)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    except OSError as exc:
-        print(f"Warning: failed to write emotion analysis: {exc}")
+    with _ANALYSIS_LOCK:
+        path = Path(EMOTION_ANALYSIS_FILE)
+        records = load_analysis_records()
+        output_record = {"timestamp": _now_iso(), **record}
+        records.append(output_record)
+        tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+            tmp.replace(path)
+        except OSError as exc:
+            print(f"Warning: failed to write emotion analysis: {exc}")
+        finally:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
 
 
 def analyze_emotion(

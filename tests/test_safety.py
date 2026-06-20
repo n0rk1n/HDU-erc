@@ -23,3 +23,10 @@ def test_assess_safety_returns_crisis_for_self_harm_language():
 
     assert result["level"] == "crisis"
     assert "immediate" in result["guidance"].lower()
+
+
+def test_assess_safety_returns_crisis_for_common_chinese_self_harm_language():
+    result = assess_safety("我真的活不下去了，想死。", None)
+
+    assert result["level"] == "crisis"
+    assert "immediate" in result["guidance"].lower()

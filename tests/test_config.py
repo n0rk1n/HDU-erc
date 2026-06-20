@@ -88,6 +88,25 @@ def test_emotion_llm_inherits_chat_values_and_overrides_configured_values(monkey
     assert config.emotion_llm != config.chat_llm
 
 
+def test_emotion_llm_partial_env_creates_independent_config(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "chat-key")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.setenv("LLM_MODEL", "chat-model")
+    monkeypatch.setenv("LLM_BASE_URL", "https://chat.example.com/v1")
+    monkeypatch.setenv("LLM_TEMPERATURE", "0.6")
+    monkeypatch.setenv("EMOTION_LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("EMOTION_LLM_BASE_URL", "https://emotion.example.com/v1")
+
+    config = load_config([], load_env=False)
+
+    assert config.emotion_llm.provider == "deepseek"
+    assert config.emotion_llm.api_key == "chat-key"
+    assert config.emotion_llm.model == "chat-model"
+    assert config.emotion_llm.base_url == "https://emotion.example.com/v1"
+    assert config.emotion_llm.temperature == 0.6
+    assert config.emotion_llm != config.chat_llm
+
+
 def test_emotion_llm_env_only_values_override_chat_values(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "chat-key")
     monkeypatch.setenv("LLM_PROVIDER", "openai")

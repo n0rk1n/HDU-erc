@@ -116,7 +116,7 @@ function renderFeedbackControls(wrapper, metadata) {
     renderRegenerationReasons(wrapper, metadata, controls, status, buttons)
   ));
   emotionButton.addEventListener("click", () => (
-    renderEmotionFeedbackChoices(metadata.id, controls, status)
+    renderEmotionFeedbackChoices(metadata, controls, status)
   ));
 
   controls.appendChild(likeButton);
@@ -152,20 +152,26 @@ async function submitFeedback(messageId, feedback, controls, status) {
   }
 }
 
-async function submitEmotionFeedback(messageId, feedback, status) {
+async function submitEmotionFeedback(metadata, feedback, status) {
   status.textContent = "";
-  const predictedEmotion = currentEmotionState && currentEmotionState.primary_emotion
-    ? currentEmotionState.primary_emotion
-    : "";
+  const emotionState = metadata.emotion_state || null;
+  const predictedEmotion = metadata.predicted_emotion
+    || (emotionState && emotionState.primary_emotion)
+    || (currentEmotionState && currentEmotionState.primary_emotion)
+    || "";
   try {
+    const body = {
+      message_id: metadata.id || "",
+      feedback,
+      predicted_emotion: predictedEmotion,
+    };
+    if (metadata.turn_count) {
+      body.turn_count = metadata.turn_count;
+    }
     const response = await fetch("/api/emotion/feedback", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({
-        message_id: messageId,
-        feedback,
-        predicted_emotion: predictedEmotion,
-      }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) {
       throw new Error("Emotion feedback failed.");
@@ -176,7 +182,7 @@ async function submitEmotionFeedback(messageId, feedback, status) {
   }
 }
 
-function renderEmotionFeedbackChoices(messageId, controls, status) {
+function renderEmotionFeedbackChoices(metadata, controls, status) {
   let choices = findChildByClass(controls, "emotion-feedback-choices");
   if (choices) {
     choices.remove();
@@ -191,7 +197,7 @@ function renderEmotionFeedbackChoices(messageId, controls, status) {
     button.className = "feedback-button emotion-feedback-choice";
     button.textContent = label;
     button.addEventListener("click", () => (
-      submitEmotionFeedback(messageId, feedback, status)
+      submitEmotionFeedback(metadata, feedback, status)
     ));
     choices.appendChild(button);
   });
@@ -382,10 +388,27 @@ async function initialize() {
   }
 }
 
-function streamMessage(message) {
+async function streamMessage(message) {
   setLocked(true);
   let aiMessage = null;
-  const source = new EventSource(`/api/chat/stream?message=${encodeURIComponent(message)}`);
+  let source = null;
+
+  try {
+    const response = await fetch("/api/chat/streams", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message}),
+    });
+    if (!response.ok) {
+      throw new Error("Message request failed.");
+    }
+    const payload = await response.json();
+    source = new EventSource(`/api/chat/streams/${encodeURIComponent(payload.stream_id)}`);
+  } catch (error) {
+    aiMessage = addMessage("ai", "发送失败，请稍后重试");
+    setLocked(false);
+    return;
+  }
 
   source.addEventListener("user_message", (event) => {
     const payload = JSON.parse(event.data);
@@ -425,7 +448,13 @@ function streamMessage(message) {
   source.addEventListener("done", (event) => {
     const payload = event.data ? JSON.parse(event.data) : {};
     if (aiMessage && payload.message_id) {
-      renderFeedbackControls(aiMessage.wrapper, {id: payload.message_id, feedback: null});
+      renderFeedbackControls(aiMessage.wrapper, {
+        id: payload.message_id,
+        feedback: null,
+        turn_count: payload.turn_count || null,
+        emotion_state: payload.emotion_state || null,
+        predicted_emotion: payload.predicted_emotion || "",
+      });
     }
     source.close();
     setLocked(false);

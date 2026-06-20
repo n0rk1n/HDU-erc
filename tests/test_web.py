@@ -435,6 +435,28 @@ def test_session_endpoint_returns_null_emotion(monkeypatch):
     assert response.json() == {"messages": [], "emotion": None}
 
 
+def test_chat_stream_uses_one_time_posted_stream_id():
+    service = FakeService()
+    app = create_app(service_factory=lambda: service)
+    client = TestClient(app)
+
+    created = client.post("/api/chat/streams", json={"message": "hello"})
+
+    assert created.status_code == 200
+    stream_id = created.json()["stream_id"]
+
+    streamed = client.get(f"/api/chat/streams/{stream_id}")
+
+    assert streamed.status_code == 200
+    assert "event: done" in streamed.text
+    assert service.messages == ["hello"]
+
+    replay = client.get(f"/api/chat/streams/{stream_id}")
+
+    assert replay.status_code == 410
+    assert service.messages == ["hello"]
+
+
 def test_emotion_timeline_endpoint_returns_recent_states(monkeypatch):
     monkeypatch.setattr(
         "chatbot.web.load_history",

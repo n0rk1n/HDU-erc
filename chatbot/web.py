@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, StreamingResponse
@@ -43,6 +44,10 @@ class EmotionFeedbackRequest(BaseModel):
     turn_count: int | None = None
     predicted_emotion: str = ""
     corrected_emotion: str = ""
+
+
+class ChatStreamRequest(BaseModel):
+    message: str
 
 
 def _request_payload(request: BaseModel) -> dict:
@@ -97,6 +102,12 @@ def _structured_messages(records: list[dict], limit: int) -> list[dict]:
             message["regeneration"] = record["regeneration"]
         if "regenerated_from" in record:
             message["regenerated_from"] = record["regenerated_from"]
+        if "turn_count" in record:
+            message["turn_count"] = record["turn_count"]
+        if "emotion_state" in record:
+            message["emotion_state"] = record["emotion_state"]
+        if "predicted_emotion" in record:
+            message["predicted_emotion"] = record["predicted_emotion"]
         messages.append(message)
     return messages[-limit:]
 
@@ -229,6 +240,7 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.on_event("startup")
     def startup() -> None:
         app.state.chat_service = service_factory()
+        app.state.chat_streams = {}
 
     def get_service() -> ChatService:
         service = getattr(app.state, "chat_service", None)
@@ -236,6 +248,13 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
             service = service_factory()
             app.state.chat_service = service
         return service
+
+    def get_chat_streams() -> dict[str, str]:
+        streams = getattr(app.state, "chat_streams", None)
+        if streams is None:
+            streams = {}
+            app.state.chat_streams = streams
+        return streams
 
     @app.get("/")
     def index():
@@ -318,6 +337,27 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         if result.status in {"write_failed", "generation_failed"}:
             raise HTTPException(status_code=500, detail="Could not regenerate message.")
         raise HTTPException(status_code=500, detail="Could not regenerate message.")
+
+    @app.post("/api/chat/streams")
+    def create_chat_stream(request: ChatStreamRequest):
+        message = request.message.strip()
+        if not message:
+            raise HTTPException(status_code=400, detail="Message must not be empty.")
+        stream_id = uuid4().hex
+        get_chat_streams()[stream_id] = message
+        return {"stream_id": stream_id}
+
+    @app.get("/api/chat/streams/{stream_id}")
+    def consume_chat_stream(stream_id: str, service: ChatService = Depends(get_service)):
+        message = get_chat_streams().pop(stream_id, None)
+        if message is None:
+            raise HTTPException(status_code=410, detail="Chat stream is expired or already consumed.")
+
+        def event_stream():
+            for event in service.stream_reply(message):
+                yield format_sse(event)
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     @app.get("/api/chat/stream")
     def chat_stream(message: str, service: ChatService = Depends(get_service)):

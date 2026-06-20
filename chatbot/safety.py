@@ -4,7 +4,19 @@ from __future__ import annotations
 
 from chatbot.emotion_state import EmotionState
 
-CRISIS_TERMS = ("kill myself", "suicide", "end my life", "自杀", "不想活")
+CRISIS_TERMS = (
+    "kill myself",
+    "suicide",
+    "end my life",
+    "自杀",
+    "不想活",
+    "想死",
+    "去死",
+    "活不下去",
+    "活不下去了",
+    "结束生命",
+    "了结自己",
+)
 SUPPORTIVE_TERMS = ("hopeless", "can't go on", "崩溃", "绝望", "撑不住")
 SUPPORTIVE_EMOTIONS = {"devastated", "terrified", "afraid", "sad", "lonely", "anxious"}
 
