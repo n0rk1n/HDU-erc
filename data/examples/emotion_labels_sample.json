@@ -1,0 +1,10 @@
+[
+  {
+    "turn_count": 1,
+    "expected": "anxious"
+  },
+  {
+    "turn_count": 2,
+    "expected": "grateful"
+  }
+]

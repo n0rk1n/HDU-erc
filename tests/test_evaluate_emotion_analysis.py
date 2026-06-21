@@ -1,3 +1,6 @@
+import subprocess
+import sys
+
 from scripts.evaluate_emotion_analysis import evaluate_records
 
 
@@ -44,3 +47,15 @@ def test_evaluate_records_falls_back_to_successful_record_order():
     assert result["correct"] == 1
     assert result["accuracy"] == 1.0
     assert result["macro_f1"] == 1.0
+
+
+def test_direct_cli_help_works():
+    result = subprocess.run(
+        [sys.executable, "scripts/evaluate_emotion_analysis.py", "--help"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Evaluate chatbot emotion-analysis records" in result.stdout

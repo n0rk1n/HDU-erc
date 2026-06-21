@@ -359,17 +359,6 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-    @app.get("/api/chat/stream")
-    def chat_stream(message: str, service: ChatService = Depends(get_service)):
-        if not message.strip():
-            raise HTTPException(status_code=400, detail="Message must not be empty.")
-
-        def event_stream():
-            for event in service.stream_reply(message):
-                yield format_sse(event)
-
-        return StreamingResponse(event_stream(), media_type="text/event-stream")
-
     return app
 
 

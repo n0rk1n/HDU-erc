@@ -998,28 +998,22 @@ def test_regenerate_endpoint_maps_generation_exception_to_500(monkeypatch):
     assert response.json() == {"detail": "Could not regenerate message."}
 
 
-def test_stream_endpoint_returns_sse_events():
+def test_legacy_stream_endpoint_is_removed():
     service = FakeService()
     app = create_app(service_factory=lambda: service)
     client = TestClient(app)
 
     response = client.get("/api/chat/stream?message=hello")
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    assert "event: user_message" in response.text
-    assert 'data: {"role": "human", "content": "hello"}' in response.text
-    assert "event: token" in response.text
-    assert "event: done" in response.text
-    assert 'data: {"content": "hi", "message_id": "ai_1"}' in response.text
-    assert service.messages == ["hello"]
+    assert response.status_code == 404
+    assert service.messages == []
 
 
-def test_stream_endpoint_rejects_blank_message():
+def test_chat_stream_create_rejects_blank_message():
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)
 
-    response = client.get("/api/chat/stream?message=%20%20")
+    response = client.post("/api/chat/streams", json={"message": "  "})
 
     assert response.status_code == 400
     assert response.json() == {"detail": "Message must not be empty."}

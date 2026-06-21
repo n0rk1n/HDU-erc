@@ -1,0 +1,12 @@
+[
+  {
+    "turn_count": 1,
+    "emotion": "anxious",
+    "success": true
+  },
+  {
+    "turn_count": 2,
+    "emotion": "grateful",
+    "success": true
+  }
+]

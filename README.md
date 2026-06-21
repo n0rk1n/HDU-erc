@@ -1,12 +1,12 @@
 # 情绪识别聊天机器人
 
-这是一个本地 Web 聊天机器人项目。它使用 LLM 生成聊天回复，通过 SSE 在浏览器中流式显示；同时会周期性识别用户情绪，并用本地 SQLite 记住长期偏好、目标和约束。聊天历史、情绪分析记录、AI 消息反馈和长期记忆都保存在本地。
+这是一个本地优先的 FastAPI Web 聊天机器人。应用用 OpenAI-compatible LLM 生成回复，通过浏览器端 SSE 流式显示结果，并按固定用户轮数分析情绪。聊天历史、情绪分析记录、AI 消息反馈、情绪反馈和长期记忆都默认保存在本地 `data/records/`。
 
-项目默认不使用 Mem0 Platform，也不依赖第三方托管存储。长期记忆使用 Python 标准库 `sqlite3`，不需要单独安装数据库服务。
+项目当前支持 `openai` 和 `deepseek` 两类 OpenAI-compatible provider。长期记忆使用 Python 标准库 `sqlite3`，不依赖 Mem0 Platform、云端向量库或第三方托管存储。
 
 ## 快速开始
 
-创建并激活 Python 虚拟环境，然后安装依赖：
+创建虚拟环境并安装依赖：
 
 ```bash
 python -m venv .venv
@@ -14,13 +14,13 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-从示例文件创建本地 `.env`：
+复制环境变量示例：
 
 ```bash
 cp .env.example .env
 ```
 
-编辑 `.env`，填入聊天模型配置。DeepSeek 示例：
+编辑 `.env`。DeepSeek 示例：
 
 ```env
 LLM_PROVIDER=deepseek
@@ -28,6 +28,7 @@ LLM_API_KEY=your_api_key_here
 LLM_MODEL=deepseek-chat
 LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_TEMPERATURE=0.7
+
 EMOTION_INTERVAL=5
 MEMORY_ENABLED=true
 MEMORY_DB_PATH=data/records/memory.sqlite3
@@ -40,157 +41,172 @@ MEMORY_MAX_RESULTS=5
 uvicorn chatbot.web:app
 ```
 
-然后打开：
+浏览器打开：
 
 ```text
 http://127.0.0.1:8000
 ```
 
-## 核心功能
+## 功能概览
 
-- 提供 FastAPI Web 服务和免构建的 HTML/CSS/JavaScript 前端。
-- 使用 SSE 将 AI 回复按 token 流式显示到页面。
-- 持久化聊天历史，并在页面加载时恢复最近消息。
-- 每隔固定用户轮数进行一次情绪识别。
-- 情绪识别 prompt 支持 few-shot 示例和最近候选情绪。
-- 将当前情绪和相关长期记忆注入聊天 prompt。
-- 支持对 AI 消息进行点赞或点踩反馈。
-- 使用本地 SQLite 保存长期记忆，不需要第三方托管存储。
-- 提供情绪识别评估脚本，支持 accuracy、macro F1 和错误样例输出。
+- FastAPI 服务和免构建的 HTML/CSS/JavaScript 前端。
+- 使用一次性 stream id 建立 SSE 连接，避免浏览器自动重连时重复提交同一条消息。
+- 流式生成聊天回复，并在生成完成后写入 AI 消息记录。
+- 从本地 JSON 恢复聊天历史和最近情绪状态。
+- 每隔 `EMOTION_INTERVAL` 个用户回合调用情绪 LLM，保存结构化情绪状态。
+- 将当前情绪、危机/支持性安全提示和相关长期记忆注入聊天 prompt。
+- 支持 AI 消息点赞、点踩和重新生成。
+- 支持情绪识别正确性反馈。
+- 使用 SQLite 保存长期记忆，包括偏好、稳定画像、长期目标和明确约束。
+- 提供情绪识别评估脚本和 ablation 对比脚本。
 
 ## 运行流程
 
-应用启动时，`chatbot.web` 会构建一个本地聊天服务：
+应用启动时，`chatbot.web.build_service()` 会完成这些步骤：
 
-1. 从 `.env` 和环境变量读取 LLM、情绪识别和记忆配置。
-2. 读取 `data/records/chat_history.json` 中的历史消息。
-3. 读取可选的静态用户画像。
-4. 构建聊天 LLM 和情绪识别 LLM。
-5. 构建本地 memory provider，默认使用 `data/records/memory.sqlite3`。
-6. 将历史消息恢复到 LangChain 会话历史中。
-7. 构建聊天 chain，并创建 `ChatService`。
+1. 通过 `chatbot.config.load_config()` 读取 `.env`、环境变量和默认值。
+2. 从 `data/records/chat_history.json` 恢复聊天历史。
+3. 从 `data/config/user_profile.json` 读取可选静态用户画像。
+4. 构建聊天 LLM；如果配置了任意 `EMOTION_LLM_*`，再构建独立情绪 LLM。
+5. 构建本地 memory provider，默认数据库是 `data/records/memory.sqlite3`。
+6. 将历史消息恢复到 LangChain 的 `InMemoryChatMessageHistory`。
+7. 构建聊天 chain，并创建单用户 `ChatService`。
 
 用户发送消息时：
 
-1. 前端用 `EventSource` 连接 `/api/chat/stream`。
-2. `ChatService` 写入用户消息。
-3. 根据当前输入检索相关长期记忆，生成 `memory_context`。
-4. 如果到达情绪识别间隔，调用情绪 LLM 并更新当前情绪。
-5. 将 `memory_context` 和 `emotion_context` 注入聊天 prompt。
-6. 聊天 LLM 流式生成回复，前端逐段渲染。
-7. 完整 AI 回复写入历史，并生成可反馈的 message id。
-8. 从用户消息中保守提取长期记忆候选，写入本地 SQLite。
+1. 前端 `POST /api/chat/streams` 创建一次性 `stream_id`。
+2. 前端用 `EventSource` 连接 `/api/chat/streams/{stream_id}` 消费 SSE。
+3. `ChatService.stream_reply()` 写入 human 消息并刷新长期记忆上下文。
+4. 到达情绪识别间隔时，调用情绪 LLM，写入情绪分析记录，并更新当前情绪状态。
+5. 对当前输入做安全提示判断；危机或支持性提示会覆盖回复策略。
+6. 将 `memory_context` 和 `emotion_context` 注入聊天 prompt。
+7. 聊天 LLM 流式返回 token，前端逐段渲染。
+8. 完整回复写入历史，生成可反馈的 AI 消息 id。
+9. 从本轮用户消息和 AI 回复中保守抽取长期记忆候选，写入 SQLite。
 
-记忆检索、记忆写入或情绪识别失败时，聊天流程会继续；失败信息只作为 warning 或 SSE 状态暴露。
+记忆检索、记忆写入或情绪识别失败时，聊天会继续；失败会以 warning 或 SSE 状态暴露。
+
+## HTTP 接口
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `GET` | `/` | 返回静态聊天页面。 |
+| `GET` | `/api/history?limit=10` | 返回最近 human/AI 消息。 |
+| `GET` | `/api/session?limit=10` | 返回最近消息和当前可匹配的最新情绪。 |
+| `GET` | `/api/emotion/timeline?limit=10` | 返回最近情绪状态时间线。 |
+| `POST` | `/api/chat/streams` | 创建一次性聊天 stream id。 |
+| `GET` | `/api/chat/streams/{stream_id}` | 消费 SSE 聊天流；同一 id 只能消费一次。 |
+| `POST` | `/api/messages/{message_id}/feedback` | 对 AI 消息保存 `like` 或 `dislike`。 |
+| `POST` | `/api/messages/{message_id}/regenerate` | 按原因重新生成某条 AI 回复。 |
+| `POST` | `/api/emotion/feedback` | 保存情绪识别正确性反馈。 |
+
+SSE 事件包括：
+
+- `user_message`：用户消息已写入。
+- `emotion_start`：开始情绪分析。
+- `emotion_done`：情绪分析成功，返回结构化状态。
+- `emotion_error`：情绪分析失败，本轮聊天继续。
+- `token`：聊天回复片段。
+- `done`：回复完成，包含完整内容和可选消息元数据。
+- `error`：聊天生成失败或请求无效。
 
 ## 项目结构
 
 ```text
 chatbot/
-  web.py              FastAPI 应用、路由、静态页面服务和 SSE 接口
-  chat_service.py     单条消息的业务编排：历史、记忆、情绪分析和回复生成
-  llm.py              LangChain prompt、chain 构建和会话历史管理
-  llm_adapter.py      OpenAI-compatible 模型适配层
-  config.py           聊天/情绪 LLM 配置加载
+  web.py                FastAPI 应用、路由、静态页面和 SSE 接口
+  chat_service.py       单用户聊天编排：历史、记忆、情绪分析、安全提示和回复生成
+  config.py             LLM 和情绪分析间隔配置
+  main.py               运行时 LLM 构建和 CLI 提示入口
+  llm.py                LangChain prompt、chain 和会话历史
+  llm_adapter.py        OpenAI-compatible LLM 适配层
 
-  emotion.py          情绪分析流程、输出解析和结果持久化
-  emotion_prompt.py   情绪识别 prompt 模板和渲染逻辑
-  emotion_examples.py 情绪识别 few-shot 示例库
+  emotion.py            情绪 prompt 构造、LLM 调用、解析和记录写入
+  emotion_state.py      结构化情绪状态解析、格式化和时间线生成
+  emotion_prompt.py     情绪识别 prompt 模板
+  emotion_examples.py   本地 few-shot 示例库
+  emotion_retrieval.py  动态示例选择
+  emotion_feedback.py   情绪反馈持久化
+  safety.py             当前输入的安全提示判断
 
-  memory.py           记忆数据结构、provider 协议、配置和上下文格式化
-  local_memory.py     SQLite 本地记忆 provider
-  memory_extractor.py 保守提取长期记忆候选
+  memory.py             长期记忆协议、配置和 prompt 格式化
+  local_memory.py       SQLite 本地记忆 provider
+  memory_extractor.py   保守抽取长期记忆候选
 
-  history.py          聊天历史持久化和 AI 消息反馈更新
-  profile.py          静态用户画像加载和格式化
-  static/
-    index.html        浏览器聊天页面
-    style.css         聊天界面样式
-    app.js            会话加载、SSE 处理和反馈交互
+  history.py            聊天历史、AI 反馈和重新生成记录
+  profile.py            静态用户画像加载和格式化
+  static/               前端页面、样式和交互脚本
 
 data/
-  records/
-    chat_history.json       聊天消息记录
-    emotion_analysis.json   情绪分析记录
-    memory.sqlite3          本地长期记忆
+  examples/             评估脚本样例数据
+  records/              运行时本地状态
 
 scripts/
-  evaluate_emotion_analysis.py  情绪识别结果评估脚本
+  evaluate_emotion_analysis.py  评估单个情绪分析结果文件
+  evaluate_emotion_ablation.py  对比多组情绪分析结果
 
-tests/                单元测试和 Web 接口测试
+tests/                  单元测试和 Web 接口测试
 ```
 
-## LLM 配置
+## 配置
 
-项目有两类 LLM：
+`load_config()` 的优先级是 CLI 参数、环境变量、默认值。Web 启动时调用 `load_config([])`，因此通常通过 `.env` 或环境变量配置。
 
-- **聊天 LLM**：负责生成用户看到的回复，由 `LLM_*` 变量配置，必须提供 API key。
-- **情绪识别 LLM**：负责判断用户当前情绪，由 `EMOTION_LLM_*` 变量配置，可选。
+### 聊天 LLM
 
-如果没有设置 `EMOTION_LLM_MODEL`，情绪识别会复用聊天 LLM：
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `LLM_PROVIDER` | `openai` | 聊天 LLM provider。当前支持 `openai` 和 `deepseek`。 |
+| `LLM_API_KEY` | 无 | 必填。也兼容旧变量 `OPENAI_API_KEY`。 |
+| `LLM_MODEL` | `gpt-4o-mini` | 聊天模型。也兼容旧变量 `OPENAI_MODEL`。 |
+| `LLM_BASE_URL` | 空 | OpenAI-compatible API base URL。也兼容旧变量 `OPENAI_BASE_URL`。 |
+| `LLM_TEMPERATURE` | `0.7` | 聊天模型采样温度。也兼容旧变量 `OPENAI_TEMPERATURE`。 |
 
-```env
-LLM_PROVIDER=deepseek
-LLM_API_KEY=your_api_key_here
-LLM_MODEL=deepseek-chat
-LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_TEMPERATURE=0.7
-EMOTION_INTERVAL=5
-```
+### 情绪 LLM
 
-如果设置了 `EMOTION_LLM_MODEL`，项目会为情绪识别构建独立 LLM。未单独设置的情绪配置会继承聊天 LLM：
+如果所有 `EMOTION_LLM_*` 都为空或未设置，情绪识别会复用聊天 LLM 实例。只要设置任一 `EMOTION_LLM_*`，项目会构建独立情绪 LLM，未设置的字段继承聊天 LLM。
+
+| 变量 | 未设置时 |
+| --- | --- |
+| `EMOTION_LLM_PROVIDER` | 继承 `LLM_PROVIDER`。 |
+| `EMOTION_LLM_API_KEY` | 继承 `LLM_API_KEY`。 |
+| `EMOTION_LLM_MODEL` | 继承 `LLM_MODEL`。 |
+| `EMOTION_LLM_BASE_URL` | 继承 `LLM_BASE_URL`。 |
+| `EMOTION_LLM_TEMPERATURE` | 继承 `LLM_TEMPERATURE`。 |
+| `EMOTION_INTERVAL` | 默认 `5`，必须是正整数。 |
+
+独立情绪 LLM 示例：
 
 ```env
 LLM_PROVIDER=deepseek
 LLM_API_KEY=your_chat_api_key
 LLM_MODEL=deepseek-chat
 LLM_BASE_URL=https://api.deepseek.com/v1
-LLM_TEMPERATURE=0.7
 
-EMOTION_LLM_MODEL=gpt-4o-mini
 EMOTION_LLM_PROVIDER=openai
 EMOTION_LLM_API_KEY=your_emotion_api_key
+EMOTION_LLM_MODEL=gpt-4o-mini
 EMOTION_LLM_BASE_URL=https://api.openai.com/v1
 EMOTION_LLM_TEMPERATURE=0
 EMOTION_INTERVAL=5
 ```
 
-继承规则：
+### 长期记忆
 
-| 情绪变量 | 未设置时的行为 |
-| --- | --- |
-| `EMOTION_LLM_MODEL` | 不构建独立情绪 LLM，直接复用聊天 LLM。 |
-| `EMOTION_LLM_PROVIDER` | 使用聊天 LLM 的 provider。 |
-| `EMOTION_LLM_API_KEY` | 使用聊天 LLM 的 API key。 |
-| `EMOTION_LLM_BASE_URL` | 使用聊天 LLM 的 base URL。 |
-| `EMOTION_LLM_TEMPERATURE` | 使用聊天 LLM 的 temperature。 |
-
-当前模型 provider 支持 `openai` 和 `deepseek`，底层走 OpenAI-compatible 接口。
-
-## 本地长期记忆
-
-长期记忆用于保存稳定信息，例如：
-
-- `preference`：用户偏好，例如希望使用中文、回答简洁。
-- `profile`：稳定画像，例如正在开发某个长期项目。
-- `goal`：持续目标，例如希望项目保持本地优先。
-- `boundary`：明确约束，例如不要使用第三方托管存储。
-
-默认记忆文件：
-
-```text
-data/records/memory.sqlite3
-```
-
-相关环境变量：
-
-| 变量 | 默认值 | 作用 |
+| 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `MEMORY_ENABLED` | `true` | 是否启用本地长期记忆。 |
-| `MEMORY_DB_PATH` | `data/records/memory.sqlite3` | SQLite 记忆文件路径。 |
-| `MEMORY_MAX_RESULTS` | `5` | 每次回复最多注入多少条相关记忆。 |
+| `MEMORY_ENABLED` | `true` | 是否启用本地长期记忆；`0`、`false`、`no`、`off` 会关闭。 |
+| `MEMORY_DB_PATH` | `data/records/memory.sqlite3` | SQLite 记忆数据库路径。 |
+| `MEMORY_MAX_RESULTS` | `5` | 每轮最多注入多少条相关记忆；无效值回退到默认值。 |
 
-聊天时，系统会先根据当前输入检索相关记忆，并注入 prompt：
+长期记忆分类固定为：
+
+- `preference`：用户偏好。
+- `profile`：稳定画像。
+- `goal`：长期目标。
+- `boundary`：明确约束。
+
+注入聊天 prompt 的格式是：
 
 ```text
 Relevant Long-term Memory:
@@ -198,46 +214,9 @@ Relevant Long-term Memory:
 - 用户希望项目保持本地优先，不引入第三方托管存储。
 ```
 
-回复成功后，系统会从用户消息中保守提取可长期保存的信息。临时闲聊、一次性情绪和不明确的信息不会主动写入长期记忆。
-
-这套机制不使用 Mem0 Platform，不引入云端向量数据库，也不会把记忆内容存到第三方托管存储。以后如果需要接入 Mem0 OSS，可以通过新的 `MemoryProvider` 实现替换本地 provider，而不改变聊天主流程。
-
 ## 情绪识别
 
-情绪识别模块负责把最近对话上下文分类到固定情绪标签中。它的结果会写入 `data/records/emotion_analysis.json`，并在后续回复中作为 `emotion_context` 注入聊天 prompt。
-
-### Emotion-Aware Chatbot v2
-
-The chatbot now stores structured emotion state in addition to the legacy primary label:
-
-- `primary_emotion`
-- `confidence`
-- `secondary_emotions`
-- `evidence`
-- `reply_strategy`
-- `trajectory_note`
-- `safety_level`
-
-Emotion analysis uses dynamic EICL-style example selection from the local example library. The Web UI exposes the latest emotion and a recent timeline, and `/api/emotion/timeline` returns the serialized timeline for demos or reports.
-
-Emotion-correctness feedback is saved locally in `data/records/emotion_feedback.json`. Ablation results can be compared with:
-
-```bash
-python scripts/evaluate_emotion_ablation.py \
-  --labels-file data/records/emotion_labels.json \
-  --run static=data/records/static_few_shot.json \
-  --run dynamic=data/records/dynamic_eicl.json \
-  --markdown-file data/records/ablation.md \
-  --csv-file data/records/ablation.csv
-```
-
-当前情绪识别做了三层增强：
-
-- **Dynamic EICL 示例**：从本地 `emotion_examples.py` 示例库动态选择相关样例，prompt 会渲染为 `Dynamic EICL examples`，并包含 selection reason 和 score。
-- **候选情绪提示**：`ChatService` 记录最近 3 个成功识别的情绪，并作为 `More likely emotion labels` 注入下一次情绪识别 prompt；这些候选情绪也会影响动态示例选择。
-- **结构化 prompt 构造**：`emotion_prompt.py` 负责构建结构化 JSON 输出 prompt；`emotion.py` 负责解析、持久化结构化情绪状态，并保留 legacy 输出 fallback。
-
-模型正常应输出一个结构化 JSON 对象：
+情绪识别模块会把最近对话上下文分类到固定情绪标签，并保存结构化状态：
 
 ```json
 {
@@ -251,58 +230,48 @@ python scripts/evaluate_emotion_ablation.py \
 }
 ```
 
-旧版 `Emotion: label` 输出仍会被接受为 fallback，但只会保存最小结构化状态。
+LLM 也可以返回旧格式 `Emotion: anxious`。旧格式会被解析成最小结构化状态。
 
-如果输出无法解析为已知标签，本轮聊天仍会继续，错误会记录到情绪分析文件。
+当前情绪分析使用三类上下文：
 
-## 环境变量
+- 最近对话内容，最多按 `EMOTION_INTERVAL` 轮截取。
+- 动态选择的本地 EICL/few-shot 示例。
+- 最近 3 个成功识别的候选情绪。
 
-| 变量 | 作用 |
-| --- | --- |
-| `LLM_PROVIDER` | 聊天 LLM provider。当前支持 `openai` 和 `deepseek`。 |
-| `LLM_API_KEY` | 聊天 LLM API key。必须配置。 |
-| `LLM_MODEL` | 聊天模型名称。未设置时默认使用 `gpt-4o-mini`。 |
-| `LLM_BASE_URL` | 可选的 OpenAI-compatible API base URL。 |
-| `LLM_TEMPERATURE` | 聊天模型采样温度。默认值为 `0.7`。 |
-| `EMOTION_LLM_MODEL` | 情绪识别 LLM 模型名称。设置后启用独立情绪 LLM。 |
-| `EMOTION_LLM_PROVIDER` | 情绪识别 LLM provider。未设置时继承聊天 LLM。 |
-| `EMOTION_LLM_API_KEY` | 情绪识别 LLM API key。未设置时继承聊天 LLM。 |
-| `EMOTION_LLM_BASE_URL` | 情绪识别 LLM base URL。未设置时继承聊天 LLM。 |
-| `EMOTION_LLM_TEMPERATURE` | 情绪识别 LLM 采样温度。未设置时继承聊天 LLM。 |
-| `EMOTION_INTERVAL` | 每 N 个用户回合进行一次情绪识别。默认值为 `5`。 |
-| `MEMORY_ENABLED` | 是否启用本地长期记忆。默认值为 `true`。 |
-| `MEMORY_DB_PATH` | SQLite 记忆文件路径。默认值为 `data/records/memory.sqlite3`。 |
-| `MEMORY_MAX_RESULTS` | 每次回复最多注入多少条相关记忆。默认值为 `5`。 |
-
-旧的 `OPENAI_*` 变量仍然兼容。当新的 `LLM_*` 变量不存在时，会使用旧变量作为 fallback。
+情绪状态会在后续聊天中格式化为 `emotion_context`。如果当前输入触发安全提示，`safety.py` 会把状态标为 `supportive` 或 `crisis`，并把回复策略替换为安全引导语。
 
 ## 本地数据文件
 
-运行时数据默认保存在 `data/records/`：
+默认运行时状态：
 
-- `chat_history.json`：保存 human 和 AI 消息。AI 消息包含生成的 `id` 和可为空的 `feedback` 字段。
-- `emotion_analysis.json`：保存每次情绪识别的 prompt、模型输出、解析结果、成功标记和错误信息。
-- `memory.sqlite3`：保存本地长期记忆，包括用户偏好、稳定画像、长期目标和明确约束。
+| 文件 | 内容 |
+| --- | --- |
+| `data/records/chat_history.json` | human/AI 消息、AI 消息 id、反馈、重新生成记录和关联情绪元数据。 |
+| `data/records/emotion_analysis.json` | 情绪分析 prompt、模型输出、解析结果、结构化状态、轮数和错误信息。 |
+| `data/records/emotion_feedback.json` | 情绪识别正确性反馈。 |
+| `data/records/memory.sqlite3` | 本地长期记忆。 |
 
-这些文件属于本地应用状态。删除或备份它们可以重置对应状态。
+历史和情绪分析 JSON 写入使用临时文件再原子替换，尽量避免写坏半截 JSON。旧路径 `data/chat_history.json`、`data/emotion_analysis.json` 和 `user_profile.json` 仍有兼容读取逻辑。
 
-## 情绪识别评估
+## 评估脚本
 
-使用评估脚本对比 `emotion_analysis.json` 和人工标注文件：
+评估单个情绪分析结果文件：
 
 ```bash
-python scripts/evaluate_emotion_analysis.py --labels-file data/records/emotion_labels.json
+python scripts/evaluate_emotion_analysis.py \
+  --analysis-file data/examples/dynamic_eicl_sample.json \
+  --labels-file data/examples/emotion_labels_sample.json
 ```
 
-指定分析文件：
+评估默认运行时记录：
 
 ```bash
 python scripts/evaluate_emotion_analysis.py \
   --analysis-file data/records/emotion_analysis.json \
-  --labels-file data/records/emotion_labels.json
+  --labels-file data/examples/emotion_labels_sample.json
 ```
 
-标注文件支持 JSON 数组或 JSONL。推荐 JSON 格式：
+标注文件支持 JSON 数组或 JSONL。字段可以使用 `expected`、`emotion` 或 `label`：
 
 ```json
 [
@@ -312,36 +281,38 @@ python scripts/evaluate_emotion_analysis.py \
 ]
 ```
 
-匹配规则：
+匹配优先级：
 
-- 有 `turn_count` 时，优先匹配同一轮数的情绪分析记录。
-- 有 `timestamp` 时，匹配同一时间戳的情绪分析记录。
-- 有 `index` 时，匹配第 N 条成功的情绪分析记录。
-- 都没有时，按成功情绪分析记录的顺序匹配。
+1. `index`：第 N 条成功情绪分析记录。
+2. `turn_count`：同一用户轮数。
+3. `timestamp`：同一时间戳。
+4. 无匹配字段时，按成功情绪分析记录顺序匹配。
 
-标注字段可以使用 `expected`、`emotion` 或 `label`。输出示例：
+输出包含样本数、正确数、accuracy、macro F1 和错误样例。
 
-```text
-Samples: 12
-Correct: 9
-Accuracy: 75.00%
-Macro F1: 70.31%
-Errors: 3
-- 10: expected=grateful predicted=content
+对比多组情绪分析结果：
+
+```bash
+python scripts/evaluate_emotion_ablation.py \
+  --labels-file data/examples/emotion_labels_sample.json \
+  --run static=data/examples/static_few_shot_sample.json \
+  --run dynamic=data/examples/dynamic_eicl_sample.json \
+  --markdown-file data/records/ablation.md \
+  --csv-file data/records/ablation.csv
 ```
 
 ## 测试
 
-运行测试：
+运行完整测试：
 
 ```bash
 pytest
 ```
 
-如果当前环境没有可用的 `pytest`，可以先做语法检查：
+如果 shell 找不到 `pytest`，使用虚拟环境里的解释器：
 
 ```bash
-python3 -m py_compile chatbot/*.py scripts/evaluate_emotion_analysis.py
+.venv/bin/python -m pytest -q
 ```
 
-测试覆盖配置加载、历史持久化、情绪识别、长期记忆、LLM 适配层、聊天服务编排和 FastAPI 接口。
+测试覆盖配置加载、LLM 适配、聊天服务编排、历史持久化、情绪解析、情绪反馈、长期记忆、评估脚本、README 示例和 FastAPI 接口。
