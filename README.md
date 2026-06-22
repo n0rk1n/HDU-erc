@@ -301,6 +301,40 @@ python scripts/evaluate_emotion_ablation.py \
   --csv-file data/records/ablation.csv
 ```
 
+### 主应用情绪识别消融
+
+第一阶段消融实验使用固定 JSONL 样本，比较完整情绪识别链路和几个受控变体：
+
+- `full`：默认上下文窗口、动态示例、历史情绪先验。
+- `no_dynamic_examples`：关闭动态示例检索，使用静态示例。
+- `no_emotion_history`：不注入 previous/likely emotion。
+- `short_context`：只使用 1 轮上下文。
+- `zero_shot`：无 few-shot 示例，无历史情绪先验。
+
+生成各组情绪分析结果：
+
+```bash
+python scripts/run_emotion_ablation.py \
+  --dialogues-file data/examples/ablation_dialogues.jsonl \
+  --output-dir data/records/ablation
+```
+
+汇总对比：
+
+```bash
+python scripts/evaluate_emotion_ablation.py \
+  --labels-file data/examples/ablation_labels.jsonl \
+  --run full=data/records/ablation/full.json \
+  --run no_dynamic_examples=data/records/ablation/no_dynamic_examples.json \
+  --run no_emotion_history=data/records/ablation/no_emotion_history.json \
+  --run short_context=data/records/ablation/short_context.json \
+  --run zero_shot=data/records/ablation/zero_shot.json \
+  --markdown-file data/records/ablation/summary.md \
+  --csv-file data/records/ablation/metrics.csv
+```
+
+`summary.md` 可直接用于报告主表，`metrics.csv` 用于保存原始指标。
+
 ## 测试
 
 运行完整测试：
