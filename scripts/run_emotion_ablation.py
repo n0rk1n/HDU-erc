@@ -56,24 +56,36 @@ def load_dialogues(path: Path) -> list[dict[str, Any]]:
         history = item.get("history", [])
         if not isinstance(history, list):
             raise ValueError(f"Invalid dialogue record at {path}:{line_number}: history must be a list.")
+        item = {**item, "history": _validate_history(history, path, line_number)}
         records.append(item)
+    return records
+
+
+def _validate_history(history: list[Any], path: Path, line_number: int) -> list[dict[str, str]]:
+    records = []
+    for index, item in enumerate(history):
+        location = f"{path}:{line_number} history[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"Invalid dialogue record at {location}: expected object.")
+        role = item.get("role")
+        if role not in {"human", "ai"}:
+            raise ValueError(f"Invalid dialogue record at {location}: role must be human or ai.")
+        content = item.get("content")
+        if not isinstance(content, str):
+            raise ValueError(f"Invalid dialogue record at {location}: content must be a string.")
+        record = {"role": role, "content": content}
+        for key in ("emotion", "predicted_emotion"):
+            value = item.get(key)
+            if isinstance(value, str) and value.strip():
+                record[key] = value
+        records.append(record)
     return records
 
 
 def _history_records(case: dict[str, Any]) -> list[dict[str, Any]]:
     records = []
     for item in case.get("history", []):
-        if not isinstance(item, dict):
-            continue
-        role = item.get("role")
-        content = item.get("content")
-        if role in {"human", "ai"} and isinstance(content, str):
-            record = {"role": role, "content": content}
-            for key in ("emotion", "predicted_emotion"):
-                value = item.get(key)
-                if isinstance(value, str) and value.strip():
-                    record[key] = value
-            records.append(record)
+        records.append(dict(item))
     return records
 
 
@@ -127,6 +139,17 @@ def run_config(
     emotion_interval: int,
 ) -> int:
     cases = load_dialogues(dialogues_file)
+    return run_cases(config, cases, output_file, llm, emotion_interval=emotion_interval)
+
+
+def run_cases(
+    config: AblationRunConfig,
+    cases: list[dict[str, Any]],
+    output_file: Path,
+    llm: Any,
+    *,
+    emotion_interval: int,
+) -> int:
     records = []
     for index, case in enumerate(cases, start=1):
         history = _history_records(case)
@@ -184,14 +207,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    cases = load_dialogues(Path(args.dialogues_file))
     chat_config = load_config([])
     llm = build_chat_model(chat_config.emotion_llm)
     run_names = args.run or list(RUN_CONFIGS)
     for run_name in run_names:
         output_file = Path(args.output_dir) / f"{run_name}.json"
-        count = run_config(
+        count = run_cases(
             RUN_CONFIGS[run_name],
-            Path(args.dialogues_file),
+            cases,
             output_file,
             llm,
             emotion_interval=chat_config.emotion_interval,

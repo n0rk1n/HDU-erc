@@ -122,6 +122,63 @@ def test_run_config_rejects_invalid_jsonl(tmp_path):
         raise AssertionError("Expected ValueError")
 
 
+def test_run_config_rejects_malformed_history_without_llm_call(tmp_path):
+    dialogues_file = tmp_path / "dialogues.jsonl"
+    output_file = tmp_path / "full.json"
+    dialogues_file.write_text(
+        '{"id":"case-001","turn_count":1,"history":["bad-entry"],"current_input":"I am nervous."}\n',
+        encoding="utf-8",
+    )
+    llm = FakeLlm()
+
+    try:
+        run_emotion_ablation.run_config(
+            run_emotion_ablation.RUN_CONFIGS["full"],
+            dialogues_file,
+            output_file,
+            llm,
+            emotion_interval=5,
+        )
+    except ValueError as exc:
+        assert str(dialogues_file) in str(exc)
+        assert ":1" in str(exc)
+        assert "history[0]" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+
+    assert llm.prompts == []
+
+
+def test_main_validates_dialogues_before_model_setup(tmp_path, monkeypatch):
+    calls = []
+    missing_dialogues_file = tmp_path / "missing.jsonl"
+
+    def fail_load_config(argv):
+        calls.append("load_config")
+        raise AssertionError("load_config should not run before dialogue validation")
+
+    def fail_build_chat_model(config):
+        calls.append("build_chat_model")
+        raise AssertionError("build_chat_model should not run before dialogue validation")
+
+    monkeypatch.setattr(run_emotion_ablation, "load_config", fail_load_config)
+    monkeypatch.setattr(run_emotion_ablation, "build_chat_model", fail_build_chat_model)
+
+    try:
+        run_emotion_ablation.main([
+            "--dialogues-file",
+            str(missing_dialogues_file),
+            "--output-dir",
+            str(tmp_path / "out"),
+        ])
+    except FileNotFoundError as exc:
+        assert exc.filename == str(missing_dialogues_file) or str(missing_dialogues_file) in str(exc)
+    else:
+        raise AssertionError("Expected FileNotFoundError")
+
+    assert calls == []
+
+
 def test_direct_cli_help_works():
     result = subprocess.run(
         [sys.executable, "scripts/run_emotion_ablation.py", "--help"],
