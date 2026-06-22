@@ -25,6 +25,7 @@ def test_evaluate_records_matches_by_turn_count():
     assert result["errors"] == [
         {
             "position": 1,
+            "case_id": "",
             "turn_count": 2,
             "timestamp": None,
             "expected": "joyful",
@@ -47,6 +48,24 @@ def test_evaluate_records_falls_back_to_successful_record_order():
     assert result["correct"] == 1
     assert result["accuracy"] == 1.0
     assert result["macro_f1"] == 1.0
+
+
+def test_evaluate_records_matches_by_case_id_before_turn_count():
+    analysis_records = [
+        {"case_id": "case-002", "turn_count": 1, "emotion": "sad", "success": True},
+        {"case_id": "case-001", "turn_count": 1, "emotion": "anxious", "success": True},
+    ]
+    annotations = [
+        {"id": "case-001", "turn_count": 1, "expected": "anxious"},
+        {"case_id": "case-002", "turn_count": 1, "expected": "sad"},
+    ]
+
+    result = evaluate_records(analysis_records, annotations)
+
+    assert result["total"] == 2
+    assert result["correct"] == 2
+    assert result["accuracy"] == 1.0
+    assert result["errors"] == []
 
 
 def test_direct_cli_help_works():

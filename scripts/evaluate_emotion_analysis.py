@@ -93,6 +93,7 @@ def _match_pairs(
         predicted = _normalize_label(record.get("emotion")) if record else ""
         pairs.append({
             "position": position,
+            "case_id": _case_id(annotation) or (_case_id(record) if record else ""),
             "turn_count": annotation.get("turn_count") if record is None else record.get("turn_count"),
             "timestamp": annotation.get("timestamp") if record is None else record.get("timestamp"),
             "expected": expected,
@@ -120,12 +121,28 @@ def _normalize_label(value: Any) -> str:
     return label if label in EMOTION_LABEL_SET else label
 
 
+def _case_id(value: dict[str, Any]) -> str:
+    for key in ("id", "case_id"):
+        raw_value = value.get(key)
+        if isinstance(raw_value, str):
+            cleaned = raw_value.strip()
+            if cleaned:
+                return cleaned
+    return ""
+
+
 def _find_record(
     annotation: dict[str, Any],
     analysis_records: list[dict[str, Any]],
     successful_records: list[dict[str, Any]],
     position: int,
 ) -> dict[str, Any] | None:
+    annotation_case_id = _case_id(annotation)
+    if annotation_case_id:
+        for record in analysis_records:
+            if _case_id(record) == annotation_case_id:
+                return record
+
     index = annotation.get("index")
     if type(index) is int and 0 <= index < len(successful_records):
         return successful_records[index]
