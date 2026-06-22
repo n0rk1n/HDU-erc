@@ -68,7 +68,12 @@ def _history_records(case: dict[str, Any]) -> list[dict[str, Any]]:
         role = item.get("role")
         content = item.get("content")
         if role in {"human", "ai"} and isinstance(content, str):
-            records.append({"role": role, "content": content})
+            record = {"role": role, "content": content}
+            for key in ("emotion", "predicted_emotion"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    record[key] = value
+            records.append(record)
     return records
 
 

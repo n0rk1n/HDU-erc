@@ -48,6 +48,37 @@ def test_run_config_writes_successful_records(tmp_path):
     assert "Dialogue context:" in records[0]["input"]
 
 
+def test_run_config_uses_history_emotion_metadata_in_prompt(tmp_path):
+    dialogues_file = tmp_path / "dialogues.jsonl"
+    output_file = tmp_path / "full.json"
+    dialogues_file.write_text(
+        json.dumps({
+            "id": "case-001",
+            "turn_count": 2,
+            "history": [
+                {"role": "human", "content": "I miss them.", "emotion": "sad"},
+                {"role": "ai", "content": "That sounds heavy."},
+            ],
+            "current_input": "It still hurts.",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    llm = FakeLlm()
+
+    run_emotion_ablation.run_config(
+        run_emotion_ablation.RUN_CONFIGS["full"],
+        dialogues_file,
+        output_file,
+        llm,
+        emotion_interval=5,
+    )
+
+    records = json.loads(output_file.read_text(encoding="utf-8"))
+    assert "More likely emotion labels: sad" in records[0]["input"]
+    assert "More likely emotion labels: sad" in llm.prompts[0]
+
+
 def test_run_config_records_failed_cases(tmp_path):
     dialogues_file = tmp_path / "dialogues.jsonl"
     output_file = tmp_path / "full.json"
