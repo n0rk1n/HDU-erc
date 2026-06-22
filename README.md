@@ -283,10 +283,11 @@ python scripts/evaluate_emotion_analysis.py \
 
 匹配优先级：
 
-1. `index`：第 N 条成功情绪分析记录。
-2. `turn_count`：同一用户轮数。
-3. `timestamp`：同一时间戳。
-4. 无匹配字段时，按成功情绪分析记录顺序匹配。
+1. `id` / `case_id`：稳定的固定消融用例身份。
+2. `index`：第 N 条成功情绪分析记录。
+3. `turn_count`：同一用户轮数。
+4. `timestamp`：同一时间戳。
+5. 无匹配字段时，按成功情绪分析记录顺序匹配。
 
 输出包含样本数、正确数、accuracy、macro F1 和错误样例。
 
