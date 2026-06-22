@@ -54,31 +54,44 @@ def build_emotion_prompt(
     previous_emotion: str = "",
     likely_emotions: list[str] | None = None,
     max_turns: int = 5,
+    example_mode: str = "dynamic",
+    include_emotion_history: bool = True,
 ) -> str:
     utterances = _recent_contents(records, max_turns)
     current_input = current_input.strip()
     if current_input:
         utterances.append(current_input)
     dialogue_context = "</s>".join(utterances)
+
+    if example_mode not in {"dynamic", "static", "none"}:
+        raise ValueError("example_mode must be one of: dynamic, static, none.")
+
+    prompt_previous_emotion = previous_emotion if include_emotion_history else ""
+    prompt_likely_emotions = likely_emotions if include_emotion_history else None
     retrieval_likely_emotions = [
         emotion
-        for emotion in [previous_emotion, *(likely_emotions or [])]
+        for emotion in [prompt_previous_emotion, *(prompt_likely_emotions or [])]
         if emotion
     ]
-    selected_examples = select_dynamic_examples(
-        examples=DEFAULT_EMOTION_EXAMPLES,
-        dialogue_context=dialogue_context,
-        likely_emotions=retrieval_likely_emotions,
-        limit=4,
-    )
+
+    selected_examples = None
+    if example_mode == "dynamic":
+        selected_examples = select_dynamic_examples(
+            examples=DEFAULT_EMOTION_EXAMPLES,
+            dialogue_context=dialogue_context,
+            likely_emotions=retrieval_likely_emotions,
+            limit=4,
+        )
+
     return build_emotion_analysis_prompt(
         emotion_labels=EMOTION_LABELS,
         emotion_label_set=EMOTION_LABEL_SET,
         dialogue_context=dialogue_context,
         current_input=current_input,
-        previous_emotion=previous_emotion,
-        likely_emotions=likely_emotions,
+        previous_emotion=prompt_previous_emotion,
+        likely_emotions=prompt_likely_emotions,
         examples=selected_examples,
+        include_static_examples=example_mode in {"dynamic", "static"},
     )
 
 

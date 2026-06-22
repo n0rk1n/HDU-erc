@@ -64,6 +64,45 @@ def test_build_emotion_prompt_uses_previous_and_likely_emotions_for_dynamic_exam
     assert "True emotion label: grateful" in prompt
 
 
+def test_build_emotion_prompt_can_disable_dynamic_and_static_examples():
+    prompt = build_emotion_prompt(
+        [],
+        "I feel nervous about tomorrow.",
+        previous_emotion="anxious",
+        example_mode="none",
+    )
+
+    assert "Dynamic EICL examples:" not in prompt
+    assert "Labeled examples:" not in prompt
+    assert "More likely emotion labels: anxious" in prompt
+
+
+def test_build_emotion_prompt_can_disable_emotion_history():
+    prompt = build_emotion_prompt(
+        [],
+        "thank you",
+        previous_emotion="angry",
+        likely_emotions=["grateful"],
+        include_emotion_history=False,
+    )
+
+    assert "More likely emotion labels:" not in prompt
+    assert "recent-emotion-prior" not in prompt
+
+
+def test_build_emotion_prompt_supports_static_examples_mode():
+    prompt = build_emotion_prompt(
+        [],
+        "thank you",
+        previous_emotion="grateful",
+        example_mode="static",
+    )
+
+    assert "Dynamic EICL examples:" not in prompt
+    assert "Labeled examples:" in prompt
+    assert "True emotion label: grateful" in prompt
+
+
 def test_parse_emotion_output_accepts_known_label():
     assert parse_emotion_output("Emotion: anxious") == "anxious"
 
