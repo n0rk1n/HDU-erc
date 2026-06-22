@@ -14,6 +14,7 @@ def build_emotion_analysis_prompt(
     previous_emotion: str = "",
     likely_emotions: list[str] | None = None,
     examples: list[dict[str, Any]] | None = None,
+    include_static_examples: bool = True,
 ) -> str:
     """Build a few-shot emotion-recognition prompt."""
     normalized_likely = normalize_likely_emotions(
@@ -26,7 +27,7 @@ def build_emotion_analysis_prompt(
         likely_line = f"\n- More likely emotion labels: {', '.join(normalized_likely)}"
 
     example_block = _render_selected_examples(examples)
-    if not example_block:
+    if not example_block and include_static_examples:
         example_block = format_emotion_examples(
             select_emotion_examples(
                 likely_emotions=normalized_likely,
