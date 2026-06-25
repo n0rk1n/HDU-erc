@@ -17,7 +17,13 @@ from chatbot.history import (
 )
 from chatbot.llm import format_emotion_context, get_session_history
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
-from chatbot.memory_consolidation import build_memory_search_query
+from chatbot.memory_consolidation import (
+    MemoryConsolidationConfig,
+    build_memory_search_query,
+    consolidation_due,
+    extract_consolidated_memory_candidates,
+    recent_consolidation_window,
+)
 from chatbot.memory_extractor import extract_memory_candidates
 from chatbot.safety import assess_safety
 
@@ -42,6 +48,7 @@ class ChatService:
         initial_emotion_state: EmotionState | None = None,
         memory_provider: MemoryProvider | None = None,
         memory_max_results: int = 5,
+        memory_consolidation_config: MemoryConsolidationConfig | None = None,
     ):
         self.chain = chain
         self.config = config
@@ -59,6 +66,15 @@ class ChatService:
         self.current_safety = {"level": "normal", "guidance": ""}
         self.memory_provider = memory_provider or DisabledMemoryProvider()
         self.memory_max_results = memory_max_results
+        self.memory_consolidation_config = (
+            memory_consolidation_config
+            or MemoryConsolidationConfig(
+                enabled=False,
+                interval=5,
+                window=12,
+                mode="rules",
+            )
+        )
         self.current_memory_context = ""
         self.recent_emotions = [self.current_emotion] if self.current_emotion else []
         self._lock = RLock()
@@ -202,6 +218,61 @@ class ChatService:
         except Exception as exc:
             print(f"Warning: memory write failed: {exc}")
 
+    def _consolidation_state(self) -> dict[str, Any]:
+        getter = getattr(self.memory_provider, "get_consolidation_state", None)
+        if not callable(getter):
+            return {"last_turn_count": 0, "last_message_id": None}
+        state = getter()
+        if not isinstance(state, dict):
+            return {"last_turn_count": 0, "last_message_id": None}
+        last_turn_count = state.get("last_turn_count")
+        if type(last_turn_count) is not int:
+            last_turn_count = 0
+        last_message_id = state.get("last_message_id")
+        if last_message_id is not None and not isinstance(last_message_id, str):
+            last_message_id = None
+        return {
+            "last_turn_count": last_turn_count,
+            "last_message_id": last_message_id,
+        }
+
+    def _last_record_id(self, records: list[dict]) -> str | None:
+        for record in reversed(records):
+            message_id = record.get("id")
+            if isinstance(message_id, str) and message_id:
+                return message_id
+        return None
+
+    def _mark_consolidated(self, *, turn_count: int, last_message_id: str | None) -> None:
+        marker = getattr(self.memory_provider, "mark_consolidated", None)
+        if callable(marker):
+            marker(turn_count=turn_count, last_message_id=last_message_id)
+
+    def _consolidate_memory_if_due(self) -> None:
+        config = self.memory_consolidation_config
+        state = self._consolidation_state()
+        if not consolidation_due(
+            config,
+            turn_count=self.turn_count,
+            last_turn_count=int(state["last_turn_count"]),
+        ):
+            return
+        records = recent_consolidation_window(
+            self.session_records,
+            window=config.window,
+            last_message_id=state["last_message_id"],
+        )
+        if not records:
+            self._mark_consolidated(turn_count=self.turn_count, last_message_id=None)
+            return
+        candidates = extract_consolidated_memory_candidates(records)
+        if candidates:
+            self.memory_provider.remember(candidates)
+        self._mark_consolidated(
+            turn_count=self.turn_count,
+            last_message_id=self._last_record_id(records),
+        )
+
     def _payload(self, message: str) -> dict[str, str]:
         return {
             "input": message,
@@ -254,6 +325,10 @@ class ChatService:
             answer = self._generate_answer(message)
             self._append_ai_message(answer)
             self._remember_from_turn(message, answer)
+            try:
+                self._consolidate_memory_if_due()
+            except Exception as exc:
+                print(f"Warning: memory consolidation failed: {exc}")
             return answer
 
     def regenerate_reply(self, message_id: str, reason: str) -> RegenerationUpdateResult:
@@ -392,6 +467,10 @@ class ChatService:
             answer = "".join(answer_parts)
             message_id = self._append_ai_message(answer)
             self._remember_from_turn(message, answer)
+            try:
+                self._consolidate_memory_if_due()
+            except Exception as exc:
+                print(f"Warning: memory consolidation failed: {exc}")
             data = {"content": answer, **self._ai_message_metadata()}
             if message_id:
                 data["message_id"] = message_id

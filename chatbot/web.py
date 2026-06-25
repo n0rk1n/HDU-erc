@@ -25,6 +25,7 @@ from chatbot.local_memory import build_memory_provider
 from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
 from chatbot.memory import load_memory_config
+from chatbot.memory_consolidation import load_memory_consolidation_config
 from chatbot.profile import format_profile, load_profile
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -69,6 +70,7 @@ def build_service() -> ChatService:
     latest_emotion = _latest_emotion_for_records(records)
     latest_emotion_state = _latest_emotion_state_for_records(records)
     memory_config = load_memory_config()
+    memory_consolidation_config = load_memory_consolidation_config(memory_config)
     memory_provider = build_memory_provider(memory_config)
     init_session_history("default", records)
     chain = build_chain(chat_llm, profile_text)
@@ -81,6 +83,7 @@ def build_service() -> ChatService:
         initial_emotion_state=latest_emotion_state,
         memory_provider=memory_provider,
         memory_max_results=memory_config.max_results,
+        memory_consolidation_config=memory_consolidation_config,
     )
 
 

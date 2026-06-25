@@ -6,6 +6,7 @@ from chatbot.emotion_state import EmotionState
 from chatbot.history import RegenerationUpdateResult
 from chatbot.llm import get_session_history
 from chatbot.memory import Memory, MemoryCandidate
+from chatbot.memory_consolidation import MemoryConsolidationConfig
 
 
 class FakeChain:
@@ -77,6 +78,8 @@ class FakeMemoryProvider:
         self.remember_error = remember_error
         self.searches = []
         self.remembered = []
+        self.consolidation_state = {"last_turn_count": 0, "last_message_id": None}
+        self.marked_consolidated = []
 
     def search(self, query, *, limit):
         self.searches.append((query, limit))
@@ -89,6 +92,16 @@ class FakeMemoryProvider:
         if self.remember_error:
             raise self.remember_error
         return []
+
+    def get_consolidation_state(self):
+        return dict(self.consolidation_state)
+
+    def mark_consolidated(self, *, turn_count, last_message_id):
+        self.marked_consolidated.append((turn_count, last_message_id))
+        self.consolidation_state = {
+            "last_turn_count": turn_count,
+            "last_message_id": last_message_id,
+        }
 
 
 def make_test_config(emotion_interval=2):
@@ -1056,3 +1069,83 @@ def test_stream_regenerated_reply_restores_live_history_when_closed_early(monkey
         "ai",
     ]
     assert service.session_records == []
+
+
+def test_generate_reply_runs_consolidation_when_due(monkeypatch):
+    config = make_test_config(emotion_interval=10)
+    chain = FakeChain(replies=["reply 1", "reply 2"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider()
+    ai_messages = []
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: ai_messages.append(content) or {
+            "id": f"ai_{len(ai_messages) - 1}",
+            "role": "ai",
+            "content": content,
+        },
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        memory_provider=memory_provider,
+        memory_max_results=5,
+        memory_consolidation_config=MemoryConsolidationConfig(
+            enabled=True,
+            interval=2,
+            window=4,
+            mode="rules",
+        ),
+    )
+
+    service.generate_reply("我只是想被听见，不要急着给建议。")
+    service.generate_reply("项目压力还是很大。")
+
+    assert any(
+        candidate.content == "用户希望难受时先被倾听，不要被急着建议。"
+        for batch in memory_provider.remembered
+        for candidate in batch
+    )
+    assert memory_provider.marked_consolidated == [(2, "ai_1")]
+
+
+def test_generate_reply_continues_when_consolidation_fails(monkeypatch):
+    config = make_test_config(emotion_interval=10)
+    chain = FakeChain(replies=["reply 1", "reply 2"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider()
+
+    def raise_during_consolidation(records):
+        raise RuntimeError("consolidation failed")
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"id": "ai_id", "role": "ai", "content": content},
+    )
+    monkeypatch.setattr(
+        "chatbot.chat_service.extract_consolidated_memory_candidates",
+        raise_during_consolidation,
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        memory_provider=memory_provider,
+        memory_max_results=5,
+        memory_consolidation_config=MemoryConsolidationConfig(
+            enabled=True,
+            interval=1,
+            window=4,
+            mode="rules",
+        ),
+    )
+
+    assert service.generate_reply("hello") == "reply 1"
