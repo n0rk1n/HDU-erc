@@ -63,6 +63,39 @@ def build_memory_search_query(
     return "\n".join(part for part in parts if part)
 
 
+def consolidation_due(
+    config: MemoryConsolidationConfig,
+    *,
+    turn_count: int,
+    last_turn_count: int,
+) -> bool:
+    if not config.enabled:
+        return False
+    if turn_count <= 0:
+        return False
+    return turn_count - last_turn_count >= config.interval
+
+
+def recent_consolidation_window(
+    records: list[dict],
+    *,
+    window: int,
+    last_message_id: str | None,
+) -> list[dict]:
+    filtered = [
+        record
+        for record in records
+        if record.get("role") in {"human", "ai"}
+        and str(record.get("content", "")).strip()
+    ]
+    if last_message_id:
+        for index, record in enumerate(filtered):
+            if record.get("id") == last_message_id:
+                filtered = filtered[index + 1:]
+                break
+    return filtered[-max(1, window):]
+
+
 def extract_consolidated_memory_candidates(records: list[dict]) -> list[MemoryCandidate]:
     human_texts = [
         str(record.get("content", "")).strip()

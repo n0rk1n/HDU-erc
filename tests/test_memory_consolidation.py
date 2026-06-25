@@ -3,8 +3,10 @@ from chatbot.memory import MemoryRuntimeConfig
 from chatbot.memory_consolidation import (
     MemoryConsolidationConfig,
     build_memory_search_query,
+    consolidation_due,
     extract_consolidated_memory_candidates,
     load_memory_consolidation_config,
+    recent_consolidation_window,
 )
 
 
@@ -139,3 +141,46 @@ def test_extract_consolidated_memory_candidates_repeated_stressor():
     assert candidates[0].category == "profile"
     assert candidates[0].content == "用户在最近对话中多次提到项目压力。"
     assert candidates[0].confidence == 0.75
+
+
+def test_consolidation_due_uses_interval():
+    config = MemoryConsolidationConfig(enabled=True, interval=5, window=12, mode="rules")
+
+    assert consolidation_due(config, turn_count=5, last_turn_count=0) is True
+    assert consolidation_due(config, turn_count=9, last_turn_count=5) is False
+    assert consolidation_due(config, turn_count=10, last_turn_count=5) is True
+
+
+def test_consolidation_due_is_false_when_disabled():
+    config = MemoryConsolidationConfig(enabled=False, interval=5, window=12, mode="rules")
+
+    assert consolidation_due(config, turn_count=10, last_turn_count=0) is False
+
+
+def test_recent_consolidation_window_filters_human_and_ai_after_checkpoint():
+    records = [
+        {"id": "m1", "role": "system", "content": "ignore"},
+        {"id": "m2", "role": "human", "content": "old"},
+        {"id": "m3", "role": "ai", "content": "old reply"},
+        {"id": "m4", "role": "human", "content": "new"},
+        {"id": "m5", "role": "ai", "content": "new reply"},
+    ]
+
+    window = recent_consolidation_window(records, window=3, last_message_id="m3")
+
+    assert window == [
+        {"id": "m4", "role": "human", "content": "new"},
+        {"id": "m5", "role": "ai", "content": "new reply"},
+    ]
+
+
+def test_recent_consolidation_window_limits_to_recent_messages():
+    records = [
+        {"id": "m1", "role": "human", "content": "one"},
+        {"id": "m2", "role": "ai", "content": "two"},
+        {"id": "m3", "role": "human", "content": "three"},
+    ]
+
+    window = recent_consolidation_window(records, window=2, last_message_id=None)
+
+    assert [record["content"] for record in window] == ["two", "three"]
