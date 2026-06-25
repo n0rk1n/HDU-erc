@@ -1,14 +1,17 @@
 """Periodic long-term memory consolidation helpers."""
 
 import os
+import re
 from dataclasses import dataclass
 
 from chatbot.emotion_state import EmotionState
-from chatbot.memory import MemoryRuntimeConfig
+from chatbot.memory import MemoryCandidate, MemoryRuntimeConfig
 
 DEFAULT_CONSOLIDATION_INTERVAL = 5
 DEFAULT_CONSOLIDATION_WINDOW = 12
+MAX_CONSOLIDATED_CANDIDATES = 3
 SUPPORTED_CONSOLIDATION_MODES = {"rules"}
+STRESSOR_LABELS = ("项目压力", "工作压力", "学习压力", "家庭压力")
 
 
 @dataclass(frozen=True)
@@ -58,6 +61,75 @@ def build_memory_search_query(
     if deduped_recent:
         parts.append(f"Recent emotions: {', '.join(deduped_recent)}")
     return "\n".join(part for part in parts if part)
+
+
+def extract_consolidated_memory_candidates(records: list[dict]) -> list[MemoryCandidate]:
+    human_texts = [
+        str(record.get("content", "")).strip()
+        for record in records
+        if record.get("role") == "human" and str(record.get("content", "")).strip()
+    ]
+    candidates: list[MemoryCandidate] = []
+    joined = "\n".join(human_texts)
+
+    if _mentions_listening_preference(joined):
+        candidates.append(
+            MemoryCandidate(
+                content="用户希望难受时先被倾听，不要被急着建议。",
+                category="preference",
+                confidence=0.85,
+            )
+        )
+
+    if _mentions_no_cheer_up(joined):
+        candidates.append(
+            MemoryCandidate(
+                content="用户要求不要用劝用户想开点的方式回应。",
+                category="boundary",
+                confidence=0.9,
+            )
+        )
+
+    stressor = _repeated_stressor(human_texts)
+    if stressor:
+        candidates.append(
+            MemoryCandidate(
+                content=f"用户在最近对话中多次提到{stressor}。",
+                category="profile",
+                confidence=0.75,
+            )
+        )
+
+    return _dedupe_candidates(candidates)[:MAX_CONSOLIDATED_CANDIDATES]
+
+
+def _mentions_listening_preference(text: str) -> bool:
+    listening_pattern = r"(只是|只想被听见|被听见|倾听)"
+    advice_boundary_pattern = r"(不要急着给建议|不急着给建议|不要建议|不要[^。！？\n]*建议)"
+    return bool(re.search(listening_pattern, text) and re.search(advice_boundary_pattern, text))
+
+
+def _mentions_no_cheer_up(text: str) -> bool:
+    return bool(re.search(r"(不要|别)劝我想开点", text))
+
+
+def _repeated_stressor(human_texts: list[str]) -> str | None:
+    for label in STRESSOR_LABELS:
+        mentions = sum(1 for text in human_texts if re.search(re.escape(label), text))
+        if mentions >= 2:
+            return label
+    return None
+
+
+def _dedupe_candidates(candidates: list[MemoryCandidate]) -> list[MemoryCandidate]:
+    deduped: list[MemoryCandidate] = []
+    seen = set()
+    for candidate in candidates:
+        if candidate.content in seen:
+            continue
+        seen.add(candidate.content)
+        deduped.append(candidate)
+    return deduped
 
 
 def _emotion_name(emotion_state: EmotionState | str | None) -> str:
