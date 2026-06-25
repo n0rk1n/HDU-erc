@@ -174,6 +174,18 @@ def test_recent_consolidation_window_filters_human_and_ai_after_checkpoint():
     ]
 
 
+def test_recent_consolidation_window_filters_empty_content():
+    records = [
+        {"id": "m1", "role": "human", "content": ""},
+        {"id": "m2", "role": "ai", "content": "   "},
+        {"id": "m3", "role": "human", "content": "real"},
+    ]
+
+    window = recent_consolidation_window(records, window=5, last_message_id=None)
+
+    assert window == [{"id": "m3", "role": "human", "content": "real"}]
+
+
 def test_recent_consolidation_window_limits_to_recent_messages():
     records = [
         {"id": "m1", "role": "human", "content": "one"},
