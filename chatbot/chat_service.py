@@ -17,6 +17,7 @@ from chatbot.history import (
 )
 from chatbot.llm import format_emotion_context, get_session_history
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
+from chatbot.memory_consolidation import build_memory_search_query
 from chatbot.memory_extractor import extract_memory_candidates
 from chatbot.safety import assess_safety
 
@@ -177,9 +178,14 @@ class ChatService:
         self.recent_emotions = self.recent_emotions[:3]
 
     def _refresh_memory_context(self, message: str) -> None:
+        query = build_memory_search_query(
+            message,
+            self.current_emotion_state or self.current_emotion,
+            self.recent_emotions,
+        )
         try:
             memories = self.memory_provider.search(
-                message,
+                query,
                 limit=self.memory_max_results,
             )
         except Exception as exc:

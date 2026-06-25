@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from chatbot.chat_service import ChatService, ChatEvent
 from chatbot.config import ChatConfig, LlmConfig
+from chatbot.emotion_state import EmotionState
 from chatbot.history import RegenerationUpdateResult
 from chatbot.llm import get_session_history
 from chatbot.memory import Memory, MemoryCandidate
@@ -147,6 +148,36 @@ def test_generate_reply_injects_memory_context(monkeypatch):
         "Relevant Long-term Memory:\n"
         "- 用户希望回答使用中文。"
     )
+
+
+def test_generate_reply_searches_memory_with_emotion_context(monkeypatch):
+    config = make_test_config(emotion_interval=3)
+    chain = FakeChain(replies=["reply 1"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider()
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: {"role": "ai", "content": content},
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=[],
+        initial_emotion_state=EmotionState(primary_emotion="anxious"),
+        memory_provider=memory_provider,
+        memory_max_results=5,
+    )
+    service.recent_emotions = ["sad", "anxious"]
+
+    service.generate_reply("又来了")
+
+    assert memory_provider.searches == [
+        ("又来了\nCurrent emotion: anxious\nRecent emotions: sad, anxious", 5)
+    ]
 
 
 def test_generate_reply_applies_crisis_safety_before_interval(monkeypatch):
