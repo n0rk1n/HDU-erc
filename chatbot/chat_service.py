@@ -55,6 +55,9 @@ class ChatService:
         self.emotion_llm = emotion_llm
         self.session_records = list(initial_records or [])
         self.session_id = session_id
+        self.initial_turn_count = sum(
+            1 for record in self.session_records if record.get("role") == "human"
+        )
         self.turn_count = 0
         self.current_emotion = initial_emotion or (
             initial_emotion_state.primary_emotion if initial_emotion_state else ""
@@ -251,9 +254,10 @@ class ChatService:
     def _consolidate_memory_if_due(self) -> None:
         config = self.memory_consolidation_config
         state = self._consolidation_state()
+        consolidation_turn_count = self.initial_turn_count + self.turn_count
         if not consolidation_due(
             config,
-            turn_count=self.turn_count,
+            turn_count=consolidation_turn_count,
             last_turn_count=int(state["last_turn_count"]),
         ):
             return
@@ -263,13 +267,16 @@ class ChatService:
             last_message_id=state["last_message_id"],
         )
         if not records:
-            self._mark_consolidated(turn_count=self.turn_count, last_message_id=None)
+            self._mark_consolidated(
+                turn_count=consolidation_turn_count,
+                last_message_id=None,
+            )
             return
         candidates = extract_consolidated_memory_candidates(records)
         if candidates:
             self.memory_provider.remember(candidates)
         self._mark_consolidated(
-            turn_count=self.turn_count,
+            turn_count=consolidation_turn_count,
             last_message_id=self._last_record_id(records),
         )
 

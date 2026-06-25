@@ -1114,6 +1114,60 @@ def test_generate_reply_runs_consolidation_when_due(monkeypatch):
     assert memory_provider.marked_consolidated == [(2, "ai_1")]
 
 
+def test_generate_reply_consolidation_uses_restored_turn_count(monkeypatch):
+    config = make_test_config(emotion_interval=20)
+    chain = FakeChain(replies=["reply 1", "reply 2", "reply 3", "reply 4", "reply 5"])
+    emotion_llm = FakeEmotionLlm()
+    memory_provider = FakeMemoryProvider()
+    memory_provider.consolidation_state = {
+        "last_turn_count": 5,
+        "last_message_id": "old_ai_4",
+    }
+    ai_messages = []
+    initial_records = []
+    for index in range(5):
+        initial_records.append({
+            "id": f"old_human_{index}",
+            "role": "human",
+            "content": f"old question {index}",
+        })
+        initial_records.append({
+            "id": f"old_ai_{index}",
+            "role": "ai",
+            "content": f"old answer {index}",
+        })
+
+    monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
+    monkeypatch.setattr(
+        "chatbot.chat_service.append_ai_message",
+        lambda content: ai_messages.append(content) or {
+            "id": f"new_ai_{len(ai_messages) - 1}",
+            "role": "ai",
+            "content": content,
+        },
+    )
+
+    service = ChatService(
+        chain,
+        config,
+        emotion_llm,
+        initial_records=initial_records,
+        memory_provider=memory_provider,
+        memory_max_results=5,
+        memory_consolidation_config=MemoryConsolidationConfig(
+            enabled=True,
+            interval=5,
+            window=10,
+            mode="rules",
+        ),
+    )
+
+    for index in range(5):
+        service.generate_reply(f"new question {index}")
+
+    assert memory_provider.marked_consolidated == [(10, "new_ai_4")]
+
+
 def test_generate_reply_continues_when_consolidation_fails(monkeypatch):
     config = make_test_config(emotion_interval=10)
     chain = FakeChain(replies=["reply 1", "reply 2"])
