@@ -199,6 +199,17 @@ EMOTION_INTERVAL=5
 | `MEMORY_DB_PATH` | `data/records/memory.sqlite3` | SQLite 记忆数据库路径。 |
 | `MEMORY_MAX_RESULTS` | `5` | 每轮最多注入多少条相关记忆；无效值回退到默认值。 |
 
+### 长期记忆提炼
+
+记忆提炼默认保持本地优先，不使用 Mem0、Qdrant 或托管向量库。应用会每隔几轮把最近一段 human/AI 对话窗口提炼为更稳定的长期记忆候选，再通过现有 SQLite memory provider 合并、去重和处理冲突。
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `MEMORY_CONSOLIDATION_ENABLED` | `true` | 是否启用周期性长期记忆提炼；关闭长期记忆时也会关闭提炼。 |
+| `MEMORY_CONSOLIDATION_INTERVAL` | `5` | 每隔多少个用户回合尝试提炼一次。 |
+| `MEMORY_CONSOLIDATION_WINDOW` | `12` | 每次最多查看最近多少条 human/AI 消息。 |
+| `MEMORY_CONSOLIDATION_MODE` | `rules` | 当前支持本地规则模式；无效值回退为 `rules`。 |
+
 长期记忆分类固定为：
 
 - `preference`：用户偏好。
