@@ -70,9 +70,8 @@ def extract_consolidated_memory_candidates(records: list[dict]) -> list[MemoryCa
         if record.get("role") == "human" and str(record.get("content", "")).strip()
     ]
     candidates: list[MemoryCandidate] = []
-    joined = "\n".join(human_texts)
 
-    if _mentions_listening_preference(joined):
+    if any(_mentions_listening_preference(text) for text in human_texts):
         candidates.append(
             MemoryCandidate(
                 content="用户希望难受时先被倾听，不要被急着建议。",
@@ -81,6 +80,7 @@ def extract_consolidated_memory_candidates(records: list[dict]) -> list[MemoryCa
             )
         )
 
+    joined = "\n".join(human_texts)
     if _mentions_no_cheer_up(joined):
         candidates.append(
             MemoryCandidate(
@@ -104,9 +104,12 @@ def extract_consolidated_memory_candidates(records: list[dict]) -> list[MemoryCa
 
 
 def _mentions_listening_preference(text: str) -> bool:
-    listening_pattern = r"(只是|只想被听见|被听见|倾听)"
+    listening_pattern = r"(只是想被听见|只想被听见|只是想被倾听|只想被倾听|I just need you to listen)"
     advice_boundary_pattern = r"(不要急着给建议|不急着给建议|不要建议|不要[^。！？\n]*建议)"
-    return bool(re.search(listening_pattern, text) and re.search(advice_boundary_pattern, text))
+    return bool(
+        re.search(listening_pattern, text, re.IGNORECASE)
+        and re.search(advice_boundary_pattern, text)
+    )
 
 
 def _mentions_no_cheer_up(text: str) -> bool:

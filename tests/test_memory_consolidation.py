@@ -94,6 +94,15 @@ def test_extract_consolidated_memory_candidates_support_preference():
     assert candidates[0].confidence == 0.85
 
 
+def test_extract_consolidated_memory_candidates_does_not_merge_unrelated_listening_signals():
+    records = [
+        {"role": "human", "content": "我只是开玩笑。"},
+        {"role": "human", "content": "不要给建议。"},
+    ]
+
+    assert extract_consolidated_memory_candidates(records) == []
+
+
 def test_extract_consolidated_memory_candidates_boundary():
     records = [
         {"role": "human", "content": "以后不要劝我想开点。"},
