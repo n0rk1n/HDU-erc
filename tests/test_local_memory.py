@@ -16,6 +16,38 @@ def test_provider_creates_schema(tmp_path):
     assert rows == [("memories",)]
 
 
+def test_provider_creates_consolidation_state_schema(tmp_path):
+    db_path = tmp_path / "memory.sqlite3"
+
+    SQLiteLocalMemoryProvider(str(db_path))
+
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            "select name from sqlite_master where type='table' and name='memory_consolidation_state'"
+        ).fetchall()
+
+    assert rows == [("memory_consolidation_state",)]
+
+
+def test_provider_reads_default_consolidation_state(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    state = provider.get_consolidation_state()
+
+    assert state == {"last_turn_count": 0, "last_message_id": None}
+
+
+def test_provider_marks_consolidation_state(tmp_path):
+    provider = SQLiteLocalMemoryProvider(str(tmp_path / "memory.sqlite3"))
+
+    provider.mark_consolidated(turn_count=5, last_message_id="msg_5")
+
+    assert provider.get_consolidation_state() == {
+        "last_turn_count": 5,
+        "last_message_id": "msg_5",
+    }
+
+
 def test_provider_migrates_existing_schema(tmp_path):
     db_path = tmp_path / "memory.sqlite3"
     with sqlite3.connect(db_path) as connection:

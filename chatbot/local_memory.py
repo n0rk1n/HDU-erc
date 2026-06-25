@@ -108,6 +108,50 @@ class SQLiteLocalMemoryProvider:
             print(f"Warning: memory write failed: {exc}")
             return stored
 
+    def get_consolidation_state(self) -> dict[str, str | int | None]:
+        try:
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    select last_turn_count, last_message_id
+                    from memory_consolidation_state
+                    where id = ?
+                    """,
+                    ("default",),
+                ).fetchone()
+        except sqlite3.Error as exc:
+            print(f"Warning: memory consolidation state read failed: {exc}")
+            return {"last_turn_count": 0, "last_message_id": None}
+        if row is None:
+            return {"last_turn_count": 0, "last_message_id": None}
+        return {
+            "last_turn_count": int(row[0]),
+            "last_message_id": row[1],
+        }
+
+    def mark_consolidated(
+        self,
+        *,
+        turn_count: int,
+        last_message_id: str | None,
+    ) -> None:
+        try:
+            with self._connect() as connection:
+                connection.execute(
+                    """
+                    insert into memory_consolidation_state (
+                        id, last_turn_count, last_message_id, updated_at
+                    ) values (?, ?, ?, ?)
+                    on conflict(id) do update set
+                        last_turn_count = excluded.last_turn_count,
+                        last_message_id = excluded.last_message_id,
+                        updated_at = excluded.updated_at
+                    """,
+                    ("default", turn_count, last_message_id, _now_iso()),
+                )
+        except sqlite3.Error as exc:
+            print(f"Warning: memory consolidation state write failed: {exc}")
+
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path, timeout=0.2)
 
@@ -137,6 +181,16 @@ class SQLiteLocalMemoryProvider:
             )
             connection.execute(
                 "create index if not exists idx_memories_status on memories(status)"
+            )
+            connection.execute(
+                """
+                create table if not exists memory_consolidation_state (
+                    id text primary key,
+                    last_turn_count integer not null,
+                    last_message_id text,
+                    updated_at text not null
+                )
+                """
             )
 
     def _migrate_schema(self, connection: sqlite3.Connection) -> None:
