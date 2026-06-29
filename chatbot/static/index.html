@@ -15,7 +15,19 @@
           <div id="safety-status" class="safety-status" hidden></div>
           <ol id="emotion-timeline" class="emotion-timeline" aria-label="Recent emotion timeline"></ol>
         </div>
+        <button id="profile-button" class="profile-button" type="button">我的画像</button>
       </header>
+
+      <section id="profile-onboarding-prompt" class="profile-onboarding-prompt" hidden>
+        <div>
+          <h2>完善我的画像</h2>
+          <p>回答几个问题，我可以更贴近你的称呼、阶段和回应偏好。</p>
+        </div>
+        <div class="profile-prompt-actions">
+          <button id="profile-onboarding-start" type="button">开始</button>
+          <button id="profile-onboarding-skip" class="secondary-button" type="button">这次先跳过</button>
+        </div>
+      </section>
 
       <section id="messages" class="messages" aria-live="polite"></section>
 
@@ -25,6 +37,14 @@
         <button id="send-button" type="submit">发送</button>
       </form>
     </main>
+    <div id="profile-backdrop" class="profile-backdrop" hidden></div>
+    <aside id="profile-panel" class="profile-panel" aria-label="我的画像" hidden>
+      <div class="profile-panel-header">
+        <h2>我的画像</h2>
+        <button id="profile-close" class="secondary-button" type="button" aria-label="关闭我的画像">关闭</button>
+      </div>
+      <div id="profile-panel-body" class="profile-panel-body"></div>
+    </aside>
     <script src="/static/app.js"></script>
   </body>
 </html>
