@@ -56,6 +56,7 @@ http://127.0.0.1:8000
 - 从本地 SQLite 恢复聊天历史和最近情绪状态。
 - 每隔 `EMOTION_INTERVAL` 个用户回合调用情绪 LLM，保存结构化情绪状态。
 - 将当前情绪、危机/支持性安全提示和相关长期记忆注入聊天 prompt。
+- 首次无用户画像时，可通过“我的画像”入口回答轻量问题，由 LLM 生成可编辑画像草稿，确认后保存。
 - 支持 AI 消息点赞、点踩和重新生成。
 - 支持情绪识别正确性反馈。
 - 使用 SQLite 保存长期记忆，包括偏好、稳定画像、长期目标和明确约束。
@@ -72,6 +73,8 @@ http://127.0.0.1:8000
 5. 构建本地 memory provider，默认数据库是 `data/records/memory.sqlite3`。
 6. 将历史消息恢复到 LangChain 的 `InMemoryChatMessageHistory`。
 7. 构建聊天 chain，并创建单用户 `ChatService`。
+
+如果用户画像为空，前端会显示非阻塞画像录入提示。用户可以跳过继续聊天，也可以通过“我的画像”回答五个轻量问题，确认 LLM 生成的画像草稿后写入 `profile_entries`。
 
 用户发送消息时：
 
@@ -270,8 +273,8 @@ LLM 也可以返回旧格式 `Emotion: anxious`。旧格式会被解析成最小
 
 | 文件 | 内容 |
 | --- | --- |
-| `data/records/runtime.sqlite3` | 聊天历史、用户画像、AI 消息反馈、重新生成记录、情绪分析记录和情绪识别正确性反馈。 |
-| `data/records/memory.sqlite3` | 本地长期记忆。 |
+| `data/records/runtime.sqlite3` | 聊天历史、用户画像、AI 消息反馈、重新生成记录、情绪分析记录和情绪识别正确性反馈；用户画像保存在 `profile_entries` 表中。 |
+| `data/records/memory.sqlite3` | 本地长期记忆；长期记忆仍保存在此数据库中。 |
 
 运行时记录不再读取旧 JSON 文件，也不会自动迁移旧历史；需要保留的内容应直接写入本地 SQLite 数据库。`data/records/` 默认不提交到 Git。
 
