@@ -13,11 +13,16 @@ from chatbot.history import FeedbackUpdateResult, RegenerationUpdateResult
 from chatbot.web import build_service, create_app, format_sse
 
 
+class FakeRuntimeChatLlm:
+    def invoke(self, prompt):
+        return "{}"
+
+
 class FakeService:
     def __init__(self):
         self.messages = []
         self.chain = "old-chain"
-        self.chat_llm = "runtime-chat-llm"
+        self.chat_llm = FakeRuntimeChatLlm()
         self.config = type("Config", (), {"chat_llm": "config-chat-llm"})()
 
     def stream_reply(self, message):
@@ -540,7 +545,7 @@ def test_save_profile_filters_fields_and_refreshes_chain(monkeypatch):
     }
     assert saved["profile"] == {"preferred_name": "Alice", "response_style": "brief"}
     assert service.chain == "new-chain"
-    assert build_chain_args["args"] == ("runtime-chat-llm", "formatted-profile")
+    assert build_chain_args["args"] == (service.chat_llm, "formatted-profile")
 
 
 def test_save_profile_accepts_raw_unknown_fields(monkeypatch):
@@ -619,7 +624,7 @@ def test_profile_onboarding_draft_endpoint(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"draft": {"preferred_name": "Alice"}}
     assert captured == {
-        "chat_llm": "runtime-chat-llm",
+        "chat_llm": app.state.chat_service.chat_llm,
         "answers": [{"key": "preferred_name", "answer": "Alice"}],
     }
 
@@ -645,7 +650,7 @@ def test_profile_onboarding_draft_accepts_raw_answer_values(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"draft": {}}
     assert captured == {
-        "chat_llm": "runtime-chat-llm",
+        "chat_llm": app.state.chat_service.chat_llm,
         "answers": [{"key": "preferred_name", "answer": 123}],
     }
 
@@ -653,6 +658,21 @@ def test_profile_onboarding_draft_accepts_raw_answer_values(monkeypatch):
 def test_profile_onboarding_draft_requires_runtime_chat_llm():
     service = FakeService()
     delattr(service, "chat_llm")
+    app = create_app(service_factory=lambda: service)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/profile/onboarding/draft",
+        json={"answers": [{"key": "preferred_name", "answer": "Alice"}]},
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Chat LLM is unavailable."}
+
+
+def test_profile_onboarding_draft_rejects_runtime_chat_llm_without_invoke():
+    service = FakeService()
+    service.chat_llm = object()
     app = create_app(service_factory=lambda: service)
     client = TestClient(app)
 

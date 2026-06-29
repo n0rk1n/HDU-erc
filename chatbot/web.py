@@ -108,7 +108,10 @@ def build_service() -> ChatService:
 
 
 def _service_chat_llm(service: ChatService):
-    return getattr(service, "chat_llm", None)
+    chat_llm = getattr(service, "chat_llm", None)
+    if chat_llm is None or not callable(getattr(chat_llm, "invoke", None)):
+        return None
+    return chat_llm
 
 
 def _refresh_service_profile(service: ChatService) -> None:
