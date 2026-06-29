@@ -97,6 +97,10 @@ http://127.0.0.1:8000
 | `GET` | `/` | 返回静态聊天页面。 |
 | `GET` | `/api/history?limit=10` | 返回最近 human/AI 消息。 |
 | `GET` | `/api/session?limit=10` | 返回最近消息和当前可匹配的最新情绪。 |
+| `GET` | `/api/profile` | 返回当前用户画像和是否为空。 |
+| `PUT` | `/api/profile` | 保存用户确认后的画像，并刷新后续聊天使用的画像 prompt。 |
+| `GET` | `/api/profile/onboarding/questions` | 返回首次画像录入的固定轻量问题。 |
+| `POST` | `/api/profile/onboarding/draft` | 根据用户回答生成可编辑画像草稿；LLM 不可用时返回规则草稿。 |
 | `GET` | `/api/emotion/timeline?limit=10` | 返回最近情绪状态时间线。 |
 | `POST` | `/api/chat/streams` | 创建一次性聊天 stream id。 |
 | `GET` | `/api/chat/streams/{stream_id}` | 消费 SSE 聊天流；同一 id 只能消费一次。 |
