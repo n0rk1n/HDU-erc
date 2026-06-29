@@ -6,3 +6,4 @@ docs
 .env
 .worktrees
 data/records
+data/config/prompts.json

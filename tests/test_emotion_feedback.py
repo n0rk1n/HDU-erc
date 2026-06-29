@@ -1,11 +1,9 @@
-import json
-
 from chatbot.emotion_feedback import append_emotion_feedback, load_emotion_feedback
 
 
-def test_append_emotion_feedback_creates_file(tmp_path, monkeypatch):
-    feedback_file = tmp_path / "emotion_feedback.json"
-    monkeypatch.setattr("chatbot.emotion_feedback.EMOTION_FEEDBACK_FILE", str(feedback_file))
+def test_append_emotion_feedback_creates_database_record(tmp_path, monkeypatch):
+    runtime_db = tmp_path / "runtime.sqlite3"
+    monkeypatch.setattr("chatbot.emotion_feedback.RUNTIME_DB_PATH", str(runtime_db))
 
     record = append_emotion_feedback({
         "message_id": "ai_1",
@@ -17,11 +15,11 @@ def test_append_emotion_feedback_creates_file(tmp_path, monkeypatch):
 
     assert record["feedback"] == "wrong_emotion"
     assert "timestamp" in record
-    data = json.loads(feedback_file.read_text())
+    data = load_emotion_feedback()
     assert data[0]["corrected_emotion"] == "anxious"
 
 
-def test_load_emotion_feedback_returns_empty_for_missing_file(tmp_path, monkeypatch):
-    monkeypatch.setattr("chatbot.emotion_feedback.EMOTION_FEEDBACK_FILE", str(tmp_path / "missing.json"))
+def test_load_emotion_feedback_returns_empty_for_missing_database(tmp_path, monkeypatch):
+    monkeypatch.setattr("chatbot.emotion_feedback.RUNTIME_DB_PATH", str(tmp_path / "missing.sqlite3"))
 
     assert load_emotion_feedback() == []

@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from chatbot.chat_service import ChatService, ChatEvent
 from chatbot.config import ChatConfig, LlmConfig
+from chatbot.emotion import load_analysis_records
 from chatbot.emotion_state import EmotionState
 from chatbot.history import RegenerationUpdateResult
 from chatbot.llm import get_session_history
@@ -292,7 +293,7 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
     )
     stored_messages = []
     stored_ai_messages = []
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr(
         "chatbot.chat_service.append_message",
@@ -305,7 +306,7 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
             "content": content,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -317,7 +318,7 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
     assert chain.payloads[0]["emotion_context"] == ""
     assert "- primary: anxious" in chain.payloads[1]["emotion_context"]
     assert "- reply strategy: Be calm." in chain.payloads[1]["emotion_context"]
-    assert analysis_file.exists()
+    assert len(load_analysis_records()) == 1
     assert stored_messages == [
         ("human", "q1"),
         ("human", "q2"),
@@ -329,21 +330,21 @@ def test_generate_reply_does_not_trigger_before_interval(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=3)
     chain = FakeChain(replies=["reply 1"])
     emotion_llm = FakeEmotionLlm()
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
     monkeypatch.setattr(
         "chatbot.chat_service.append_ai_message",
         lambda content: {"role": "ai", "content": content},
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
     assert service.generate_reply("q1") == "reply 1"
     assert emotion_llm.prompts == []
     assert chain.payloads[0]["emotion_context"] == ""
-    assert not analysis_file.exists()
+    assert load_analysis_records() == []
 
 
 def test_generate_reply_uses_initial_emotion_context(monkeypatch):
@@ -557,7 +558,7 @@ def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=1)
     chain = StreamingFakeChain()
     emotion_llm = FakeEmotionLlm()
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
     monkeypatch.setattr(
@@ -569,7 +570,7 @@ def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -645,7 +646,7 @@ def test_stream_reply_applies_supportive_safety_guidance(tmp_path, monkeypatch):
             '"trajectory_note":"distress is rising","safety_level":"normal"}'
         )
     )
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
     monkeypatch.setattr(
@@ -657,7 +658,7 @@ def test_stream_reply_applies_supportive_safety_guidance(tmp_path, monkeypatch):
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -688,14 +689,14 @@ def test_generate_reply_preserves_model_safety_when_local_policy_is_normal(tmp_p
             '"trajectory_note":"","safety_level":"crisis"}'
         )
     )
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
     monkeypatch.setattr(
         "chatbot.chat_service.append_ai_message",
         lambda content: {"role": "ai", "content": content},
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -712,7 +713,7 @@ def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monke
     config = make_test_config(emotion_interval=1)
     chain = StreamingFakeChain()
     emotion_llm = FakeEmotionLlm(output="Emotion: disappointed")
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
     monkeypatch.setattr(
@@ -724,7 +725,7 @@ def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monke
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(
         chain,
@@ -748,7 +749,7 @@ def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
     config = make_test_config(emotion_interval=1)
     chain = StreamingFakeChain()
     emotion_llm = FakeEmotionLlm(output="Emotion: unknown")
-    analysis_file = tmp_path / "emotion_analysis.json"
+    runtime_db = tmp_path / "runtime.sqlite3"
 
     monkeypatch.setattr("chatbot.chat_service.append_message", lambda role, content: None)
     monkeypatch.setattr(
@@ -760,7 +761,7 @@ def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.EMOTION_ANALYSIS_FILE", str(analysis_file))
+    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 

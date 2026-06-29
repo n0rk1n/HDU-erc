@@ -1,25 +1,20 @@
-"""情感分析模块 —— 在聊天过程中按固定轮次间隔分析用户当前情绪，结果持久化到 JSON 文件。"""
+"""情感分析模块 —— 在聊天过程中按固定轮次间隔分析用户当前情绪，结果持久化到 SQLite。"""
 
-import json
 import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from chatbot.emotion_examples import DEFAULT_EMOTION_EXAMPLES
 from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
 from chatbot.emotion_prompt import build_emotion_analysis_prompt
 from chatbot.emotion_retrieval import select_dynamic_examples
 from chatbot.emotion_state import EmotionState, emotion_state_from_output
+from chatbot.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-DEFAULT_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "records" / "emotion_analysis.json")
-DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE = str(DATA_DIR / "emotion_analysis.json")
-EMOTION_ANALYSIS_FILE = DEFAULT_EMOTION_ANALYSIS_FILE
-LEGACY_EMOTION_ANALYSIS_FILE = DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE
+RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH
+EMOTION_ANALYSIS_NAMESPACE = "emotion_analysis"
 _ANALYSIS_LOCK = threading.RLock()
 
 
@@ -47,6 +42,14 @@ def _recent_contents(records: list[dict], max_turns: int) -> list[str]:
     ]
 
 
+def _dialogue_context(records: list[dict], current_input: str, max_turns: int) -> str:
+    utterances = _recent_contents(records, max_turns)
+    current_input = current_input.strip()
+    if current_input:
+        utterances.append(current_input)
+    return "</s>".join(utterances)
+
+
 def build_emotion_prompt(
     records: list[dict],
     current_input: str,
@@ -57,11 +60,7 @@ def build_emotion_prompt(
     example_mode: str = "dynamic",
     include_emotion_history: bool = True,
 ) -> str:
-    utterances = _recent_contents(records, max_turns)
-    current_input = current_input.strip()
-    if current_input:
-        utterances.append(current_input)
-    dialogue_context = "</s>".join(utterances)
+    dialogue_context = _dialogue_context(records, current_input, max_turns)
 
     if example_mode not in {"dynamic", "static", "none"}:
         raise ValueError("example_mode must be one of: dynamic, static, none.")
@@ -107,35 +106,7 @@ def parse_emotion_output(output: str) -> str | None:
 
 
 def load_analysis_records() -> list[dict]:
-    primary_path = Path(EMOTION_ANALYSIS_FILE)
-    if primary_path.exists():
-        return _load_analysis_file(primary_path)
-
-    if _should_read_legacy_analysis():
-        return _load_analysis_file(Path(LEGACY_EMOTION_ANALYSIS_FILE))
-    return []
-
-
-def _should_read_legacy_analysis() -> bool:
-    return (
-        Path(EMOTION_ANALYSIS_FILE) == Path(DEFAULT_EMOTION_ANALYSIS_FILE)
-        or Path(LEGACY_EMOTION_ANALYSIS_FILE) != Path(DEFAULT_LEGACY_EMOTION_ANALYSIS_FILE)
-    )
-
-
-def _load_analysis_file(path: Path) -> list[dict]:
-    if not path.exists():
-        return []
-    try:
-        content = path.read_text(encoding="utf-8")
-        if not content.strip():
-            return []
-        data = json.loads(content)
-    except (OSError, json.JSONDecodeError):
-        return []
-    if not isinstance(data, list):
-        return []
-    return data
+    return RuntimeStore(RUNTIME_DB_PATH).load_json_records(EMOTION_ANALYSIS_NAMESPACE)
 
 
 def successful_emotion_snapshot(record: dict) -> dict[str, Any] | None:
@@ -170,23 +141,11 @@ def load_latest_successful_emotion() -> dict[str, Any] | None:
 
 def append_analysis_record(record: dict[str, Any]) -> None:
     with _ANALYSIS_LOCK:
-        path = Path(EMOTION_ANALYSIS_FILE)
-        records = load_analysis_records()
         output_record = {"timestamp": _now_iso(), **record}
-        records.append(output_record)
-        tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
-        try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            tmp.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-            tmp.replace(path)
-        except OSError as exc:
-            print(f"Warning: failed to write emotion analysis: {exc}")
-        finally:
-            try:
-                if tmp.exists():
-                    tmp.unlink()
-            except OSError:
-                pass
+        RuntimeStore(RUNTIME_DB_PATH).append_json_record(
+            EMOTION_ANALYSIS_NAMESPACE,
+            output_record,
+        )
 
 
 def analyze_emotion(
@@ -200,6 +159,7 @@ def analyze_emotion(
     emotion_interval: int,
 ) -> EmotionAnalysisResult:
     """执行单次情感分析：构建 prompt → 调用 LLM → 解析结果 → 持久化记录。"""
+    dialogue_context = _dialogue_context(records, current_input, emotion_interval)
     prompt = build_emotion_prompt(
         records,
         current_input,
@@ -218,6 +178,7 @@ def analyze_emotion(
                 "turn_count": turn_count,
                 "emotion_interval": emotion_interval,
                 "input": prompt,
+                "dialogue_context": dialogue_context,
                 "output": output,
                 "emotion": "",
                 "state": {},
@@ -232,6 +193,7 @@ def analyze_emotion(
             "turn_count": turn_count,
             "emotion_interval": emotion_interval,
             "input": prompt,
+            "dialogue_context": dialogue_context,
             "output": output,
             "emotion": emotion,
             "state": state.to_dict(),
@@ -244,6 +206,7 @@ def analyze_emotion(
             "turn_count": turn_count,
             "emotion_interval": emotion_interval,
             "input": prompt,
+            "dialogue_context": dialogue_context,
             "output": "",
             "emotion": "",
             "state": {},

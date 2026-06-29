@@ -12,7 +12,9 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from chatbot.emotion import EMOTION_ANALYSIS_FILE, EMOTION_LABEL_SET
+from chatbot.emotion import EMOTION_LABEL_SET
+
+DEFAULT_ANALYSIS_FILE = "data/records/emotion_analysis.json"
 
 
 def load_records(path: Path) -> list[dict[str, Any]]:
@@ -212,8 +214,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--analysis-file",
-        default=EMOTION_ANALYSIS_FILE,
-        help="Path to emotion_analysis.json. Defaults to the chatbot data file.",
+        default=DEFAULT_ANALYSIS_FILE,
+        help="Path to offline emotion-analysis JSON/JSONL records.",
     )
     parser.add_argument(
         "--labels-file",

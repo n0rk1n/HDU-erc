@@ -1,18 +1,15 @@
-"""聊天历史持久化 —— 将对话记录读写到 JSON 文件，并提供格式化输出。"""
+"""聊天历史持久化 —— 将对话记录读写到本地 SQLite，并提供格式化输出。"""
 
-import json
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-DEFAULT_HISTORY_FILE = str(DATA_DIR / "records" / "chat_history.json")
-DEFAULT_LEGACY_HISTORY_FILE = str(DATA_DIR / "chat_history.json")
-HISTORY_FILE = DEFAULT_HISTORY_FILE
-LEGACY_HISTORY_FILE = DEFAULT_LEGACY_HISTORY_FILE
+from chatbot.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
+
+RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH
+HISTORY_NAMESPACE = "chat_history"
 _HISTORY_LOCK = threading.RLock()
 
 REGENERATION_REASONS = {
@@ -41,33 +38,7 @@ class RegenerationUpdateResult:
 
 
 def load_history() -> list[dict]:
-    primary_path = Path(HISTORY_FILE)
-    if primary_path.exists():
-        return _load_history_file(primary_path)
-
-    if _should_read_legacy_history():
-        return _load_history_file(Path(LEGACY_HISTORY_FILE))
-    return []
-
-
-def _should_read_legacy_history() -> bool:
-    return (
-        Path(HISTORY_FILE) == Path(DEFAULT_HISTORY_FILE)
-        or Path(LEGACY_HISTORY_FILE) != Path(DEFAULT_LEGACY_HISTORY_FILE)
-    )
-
-
-def _load_history_file(path: Path) -> list[dict]:
-    try:
-        if not path.exists() or path.stat().st_size == 0:
-            return []
-        with path.open() as f:
-            records = json.load(f)
-        if isinstance(records, list):
-            return records
-        return []
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return []
+    return RuntimeStore(RUNTIME_DB_PATH).load_json_records(HISTORY_NAMESPACE)
 
 
 def _now_iso() -> str:
@@ -75,50 +46,26 @@ def _now_iso() -> str:
 
 
 def _save_history(records: list[dict]) -> bool:
-    path = Path(HISTORY_FILE)
-    tmp = path.with_name(f"{path.name}.{uuid4().hex}.tmp")
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with tmp.open("w") as f:
-            json.dump(records, f, ensure_ascii=False, indent=2)
-        tmp.replace(path)
-        return True
-    except OSError as exc:
-        print(f"Warning: could not save chat history: {exc}")
-        return False
-    finally:
-        try:
-            if tmp.exists():
-                tmp.unlink()
-        except OSError:
-            pass
+    return RuntimeStore(RUNTIME_DB_PATH).replace_json_records(HISTORY_NAMESPACE, records)
 
 
 def append_message(role: str, content: str) -> dict | None:
-    """追加一条消息到历史文件 —— 先写临时文件再原子替换，避免写坏 JSON。"""
+    """追加一条消息到本地 SQLite 历史记录。"""
     with _HISTORY_LOCK:
-        try:
-            records = load_history()
-            record = {
-                "role": role,
-                "content": content,
-                "timestamp": _now_iso(),
-            }
-            records.append(record)
-            if _save_history(records):
-                return record
-            return None
-        except OSError as exc:
-            print(f"Warning: could not save chat history: {exc}")
-            return None
+        record = {
+            "role": role,
+            "content": content,
+            "timestamp": _now_iso(),
+        }
+        if RuntimeStore(RUNTIME_DB_PATH).append_json_record(HISTORY_NAMESPACE, record):
+            return record
+        return None
 
 
 def append_ai_message(content: str, **extra: Any) -> dict | None:
     with _HISTORY_LOCK:
-        records = load_history()
         record = _new_ai_record(content, **extra)
-        records.append(record)
-        if _save_history(records):
+        if RuntimeStore(RUNTIME_DB_PATH).append_json_record(HISTORY_NAMESPACE, record):
             return record
         return None
 

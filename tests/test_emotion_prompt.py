@@ -62,3 +62,26 @@ def test_build_emotion_analysis_prompt_can_disable_examples():
     assert "Labeled examples:" not in prompt
     assert "Emotion labels: anxious, sad" in prompt
     assert "Dialogue context: I cannot sleep" in prompt
+
+
+def test_build_emotion_analysis_prompt_uses_prompt_config_file(tmp_path, monkeypatch):
+    config_file = tmp_path / "prompts.json"
+    config_file.write_text(
+        '{"emotion_analysis": "Custom labels={emotion_labels}\\n'
+        'Examples:{example_block}\\nLikely:{likely_line}\\nContext:{dialogue_context}"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("PROMPT_CONFIG_PATH", str(config_file))
+
+    prompt = build_emotion_analysis_prompt(
+        emotion_labels=["anxious", "sad"],
+        emotion_label_set={"anxious", "sad"},
+        dialogue_context="I cannot sleep",
+        previous_emotion="sad",
+    )
+
+    assert "Custom labels=anxious, sad" in prompt
+    assert "Infer the user's current emotion" not in prompt
+    assert "Labeled examples:" in prompt
+    assert "Likely:\n- More likely emotion labels: sad" in prompt
+    assert "Context:I cannot sleep" in prompt

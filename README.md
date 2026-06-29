@@ -1,6 +1,6 @@
 # 情绪识别聊天机器人
 
-这是一个本地优先的 FastAPI Web 聊天机器人。应用用 OpenAI-compatible LLM 生成回复，通过浏览器端 SSE 流式显示结果，并按固定用户轮数分析情绪。聊天历史、情绪分析记录、AI 消息反馈、情绪反馈和长期记忆都默认保存在本地 `data/records/`。
+这是一个本地优先的 FastAPI Web 聊天机器人。应用用 OpenAI-compatible LLM 生成回复，通过浏览器端 SSE 流式显示结果，并按固定用户轮数分析情绪。聊天历史、用户画像、情绪分析记录、AI 消息反馈、情绪反馈和长期记忆都默认保存在本地 `data/records/` 的 SQLite 数据库中。
 
 项目当前支持 `openai` 和 `deepseek` 两类 OpenAI-compatible provider。长期记忆使用 Python 标准库 `sqlite3`，不依赖 Mem0 Platform、云端向量库或第三方托管存储。
 
@@ -33,6 +33,7 @@ EMOTION_INTERVAL=5
 MEMORY_ENABLED=true
 MEMORY_DB_PATH=data/records/memory.sqlite3
 MEMORY_MAX_RESULTS=5
+PROMPT_CONFIG_PATH=data/config/prompts.json
 ```
 
 启动 Web 应用：
@@ -52,7 +53,7 @@ http://127.0.0.1:8000
 - FastAPI 服务和免构建的 HTML/CSS/JavaScript 前端。
 - 使用一次性 stream id 建立 SSE 连接，避免浏览器自动重连时重复提交同一条消息。
 - 流式生成聊天回复，并在生成完成后写入 AI 消息记录。
-- 从本地 JSON 恢复聊天历史和最近情绪状态。
+- 从本地 SQLite 恢复聊天历史和最近情绪状态。
 - 每隔 `EMOTION_INTERVAL` 个用户回合调用情绪 LLM，保存结构化情绪状态。
 - 将当前情绪、危机/支持性安全提示和相关长期记忆注入聊天 prompt。
 - 支持 AI 消息点赞、点踩和重新生成。
@@ -65,8 +66,8 @@ http://127.0.0.1:8000
 应用启动时，`chatbot.web.build_service()` 会完成这些步骤：
 
 1. 通过 `chatbot.config.load_config()` 读取 `.env`、环境变量和默认值。
-2. 从 `data/records/chat_history.json` 恢复聊天历史。
-3. 从 `data/config/user_profile.json` 读取可选静态用户画像。
+2. 从 `data/records/runtime.sqlite3` 恢复聊天历史。
+3. 从 `data/records/runtime.sqlite3` 读取可选静态用户画像。
 4. 构建聊天 LLM；如果配置了任意 `EMOTION_LLM_*`，再构建独立情绪 LLM。
 5. 构建本地 memory provider，默认数据库是 `data/records/memory.sqlite3`。
 6. 将历史消息恢复到 LangChain 的 `InMemoryChatMessageHistory`。
@@ -139,6 +140,7 @@ chatbot/
 
 data/
   examples/             评估脚本样例数据
+  config/               本地 prompt 模板配置样例
   records/              运行时本地状态
 
 scripts/
@@ -210,6 +212,17 @@ EMOTION_INTERVAL=5
 | `MEMORY_CONSOLIDATION_WINDOW` | `12` | 每次最多查看最近多少条 human/AI 消息。 |
 | `MEMORY_CONSOLIDATION_MODE` | `rules` | 当前支持本地规则模式；无效值回退为 `rules`。 |
 
+### Prompt 模板
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PROMPT_CONFIG_PATH` | `data/config/prompts.json` | 本地 prompt 模板配置路径；文件缺失、JSON 损坏、字段为空或类型不对时使用内置默认 prompt。 |
+
+可从 `data/config/prompts.example.json` 复制一份为 `data/config/prompts.json` 后修改。当前支持：
+
+- `chat_system`：聊天 LLM 的 system prompt 主体。用户画像、长期记忆上下文和情绪上下文仍由程序追加/注入。
+- `emotion_analysis`：情绪识别 prompt 模板。可用占位符包括 `{emotion_labels}`、`{example_block}`、`{likely_line}`、`{dialogue_context}`。如果模板格式错误，会回退到内置默认模板。
+
 长期记忆分类固定为：
 
 - `preference`：用户偏好。
@@ -257,12 +270,10 @@ LLM 也可以返回旧格式 `Emotion: anxious`。旧格式会被解析成最小
 
 | 文件 | 内容 |
 | --- | --- |
-| `data/records/chat_history.json` | human/AI 消息、AI 消息 id、反馈、重新生成记录和关联情绪元数据。 |
-| `data/records/emotion_analysis.json` | 情绪分析 prompt、模型输出、解析结果、结构化状态、轮数和错误信息。 |
-| `data/records/emotion_feedback.json` | 情绪识别正确性反馈。 |
+| `data/records/runtime.sqlite3` | 聊天历史、用户画像、AI 消息反馈、重新生成记录、情绪分析记录和情绪识别正确性反馈。 |
 | `data/records/memory.sqlite3` | 本地长期记忆。 |
 
-历史和情绪分析 JSON 写入使用临时文件再原子替换，尽量避免写坏半截 JSON。旧路径 `data/chat_history.json`、`data/emotion_analysis.json` 和 `user_profile.json` 仍有兼容读取逻辑。
+运行时记录不再读取旧 JSON 文件，也不会自动迁移旧历史；需要保留的内容应直接写入本地 SQLite 数据库。`data/records/` 默认不提交到 Git。
 
 ## 评估脚本
 

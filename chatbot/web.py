@@ -171,11 +171,7 @@ def _emotion_record_matches_history(
     if turn_count <= 0:
         return False
 
-    input_text = emotion_record.get("input")
-    if not isinstance(input_text, str) or not input_text:
-        return False
-
-    stored_context = _dialogue_context_from_prompt(input_text)
+    stored_context = _dialogue_context_from_record(emotion_record)
     if stored_context is None:
         return False
 
@@ -198,6 +194,17 @@ def _emotion_record_matches_history(
         if content
     ]
     return _contains_context_window(history_items, expected_contents, turn_count)
+
+
+def _dialogue_context_from_record(emotion_record: dict) -> str | None:
+    dialogue_context = emotion_record.get("dialogue_context")
+    if isinstance(dialogue_context, str) and dialogue_context.strip():
+        return dialogue_context.strip()
+
+    input_text = emotion_record.get("input")
+    if not isinstance(input_text, str) or not input_text:
+        return None
+    return _dialogue_context_from_prompt(input_text)
 
 
 def _dialogue_context_from_prompt(input_text: str) -> str | None:

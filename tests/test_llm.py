@@ -87,6 +87,20 @@ def test_build_system_message_defines_companion_boundaries():
     assert "Follow any supportive or crisis guidance" in message
 
 
+def test_build_system_message_uses_prompt_config_file(tmp_path, monkeypatch):
+    config_file = tmp_path / "prompts.json"
+    config_file.write_text('{"chat_system": "Custom companion rules."}', encoding="utf-8")
+    monkeypatch.setenv("PROMPT_CONFIG_PATH", str(config_file))
+
+    message = build_system_message("- name: Alice")
+
+    assert "Custom companion rules." in message
+    assert "gentle emotional companion" not in message
+    assert "User Profile:\n- name: Alice" in message
+    assert "{memory_context}" in message
+    assert "{emotion_context}" in message
+
+
 def test_build_chain_injects_emotion_context_into_system_message():
     captured_messages = []
 

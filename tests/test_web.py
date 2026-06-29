@@ -384,6 +384,39 @@ def test_session_endpoint_matches_emotion_after_restart_turn_count(monkeypatch):
     }
 
 
+def test_session_endpoint_matches_emotion_from_stored_dialogue_context(monkeypatch):
+    records = [
+        {"role": "human", "content": "q1", "timestamp": "t1"},
+        {"role": "ai", "content": "a1", "timestamp": "t2"},
+        {"role": "human", "content": "q2", "timestamp": "t3"},
+    ]
+    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
+    monkeypatch.setattr(
+        "chatbot.web.load_analysis_records",
+        lambda: [{
+            "timestamp": "emotion-time",
+            "turn_count": 2,
+            "emotion_interval": 2,
+            "input": "Custom prompt without the legacy marker.",
+            "dialogue_context": "q1</s>a1</s>q2",
+            "emotion": "sad",
+            "success": True,
+        }],
+    )
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/session?limit=10")
+
+    assert response.status_code == 200
+    assert response.json()["emotion"] == {
+        "emotion": "sad",
+        "timestamp": "emotion-time",
+        "turn_count": 2,
+    }
+
+
 def test_session_endpoint_does_not_fall_back_when_latest_emotion_mismatches(monkeypatch):
     records = [
         {"role": "human", "content": "q1", "timestamp": "t1"},
@@ -914,8 +947,8 @@ def test_feedback_endpoint_returns_write_failure(monkeypatch):
 
 
 def test_emotion_feedback_endpoint_saves_feedback(tmp_path, monkeypatch):
-    feedback_file = tmp_path / "emotion_feedback.json"
-    monkeypatch.setattr("chatbot.emotion_feedback.EMOTION_FEEDBACK_FILE", str(feedback_file))
+    runtime_db = tmp_path / "runtime.sqlite3"
+    monkeypatch.setattr("chatbot.emotion_feedback.RUNTIME_DB_PATH", str(runtime_db))
 
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)

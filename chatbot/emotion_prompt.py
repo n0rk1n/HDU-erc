@@ -3,6 +3,7 @@
 from typing import Any
 
 from chatbot.emotion_examples import EmotionExample, select_emotion_examples
+from chatbot.prompt_config import DEFAULT_EMOTION_ANALYSIS_PROMPT, load_prompt_config
 
 
 def build_emotion_analysis_prompt(
@@ -36,16 +37,17 @@ def build_emotion_analysis_prompt(
         )
 
     labels = ", ".join(emotion_labels)
-    return f"""Infer the user's current emotion from the dialogue context.
-- Dialogue context: The conversation history between user and assistant, with utterances separated by </s>.
-- Emotion labels: {labels}
-- Choose a single inferred emotion from the provided Emotion labels, not outside of them.
-{example_block}
-- Response Format: Return exactly one JSON object with these fields:
-  {{"primary_emotion": "anxious", "confidence": 0.0, "secondary_emotions": [], "evidence": "short phrase from the dialogue", "reply_strategy": "brief guidance for the next chatbot reply", "trajectory_note": "optional change from prior emotion", "safety_level": "normal"}}
-  Use primary_emotion and secondary_emotions only from the provided Emotion labels. Use safety_level as one of: normal, supportive, crisis.{likely_line}
-
-Dialogue context: {dialogue_context}""".strip()
+    values = {
+        "emotion_labels": labels,
+        "example_block": example_block,
+        "likely_line": likely_line,
+        "dialogue_context": dialogue_context,
+    }
+    template = load_prompt_config().emotion_analysis
+    try:
+        return template.format(**values).strip()
+    except (KeyError, IndexError, ValueError):
+        return DEFAULT_EMOTION_ANALYSIS_PROMPT.format(**values).strip()
 
 
 def normalize_likely_emotions(

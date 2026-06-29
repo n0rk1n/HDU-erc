@@ -1,9 +1,9 @@
-import json
 from pathlib import Path
 
 import pytest
 
 import chatbot.history as history
+from chatbot.runtime_store import RuntimeStore
 from chatbot.history import (
     REGENERATION_REASONS,
     append_ai_message,
@@ -18,9 +18,13 @@ from chatbot.history import (
 
 @pytest.fixture
 def history_file(tmp_path, monkeypatch):
-    test_file = tmp_path / "chat_history.json"
-    monkeypatch.setattr("chatbot.history.HISTORY_FILE", str(test_file))
-    return test_file
+    test_db = tmp_path / "runtime.sqlite3"
+    monkeypatch.setattr("chatbot.history.RUNTIME_DB_PATH", str(test_db))
+    return test_db
+
+
+def _replace_history(db_path, records):
+    RuntimeStore(str(db_path)).replace_json_records(history.HISTORY_NAMESPACE, records)
 
 
 def test_load_history_file_not_found(history_file):
@@ -28,39 +32,37 @@ def test_load_history_file_not_found(history_file):
 
 
 def test_default_history_file_is_project_data_file():
-    path = Path(history.HISTORY_FILE)
+    path = Path(history.RUNTIME_DB_PATH)
 
     assert path.is_absolute()
-    assert path.name == "chat_history.json"
+    assert path.name == "runtime.sqlite3"
     assert path.parent.name == "records"
     assert path.parent.parent.name == "data"
     assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
 
 
-def test_load_history_reads_legacy_data_file_when_new_file_missing(tmp_path, monkeypatch):
-    history_file = tmp_path / "data" / "records" / "chat_history.json"
+def test_load_history_ignores_legacy_data_file_when_database_missing(tmp_path, monkeypatch):
+    runtime_db = tmp_path / "data" / "records" / "runtime.sqlite3"
     legacy_file = tmp_path / "data" / "chat_history.json"
     legacy_file.parent.mkdir(parents=True)
-    legacy_file.write_text(json.dumps([{"role": "human", "content": "hello"}]))
-    monkeypatch.setattr("chatbot.history.HISTORY_FILE", str(history_file))
-    monkeypatch.setattr("chatbot.history.LEGACY_HISTORY_FILE", str(legacy_file))
+    legacy_file.write_text('[{"role": "human", "content": "hello"}]')
+    monkeypatch.setattr("chatbot.history.RUNTIME_DB_PATH", str(runtime_db))
 
-    assert load_history() == [{"role": "human", "content": "hello"}]
+    assert load_history() == []
 
 
 def test_load_history_empty_file(history_file):
-    history_file.write_text("")
     assert load_history() == []
 
 
 def test_load_history_corrupted_file(history_file):
-    history_file.write_text("not valid json")
+    history_file.write_text("not sqlite")
     assert load_history() == []
 
 
 def test_append_message_creates_file(history_file):
     append_message("human", "hello")
-    data = json.loads(history_file.read_text())
+    data = load_history()
     assert len(data) == 1
     assert data[0]["role"] == "human"
     assert data[0]["content"] == "hello"
@@ -70,7 +72,7 @@ def test_append_message_creates_file(history_file):
 def test_append_message_appends(history_file):
     append_message("human", "msg1")
     append_message("ai", "reply1")
-    data = json.loads(history_file.read_text())
+    data = load_history()
     assert len(data) == 2
     assert data[1]["role"] == "ai"
     assert data[1]["content"] == "reply1"
@@ -79,7 +81,7 @@ def test_append_message_appends(history_file):
 def test_append_ai_message_creates_feedback_ready_record(history_file):
     record = append_ai_message("reply")
 
-    data = json.loads(history_file.read_text())
+    data = load_history()
 
     assert record == data[0]
     assert data[0]["role"] == "ai"
@@ -92,7 +94,7 @@ def test_append_ai_message_creates_feedback_ready_record(history_file):
 def test_append_message_keeps_human_record_shape(history_file):
     append_message("human", "hello")
 
-    data = json.loads(history_file.read_text())
+    data = load_history()
 
     assert data[0]["role"] == "human"
     assert data[0]["content"] == "hello"
@@ -113,7 +115,7 @@ def test_record_message_feedback_writes_first_rating(history_file):
     record = append_ai_message("reply")
 
     result = record_message_feedback(record["id"], "like")
-    data = json.loads(history_file.read_text())
+    data = load_history()
 
     assert result.status == "updated"
     assert result.feedback == "like"
@@ -125,7 +127,7 @@ def test_record_message_feedback_rejects_second_rating(history_file):
     record_message_feedback(record["id"], "like")
 
     result = record_message_feedback(record["id"], "dislike")
-    data = json.loads(history_file.read_text())
+    data = load_history()
 
     assert result.status == "already_rated"
     assert result.feedback == "like"
@@ -141,9 +143,9 @@ def test_record_message_feedback_returns_not_found(history_file):
 
 def test_record_message_feedback_rejects_human_message(history_file):
     append_message("human", "hello")
-    data = json.loads(history_file.read_text())
+    data = load_history()
     data[0]["id"] = "human_1"
-    history_file.write_text(json.dumps(data))
+    _replace_history(history_file, data)
 
     result = record_message_feedback("human_1", "like")
 
@@ -179,9 +181,9 @@ def test_prepare_message_regeneration_returns_not_found(history_file):
 
 def test_prepare_message_regeneration_rejects_human_message(history_file):
     append_message("human", "hello")
-    data = json.loads(history_file.read_text())
+    data = load_history()
     data[0]["id"] = "human_1"
-    history_file.write_text(json.dumps(data))
+    _replace_history(history_file, data)
 
     result = prepare_message_regeneration("human_1", "不准确")
 
@@ -266,9 +268,9 @@ def test_record_message_regeneration_returns_not_found(history_file):
 
 def test_record_message_regeneration_rejects_human_message(history_file):
     append_message("human", "hello")
-    data = json.loads(history_file.read_text())
+    data = load_history()
     data[0]["id"] = "human_1"
-    history_file.write_text(json.dumps(data))
+    _replace_history(history_file, data)
 
     result = record_message_regeneration("human_1", "不准确", "better answer")
 
@@ -290,7 +292,7 @@ def test_record_message_regeneration_records_metadata_and_new_reply(history_file
     original = append_ai_message("bad answer")
 
     result = record_message_regeneration(original["id"], "不准确", "better answer")
-    data = json.loads(history_file.read_text())
+    data = load_history()
 
     assert result.status == "updated"
     assert result.reason == "不准确"
@@ -354,14 +356,13 @@ def test_regeneration_reasons_are_fixed():
     }
 
 
-def test_append_message_write_failure_does_not_crash(history_file, capsys):
-    """Write failure prints a warning and does not raise."""
-    # Make directory read-only to force write failure
-    Path(history_file).parent.chmod(0o444)
-    try:
-        append_message("human", "hello")  # should not raise
-    finally:
-        Path(history_file).parent.chmod(0o755)
+def test_append_message_write_failure_does_not_crash(monkeypatch):
+    monkeypatch.setattr(
+        "chatbot.history.RuntimeStore.append_json_record",
+        lambda self, namespace, record: False,
+    )
+
+    assert append_message("human", "hello") is None
 
 
 def test_format_recent_empty():
