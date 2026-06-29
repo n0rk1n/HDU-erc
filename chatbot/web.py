@@ -92,7 +92,7 @@ def build_service() -> ChatService:
     memory_provider = build_memory_provider(memory_config)
     init_session_history("default", records)
     chain = build_chain(chat_llm, profile_text)
-    return ChatService(
+    service = ChatService(
         chain,
         config,
         emotion_llm,
@@ -103,13 +103,19 @@ def build_service() -> ChatService:
         memory_max_results=memory_config.max_results,
         memory_consolidation_config=memory_consolidation_config,
     )
+    service.chat_llm = chat_llm
+    return service
+
+
+def _service_chat_llm(service: ChatService):
+    return getattr(service, "chat_llm", None)
 
 
 def _refresh_service_profile(service: ChatService) -> None:
-    chat_llm = getattr(getattr(service, "config", None), "chat_llm", None)
-    if chat_llm is None:
+    runtime_chat_llm = _service_chat_llm(service)
+    if runtime_chat_llm is None:
         return
-    service.chain = build_chain(chat_llm, format_profile(load_profile()))
+    service.chain = build_chain(runtime_chat_llm, format_profile(load_profile()))
 
 
 def _structured_messages(records: list[dict], limit: int) -> list[dict]:
@@ -328,11 +334,11 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         request: ProfileDraftRequest,
         service: ChatService = Depends(get_service),
     ):
-        chat_llm = getattr(getattr(service, "config", None), "chat_llm", None)
-        if chat_llm is None:
+        runtime_chat_llm = _service_chat_llm(service)
+        if runtime_chat_llm is None:
             raise HTTPException(status_code=500, detail="Chat LLM is unavailable.")
         answers = [_request_payload(answer) for answer in request.answers]
-        return {"draft": draft_profile(chat_llm, answers)}
+        return {"draft": draft_profile(runtime_chat_llm, answers)}
 
     @app.get("/api/emotion/timeline")
     def emotion_timeline(limit: int = Query(default=10, gt=0, le=50)):

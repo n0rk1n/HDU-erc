@@ -2,6 +2,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,8 @@ class FakeService:
     def __init__(self):
         self.messages = []
         self.chain = "old-chain"
-        self.config = type("Config", (), {"chat_llm": "chat-llm"})()
+        self.chat_llm = "runtime-chat-llm"
+        self.config = type("Config", (), {"chat_llm": "config-chat-llm"})()
 
     def stream_reply(self, message):
         self.messages.append(message)
@@ -75,10 +77,11 @@ def test_build_service_does_not_duplicate_session_history(monkeypatch):
 
 def test_build_service_passes_memory_provider(monkeypatch):
     captured = {}
+    chat_llm = object()
 
     class FakeConfig:
         emotion_interval = 5
-        chat_llm = object()
+        chat_llm = "config-chat-llm"
         emotion_llm = object()
 
     class FakeService:
@@ -89,7 +92,7 @@ def test_build_service_passes_memory_provider(monkeypatch):
     monkeypatch.setattr("chatbot.web.load_history", lambda: [])
     monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
     monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr("chatbot.web.build_runtime_llms", lambda config: (object(), object()))
+    monkeypatch.setattr("chatbot.web.build_runtime_llms", lambda config: (chat_llm, object()))
     monkeypatch.setattr("chatbot.web.init_session_history", lambda session_id, records: None)
     monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
     monkeypatch.setattr("chatbot.web._latest_emotion_for_records", lambda records: None)
@@ -101,7 +104,9 @@ def test_build_service_passes_memory_provider(monkeypatch):
     monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: "memory-provider")
     monkeypatch.setattr("chatbot.web.ChatService", FakeService)
 
-    assert web.build_service() is not None
+    service = web.build_service()
+
+    assert service.chat_llm is chat_llm
     assert captured["memory_provider"] == "memory-provider"
     assert captured["memory_max_results"] == 3
 
@@ -128,7 +133,7 @@ def test_build_service_uses_latest_successful_emotion(monkeypatch):
     ):
         captured["initial_records"] = initial_records
         captured["initial_emotion"] = initial_emotion
-        return object()
+        return SimpleNamespace()
 
     monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
     monkeypatch.setattr("chatbot.web.load_history", lambda: records)
@@ -190,7 +195,7 @@ def test_build_service_restores_latest_structured_emotion_state(monkeypatch):
     ):
         captured["initial_emotion"] = initial_emotion
         captured["initial_emotion_state"] = initial_emotion_state
-        return object()
+        return SimpleNamespace()
 
     monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
     monkeypatch.setattr("chatbot.web.load_history", lambda: records)
@@ -261,7 +266,7 @@ def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
         **kwargs,
     ):
         captured["initial_emotion"] = initial_emotion
-        return object()
+        return SimpleNamespace()
 
     monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
     monkeypatch.setattr("chatbot.web.load_history", lambda: records)
@@ -535,7 +540,7 @@ def test_save_profile_filters_fields_and_refreshes_chain(monkeypatch):
     }
     assert saved["profile"] == {"preferred_name": "Alice", "response_style": "brief"}
     assert service.chain == "new-chain"
-    assert build_chain_args["args"] == ("chat-llm", "formatted-profile")
+    assert build_chain_args["args"] == ("runtime-chat-llm", "formatted-profile")
 
 
 def test_save_profile_accepts_raw_unknown_fields(monkeypatch):
@@ -614,7 +619,7 @@ def test_profile_onboarding_draft_endpoint(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"draft": {"preferred_name": "Alice"}}
     assert captured == {
-        "chat_llm": "chat-llm",
+        "chat_llm": "runtime-chat-llm",
         "answers": [{"key": "preferred_name", "answer": "Alice"}],
     }
 
@@ -640,9 +645,24 @@ def test_profile_onboarding_draft_accepts_raw_answer_values(monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"draft": {}}
     assert captured == {
-        "chat_llm": "chat-llm",
+        "chat_llm": "runtime-chat-llm",
         "answers": [{"key": "preferred_name", "answer": 123}],
     }
+
+
+def test_profile_onboarding_draft_requires_runtime_chat_llm():
+    service = FakeService()
+    delattr(service, "chat_llm")
+    app = create_app(service_factory=lambda: service)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/profile/onboarding/draft",
+        json={"answers": [{"key": "preferred_name", "answer": "Alice"}]},
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Chat LLM is unavailable."}
 
 
 def test_chat_stream_uses_one_time_posted_stream_id():
