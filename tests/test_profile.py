@@ -4,7 +4,7 @@ import pytest
 
 import chatbot.profile as profile
 from chatbot.runtime_store import RuntimeStore
-from chatbot.profile import load_profile, format_profile
+from chatbot.profile import load_profile, format_profile, save_profile
 
 @pytest.fixture
 def profile_file(tmp_path, monkeypatch):
@@ -64,6 +64,15 @@ def test_load_profile_skips_empty_values(profile_file):
     _replace_profile(profile_file, data)
     result = load_profile()
     assert result == {"name": "Alice", "mbti": "INTP"}
+
+
+def test_save_profile_writes_database_profile(profile_file):
+    assert save_profile({"preferred_name": "小明", "response_style": "简短"}) is True
+
+    assert load_profile() == {
+        "preferred_name": "小明",
+        "response_style": "简短",
+    }
 
 
 def test_format_profile_empty():

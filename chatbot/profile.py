@@ -9,6 +9,10 @@ def load_profile() -> dict[str, str]:
     return RuntimeStore(RUNTIME_DB_PATH).load_profile()
 
 
+def save_profile(profile: dict[str, str]) -> bool:
+    return RuntimeStore(RUNTIME_DB_PATH).replace_profile(profile)
+
+
 def format_profile(profile: dict[str, str]) -> str:
     if not profile:
         return ""
