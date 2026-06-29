@@ -15,6 +15,8 @@ from chatbot.web import build_service, create_app, format_sse
 class FakeService:
     def __init__(self):
         self.messages = []
+        self.chain = "old-chain"
+        self.config = type("Config", (), {"chat_llm": "chat-llm"})()
 
     def stream_reply(self, message):
         self.messages.append(message)
@@ -466,6 +468,122 @@ def test_session_endpoint_returns_null_emotion(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"messages": [], "emotion": None}
+
+
+def test_profile_endpoint_returns_profile(monkeypatch):
+    profile = {"preferred_name": "Alice", "response_style": "brief"}
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: profile)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/profile")
+
+    assert response.status_code == 200
+    assert response.json() == {"profile": profile, "is_empty": False}
+
+
+def test_profile_endpoint_reports_empty(monkeypatch):
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/profile")
+
+    assert response.status_code == 200
+    assert response.json() == {"profile": {}, "is_empty": True}
+
+
+def test_save_profile_filters_fields_and_refreshes_chain(monkeypatch):
+    saved = {}
+    build_chain_args = {}
+    service = FakeService()
+
+    def fake_save_profile(profile):
+        saved["profile"] = profile
+        return True
+
+    def fake_build_chain(chat_llm, profile_text):
+        build_chain_args["args"] = (chat_llm, profile_text)
+        return "new-chain"
+
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: saved.get("profile", {}))
+    monkeypatch.setattr("chatbot.web.save_profile", fake_save_profile)
+    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "formatted-profile")
+    monkeypatch.setattr("chatbot.web.build_chain", fake_build_chain)
+
+    app = create_app(service_factory=lambda: service)
+    client = TestClient(app)
+
+    response = client.put(
+        "/api/profile",
+        json={
+            "profile": {
+                "preferred_name": " Alice ",
+                "life_stage": "",
+                "response_style": "  brief  ",
+                "unknown": "ignored",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "saved",
+        "profile": {"preferred_name": "Alice", "response_style": "brief"},
+    }
+    assert saved["profile"] == {"preferred_name": "Alice", "response_style": "brief"}
+    assert service.chain == "new-chain"
+    assert build_chain_args["args"] == ("chat-llm", "formatted-profile")
+
+
+def test_save_profile_returns_500_when_write_fails(monkeypatch):
+    monkeypatch.setattr("chatbot.web.save_profile", lambda profile: False)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.put("/api/profile", json={"profile": {"preferred_name": "Alice"}})
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not save profile."}
+
+
+def test_profile_onboarding_questions_endpoint():
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.get("/api/profile/onboarding/questions")
+
+    assert response.status_code == 200
+    assert response.json() == {"questions": web.ONBOARDING_QUESTIONS}
+
+
+def test_profile_onboarding_draft_endpoint(monkeypatch):
+    captured = {}
+
+    def fake_draft_profile(chat_llm, answers):
+        captured["chat_llm"] = chat_llm
+        captured["answers"] = answers
+        return {"preferred_name": "Alice"}
+
+    monkeypatch.setattr("chatbot.web.draft_profile", fake_draft_profile)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/profile/onboarding/draft",
+        json={"answers": [{"key": "preferred_name", "answer": "Alice"}]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"draft": {"preferred_name": "Alice"}}
+    assert captured == {
+        "chat_llm": "chat-llm",
+        "answers": [{"key": "preferred_name", "answer": "Alice"}],
+    }
 
 
 def test_chat_stream_uses_one_time_posted_stream_id():

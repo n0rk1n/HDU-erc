@@ -26,7 +26,12 @@ from chatbot.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
 from chatbot.memory import load_memory_config
 from chatbot.memory_consolidation import load_memory_consolidation_config
-from chatbot.profile import format_profile, load_profile
+from chatbot.profile import format_profile, load_profile, save_profile
+from chatbot.profile_onboarding import (
+    ONBOARDING_QUESTIONS,
+    draft_profile,
+    sanitize_profile,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -49,6 +54,19 @@ class EmotionFeedbackRequest(BaseModel):
 
 class ChatStreamRequest(BaseModel):
     message: str
+
+
+class ProfileRequest(BaseModel):
+    profile: dict[str, str]
+
+
+class ProfileOnboardingAnswer(BaseModel):
+    key: str
+    answer: str = ""
+
+
+class ProfileDraftRequest(BaseModel):
+    answers: list[ProfileOnboardingAnswer]
 
 
 def _request_payload(request: BaseModel) -> dict:
@@ -85,6 +103,13 @@ def build_service() -> ChatService:
         memory_max_results=memory_config.max_results,
         memory_consolidation_config=memory_consolidation_config,
     )
+
+
+def _refresh_service_profile(service: ChatService) -> None:
+    chat_llm = getattr(getattr(service, "config", None), "chat_llm", None)
+    if chat_llm is None:
+        return
+    service.chain = build_chain(chat_llm, format_profile(load_profile()))
 
 
 def _structured_messages(records: list[dict], limit: int) -> list[dict]:
@@ -277,6 +302,37 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.get("/api/session")
     def session(limit: int = Query(default=10, gt=0, le=100)):
         return _session_snapshot(limit)
+
+    @app.get("/api/profile")
+    def profile():
+        profile_data = load_profile()
+        return {"profile": profile_data, "is_empty": not bool(profile_data)}
+
+    @app.put("/api/profile")
+    def update_profile(
+        request: ProfileRequest,
+        service: ChatService = Depends(get_service),
+    ):
+        cleaned = sanitize_profile(request.profile)
+        if not save_profile(cleaned):
+            raise HTTPException(status_code=500, detail="Could not save profile.")
+        _refresh_service_profile(service)
+        return {"status": "saved", "profile": cleaned}
+
+    @app.get("/api/profile/onboarding/questions")
+    def profile_onboarding_questions():
+        return {"questions": ONBOARDING_QUESTIONS}
+
+    @app.post("/api/profile/onboarding/draft")
+    def profile_onboarding_draft(
+        request: ProfileDraftRequest,
+        service: ChatService = Depends(get_service),
+    ):
+        chat_llm = getattr(getattr(service, "config", None), "chat_llm", None)
+        if chat_llm is None:
+            raise HTTPException(status_code=500, detail="Chat LLM is unavailable.")
+        answers = [_request_payload(answer) for answer in request.answers]
+        return {"draft": draft_profile(chat_llm, answers)}
 
     @app.get("/api/emotion/timeline")
     def emotion_timeline(limit: int = Query(default=10, gt=0, le=50)):
