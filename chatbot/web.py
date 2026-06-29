@@ -3,7 +3,7 @@
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -57,12 +57,12 @@ class ChatStreamRequest(BaseModel):
 
 
 class ProfileRequest(BaseModel):
-    profile: dict[str, str]
+    profile: dict[str, Any]
 
 
 class ProfileOnboardingAnswer(BaseModel):
     key: str
-    answer: str = ""
+    answer: Any = ""
 
 
 class ProfileDraftRequest(BaseModel):

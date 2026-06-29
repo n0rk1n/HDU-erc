@@ -538,6 +538,39 @@ def test_save_profile_filters_fields_and_refreshes_chain(monkeypatch):
     assert build_chain_args["args"] == ("chat-llm", "formatted-profile")
 
 
+def test_save_profile_accepts_raw_unknown_fields(monkeypatch):
+    saved = {}
+
+    def fake_save_profile(profile):
+        saved["profile"] = profile
+        return True
+
+    monkeypatch.setattr("chatbot.web.load_profile", lambda: saved.get("profile", {}))
+    monkeypatch.setattr("chatbot.web.save_profile", fake_save_profile)
+    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "formatted-profile")
+    monkeypatch.setattr("chatbot.web.build_chain", lambda chat_llm, profile_text: "new-chain")
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.put(
+        "/api/profile",
+        json={
+            "profile": {
+                "preferred_name": "Alice",
+                "unknown": 123,
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "saved",
+        "profile": {"preferred_name": "Alice"},
+    }
+    assert saved["profile"] == {"preferred_name": "Alice"}
+
+
 def test_save_profile_returns_500_when_write_fails(monkeypatch):
     monkeypatch.setattr("chatbot.web.save_profile", lambda profile: False)
 
@@ -583,6 +616,32 @@ def test_profile_onboarding_draft_endpoint(monkeypatch):
     assert captured == {
         "chat_llm": "chat-llm",
         "answers": [{"key": "preferred_name", "answer": "Alice"}],
+    }
+
+
+def test_profile_onboarding_draft_accepts_raw_answer_values(monkeypatch):
+    captured = {}
+
+    def fake_draft_profile(chat_llm, answers):
+        captured["chat_llm"] = chat_llm
+        captured["answers"] = answers
+        return {}
+
+    monkeypatch.setattr("chatbot.web.draft_profile", fake_draft_profile)
+
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/profile/onboarding/draft",
+        json={"answers": [{"key": "preferred_name", "answer": 123}]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"draft": {}}
+    assert captured == {
+        "chat_llm": "chat-llm",
+        "answers": [{"key": "preferred_name", "answer": 123}],
     }
 
 
