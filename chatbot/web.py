@@ -30,6 +30,7 @@ from chatbot.profile import format_profile, load_profile, save_profile
 from chatbot.profile_onboarding import (
     ONBOARDING_QUESTIONS,
     draft_profile,
+    fallback_profile_draft,
     sanitize_profile,
 )
 
@@ -337,10 +338,10 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         request: ProfileDraftRequest,
         service: ChatService = Depends(get_service),
     ):
+        answers = [_request_payload(answer) for answer in request.answers]
         runtime_chat_llm = _service_chat_llm(service)
         if runtime_chat_llm is None:
-            raise HTTPException(status_code=500, detail="Chat LLM is unavailable.")
-        answers = [_request_payload(answer) for answer in request.answers]
+            return {"draft": fallback_profile_draft(answers)}
         return {"draft": draft_profile(runtime_chat_llm, answers)}
 
     @app.get("/api/emotion/timeline")

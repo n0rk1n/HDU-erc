@@ -412,6 +412,27 @@ async function requestProfileDraft() {
   return payload.draft || {};
 }
 
+function fallbackProfileDraftFromAnswers(answers = profileState.answers) {
+  const answersByKey = {};
+  answers.forEach((item) => {
+    if (!item || typeof item.answer !== "string") {
+      return;
+    }
+    const trimmed = item.answer.trim();
+    if (trimmed) {
+      answersByKey[item.key] = trimmed;
+    }
+  });
+
+  const draft = {};
+  profileFields.forEach(([key]) => {
+    if (answersByKey[key]) {
+      draft[key] = answersByKey[key];
+    }
+  });
+  return draft;
+}
+
 function setProfilePromptSkipped() {
   try {
     sessionStorage.setItem("profileOnboardingSkipped", "true");
@@ -592,7 +613,7 @@ function renderProfileForm(profile, options = {}) {
   actions.appendChild(saveButton);
   actions.appendChild(cancelButton);
 
-  const status = createProfileStatus();
+  const status = createProfileStatus(options.status || "", Boolean(options.statusIsError));
   form.appendChild(actions);
   form.appendChild(status);
   form.addEventListener("submit", (event) => (
@@ -691,7 +712,12 @@ async function buildProfileDraft() {
       description: "这是根据你的回答生成的草稿，可以先修改再保存。",
     });
   } catch (error) {
-    renderProfileError("画像草稿生成失败，请稍后重试。", buildProfileDraft);
+    renderProfileForm(fallbackProfileDraftFromAnswers(), {
+      title: "手动确认画像",
+      description: "已根据当前回答预填可用内容，留空的字段不会保存。",
+      status: "画像草稿生成失败，你可以继续手动编辑并保存。",
+      statusIsError: true,
+    });
   }
 }
 
@@ -714,6 +740,7 @@ async function submitProfileForm(event, form, status, saveButton) {
       title: "编辑我的画像",
       description: "画像已保存。后续聊天会使用这些偏好。",
     });
+    hideProfilePrompt();
   } catch (error) {
     saveButton.disabled = false;
     status.className = "profile-status error";

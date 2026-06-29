@@ -89,5 +89,6 @@ def _draft_prompt(answers: list[dict[str, Any]]) -> str:
         "只输出 JSON，不要输出解释、Markdown 或代码块。\n"
         f"只允许使用这些字段：{allowed_fields}。\n"
         "不要编造用户没有明确表达的信息；跳过或不确定的字段请留空字符串或省略。\n"
+        "不要编造敏感背景、诊断、情绪或偏好。\n"
         f"问答如下：{answers_json}"
     )

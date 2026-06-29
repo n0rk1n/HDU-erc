@@ -5,6 +5,7 @@ import pytest
 import chatbot.profile as profile
 from chatbot.runtime_store import RuntimeStore
 from chatbot.profile import load_profile, format_profile, save_profile
+from chatbot.profile_onboarding import MAX_PROFILE_VALUE_LENGTH
 
 @pytest.fixture
 def profile_file(tmp_path, monkeypatch):
@@ -72,6 +73,21 @@ def test_save_profile_writes_database_profile(profile_file):
     assert load_profile() == {
         "preferred_name": "小明",
         "response_style": "简短",
+    }
+
+
+def test_save_profile_sanitizes_direct_call_input(profile_file):
+    assert save_profile({
+        "preferred_name": "  小明  ",
+        "life_stage": "",
+        "companion_expectation": 123,
+        "response_style": "x" * 500,
+        "unknown": "不要保存",
+    }) is True
+
+    assert load_profile() == {
+        "preferred_name": "小明",
+        "response_style": "x" * MAX_PROFILE_VALUE_LENGTH,
     }
 
 

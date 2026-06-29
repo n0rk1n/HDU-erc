@@ -655,7 +655,7 @@ def test_profile_onboarding_draft_accepts_raw_answer_values(monkeypatch):
     }
 
 
-def test_profile_onboarding_draft_requires_runtime_chat_llm():
+def test_profile_onboarding_draft_uses_fallback_without_runtime_chat_llm():
     service = FakeService()
     delattr(service, "chat_llm")
     app = create_app(service_factory=lambda: service)
@@ -663,14 +663,20 @@ def test_profile_onboarding_draft_requires_runtime_chat_llm():
 
     response = client.post(
         "/api/profile/onboarding/draft",
-        json={"answers": [{"key": "preferred_name", "answer": "Alice"}]},
+        json={
+            "answers": [
+                {"key": "preferred_name", "answer": " Alice "},
+                {"key": "unknown", "answer": "ignored"},
+                {"key": "avoidance", "answer": 123},
+            ]
+        },
     )
 
-    assert response.status_code == 500
-    assert response.json() == {"detail": "Chat LLM is unavailable."}
+    assert response.status_code == 200
+    assert response.json() == {"draft": {"preferred_name": "Alice"}}
 
 
-def test_profile_onboarding_draft_rejects_runtime_chat_llm_without_invoke():
+def test_profile_onboarding_draft_uses_fallback_when_runtime_chat_llm_has_no_invoke():
     service = FakeService()
     service.chat_llm = object()
     app = create_app(service_factory=lambda: service)
@@ -678,11 +684,11 @@ def test_profile_onboarding_draft_rejects_runtime_chat_llm_without_invoke():
 
     response = client.post(
         "/api/profile/onboarding/draft",
-        json={"answers": [{"key": "preferred_name", "answer": "Alice"}]},
+        json={"answers": [{"key": "response_style", "answer": " 简短 "}]},
     )
 
-    assert response.status_code == 500
-    assert response.json() == {"detail": "Chat LLM is unavailable."}
+    assert response.status_code == 200
+    assert response.json() == {"draft": {"response_style": "简短"}}
 
 
 def test_chat_stream_uses_one_time_posted_stream_id():

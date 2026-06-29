@@ -117,6 +117,8 @@ def test_draft_profile_uses_valid_llm_json():
     assert len(llm.prompts) == 1
     assert "只输出 JSON" in llm.prompts[0]
     assert "preferred_name" in llm.prompts[0]
+    assert "敏感背景" in llm.prompts[0]
+    assert "诊断" in llm.prompts[0]
 
 
 def test_draft_profile_falls_back_for_invalid_json():
