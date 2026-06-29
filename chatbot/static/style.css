@@ -34,6 +34,7 @@ body {
 }
 
 .topbar {
+  grid-row: 1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -79,6 +80,7 @@ body {
 }
 
 .messages {
+  grid-row: 3;
   overflow-y: auto;
   padding: 24px;
 }
@@ -160,6 +162,7 @@ body {
 }
 
 .composer {
+  grid-row: 4;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 12px;
@@ -210,6 +213,7 @@ button {
 }
 
 .profile-onboarding-prompt {
+  grid-row: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
