@@ -367,17 +367,17 @@ python scripts/evaluate_emotion_ablation.py \
 
 ### Emotion Ablation V2 Benchmark
 
-The richer bilingual benchmark lives in `data/benchmarks/emotion_ablation_v2/`. It keeps seed, release, annotation, and quality-control files separate from the small legacy smoke-test examples.
+The richer bilingual benchmark lives in `data/benchmarks/emotion_ablation_v2/`. It keeps seed, release, annotation, and quality-control files separate from the small legacy smoke-test examples. Version `0.1.0` includes a 500-record formal release plus a 64-record seed reference set.
 
-Validate the seed release:
+Validate a formal release split:
 
     python scripts/benchmark/validate_emotion_benchmark.py \
-      --input data/benchmarks/emotion_ablation_v2/release/seed.jsonl
+      --input data/benchmarks/emotion_ablation_v2/release/core_parallel.jsonl
 
 Export it to the legacy ablation format:
 
     python scripts/benchmark/export_emotion_ablation_v2.py \
-      --input data/benchmarks/emotion_ablation_v2/release/seed.jsonl \
+      --input data/benchmarks/emotion_ablation_v2/release/core_parallel.jsonl \
       --output-dir data/records/ablation_v2_export
 
 Then run the existing ablation scripts against the exported `dialogues.jsonl` and `labels.jsonl`.

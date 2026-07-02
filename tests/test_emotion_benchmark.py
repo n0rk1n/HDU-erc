@@ -10,6 +10,13 @@ from scripts.benchmark.emotion_benchmark import validate_records
 BENCHMARK_ROOT = Path("data/benchmarks/emotion_ablation_v2")
 
 
+def load_formal_release_records():
+    records = []
+    for filename in ["core_parallel.jsonl", "extended_independent.jsonl", "challenge.jsonl"]:
+        records.extend(load_jsonl(BENCHMARK_ROOT / "release" / filename))
+    return records
+
+
 def test_benchmark_v2_structure_exists():
     expected_paths = [
         "README.md",
@@ -243,11 +250,42 @@ def test_seed_release_validates_without_errors():
     assert validate_records(records) == []
 
 
-def test_release_labels_match_seed_cases():
-    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
+def test_formal_release_has_500_records_across_splits():
+    assert len(load_jsonl(BENCHMARK_ROOT / "release" / "core_parallel.jsonl")) == 256
+    assert len(load_jsonl(BENCHMARK_ROOT / "release" / "extended_independent.jsonl")) == 180
+    assert len(load_jsonl(BENCHMARK_ROOT / "release" / "challenge.jsonl")) == 64
+    assert len(load_formal_release_records()) == 500
+
+
+def test_formal_release_validates_without_errors():
+    assert validate_records(load_formal_release_records()) == []
+
+
+def test_formal_release_covers_labels_in_both_languages():
+    records = load_formal_release_records()
+    language_counts = {}
+    labels_by_language = {"en": set(), "zh": set()}
+    for record in records:
+        language_counts[record["language"]] = language_counts.get(record["language"], 0) + 1
+        labels_by_language[record["language"]].add(record["expected"])
+
+    assert language_counts == {"en": 250, "zh": 250}
+    assert labels_by_language == {"en": EMOTION_LABEL_SET, "zh": EMOTION_LABEL_SET}
+
+
+def test_formal_release_labels_match_all_release_cases():
+    records = load_formal_release_records()
     labels = load_jsonl(BENCHMARK_ROOT / "release" / "labels.jsonl")
 
     assert labels == [
         {"id": record["case_id"], "expected": record["expected"]}
         for record in records
     ]
+
+
+def test_core_parallel_release_has_128_bilingual_pairs():
+    records = load_jsonl(BENCHMARK_ROOT / "release" / "core_parallel.jsonl")
+    pair_ids = {record["pair_id"] for record in records}
+
+    assert len(pair_ids) == 128
+    assert parallel_equivalence_errors(records) == []
