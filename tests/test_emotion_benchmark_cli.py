@@ -2,6 +2,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 
 def test_validate_cli_accepts_seed_release():
     result = subprocess.run(
@@ -181,3 +183,24 @@ def test_parallel_check_cli_rejects_mismatched_pair(tmp_path):
 
     assert result.returncode == 1
     assert "pair-1: expected labels differ" in result.stdout
+
+
+@pytest.mark.parametrize("max_intensity_delta", ["nan", "inf", "-0.1"])
+def test_parallel_check_cli_rejects_invalid_intensity_delta(max_intensity_delta):
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/check_parallel_equivalence.py",
+            "--input",
+            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+            "--max-intensity-delta",
+            max_intensity_delta,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "error:" in result.stderr
+    assert "--max-intensity-delta" in result.stderr

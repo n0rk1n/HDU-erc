@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -14,10 +15,17 @@ from scripts.benchmark.emotion_benchmark import parallel_equivalence_errors
 from scripts.benchmark.emotion_benchmark import validate_records
 
 
+def nonnegative_finite_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise argparse.ArgumentTypeError("must be a finite number greater than or equal to 0")
+    return parsed
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check bilingual parallel benchmark pairs.")
     parser.add_argument("--input", required=True, help="Path to benchmark JSONL records.")
-    parser.add_argument("--max-intensity-delta", type=float, default=0.15)
+    parser.add_argument("--max-intensity-delta", type=nonnegative_finite_float, default=0.15)
     return parser.parse_args(argv)
 
 
