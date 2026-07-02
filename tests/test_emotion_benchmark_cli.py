@@ -52,3 +52,40 @@ def test_validate_cli_rejects_invalid_record(tmp_path):
 
     assert result.returncode == 1
     assert "expected must be one of the supported emotion labels" in result.stdout
+
+
+def test_export_cli_writes_dialogues_and_labels(tmp_path):
+    output_dir = tmp_path / "exported"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/export_emotion_ablation_v2.py",
+            "--input",
+            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+            "--output-dir",
+            str(output_dir),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Exported 64 records" in result.stdout
+
+    dialogues = [
+        json.loads(line)
+        for line in (output_dir / "dialogues.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    labels = [
+        json.loads(line)
+        for line in (output_dir / "labels.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    assert len(dialogues) == 64
+    assert len(labels) == 64
+    assert set(dialogues[0]) == {"id", "turn_count", "history", "current_input", "notes"}
+    assert set(labels[0]) == {"id", "expected"}
