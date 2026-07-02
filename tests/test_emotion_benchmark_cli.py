@@ -89,3 +89,27 @@ def test_export_cli_writes_dialogues_and_labels(tmp_path):
     assert len(labels) == 64
     assert set(dialogues[0]) == {"id", "turn_count", "history", "current_input", "notes"}
     assert set(labels[0]) == {"id", "expected"}
+
+
+def test_summary_cli_writes_distribution_csvs(tmp_path):
+    output_dir = tmp_path / "reports"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/summarize_emotion_benchmark.py",
+            "--input",
+            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+            "--output-dir",
+            str(output_dir),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Summarized 64 records" in result.stdout
+    assert (output_dir / "label_distribution.csv").exists()
+    assert (output_dir / "scenario_distribution.csv").exists()
+    assert "label,count" in (output_dir / "label_distribution.csv").read_text(encoding="utf-8")
