@@ -98,6 +98,43 @@ def test_validate_record_rejects_invalid_label():
     assert "expected must be one of the supported emotion labels" in errors
 
 
+def test_validate_record_rejects_non_snake_case_scenario():
+    record = {
+        "case_id": "seed-0001-en",
+        "language": "en",
+        "subset": "seed",
+        "expected": "anxious",
+        "turn_count": 1,
+        "history": [],
+        "current_input": "I keep replaying tomorrow's interview in my head.",
+        "scenario": "Academic Presentation",
+        "annotation_status": "released",
+    }
+
+    errors = validate_record(record)
+
+    assert "scenario must be lowercase snake case" in errors
+
+
+def test_validate_record_rejects_release_stage_candidate_status():
+    record = {
+        "case_id": "seed-0001-en",
+        "language": "en",
+        "subset": "seed",
+        "expected": "anxious",
+        "turn_count": 1,
+        "history": [],
+        "current_input": "I keep replaying tomorrow's interview in my head.",
+        "scenario": "workplace_interview",
+        "annotation_status": "candidate",
+        "source_stage": "release",
+    }
+
+    errors = validate_record(record)
+
+    assert "release records must be adjudicated or released" in errors
+
+
 def test_validate_record_rejects_boolean_intensity():
     record = {
         "case_id": "seed-0001-en",

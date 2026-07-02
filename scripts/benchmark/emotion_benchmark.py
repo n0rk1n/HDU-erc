@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,7 @@ QUALITY_FLAGS = {
     "mixed_emotion",
     "cultural_specificity",
 }
+SCENARIO_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -68,7 +70,7 @@ def validate_record(record: dict[str, Any]) -> list[str]:
     _validate_turn_count(record, errors)
     _validate_history(record, errors)
     _require_string(record, "current_input", errors)
-    _require_string(record, "scenario", errors)
+    _validate_scenario(record, errors)
     _validate_enum(record, "annotation_status", ANNOTATION_STATUSES, errors)
 
     if record.get("subset") == "core_parallel" and not _clean_string(record.get("pair_id")):
@@ -87,6 +89,11 @@ def validate_record(record: dict[str, Any]) -> list[str]:
         _validate_enum(record, "context_dependency", CONTEXT_DEPENDENCIES, errors)
     if "source_stage" in record:
         _validate_enum(record, "source_stage", SOURCE_STAGES, errors)
+        if (
+            record.get("source_stage") == "release"
+            and record.get("annotation_status") not in {"adjudicated", "released"}
+        ):
+            errors.append("release records must be adjudicated or released")
     if "quality_flags" in record:
         _validate_quality_flags(record.get("quality_flags"), errors)
     return errors
@@ -202,6 +209,14 @@ def _validate_emotion(value: Any, key: str, errors: list[str]) -> None:
 def _validate_turn_count(record: dict[str, Any], errors: list[str]) -> None:
     if type(record.get("turn_count")) is not int or record["turn_count"] < 1:
         errors.append("turn_count must be a positive integer")
+
+
+def _validate_scenario(record: dict[str, Any], errors: list[str]) -> None:
+    scenario = _clean_string(record.get("scenario"))
+    if not scenario:
+        errors.append("scenario must be a non-empty string")
+    elif SCENARIO_PATTERN.fullmatch(scenario) is None:
+        errors.append("scenario must be lowercase snake case")
 
 
 def _validate_history(record: dict[str, Any], errors: list[str]) -> None:
