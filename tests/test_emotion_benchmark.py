@@ -1,8 +1,7 @@
-import json
 from pathlib import Path
 
-from scripts.benchmark.emotion_benchmark import BenchmarkValidationError
 from scripts.benchmark.emotion_benchmark import load_jsonl
+from scripts.benchmark.emotion_benchmark import parallel_equivalence_errors
 from scripts.benchmark.emotion_benchmark import validate_record
 from scripts.benchmark.emotion_benchmark import validate_records
 
@@ -98,6 +97,25 @@ def test_validate_record_rejects_invalid_label():
     assert "expected must be one of the supported emotion labels" in errors
 
 
+def test_validate_record_rejects_boolean_intensity():
+    record = {
+        "case_id": "seed-0001-en",
+        "language": "en",
+        "subset": "seed",
+        "expected": "anxious",
+        "turn_count": 1,
+        "history": [],
+        "current_input": "I keep replaying tomorrow's interview in my head.",
+        "scenario": "workplace_interview",
+        "annotation_status": "released",
+        "intensity": True,
+    }
+
+    errors = validate_record(record)
+
+    assert "intensity must be a number from 0.0 to 1.0" in errors
+
+
 def test_validate_records_rejects_duplicate_case_ids():
     records = [
         {
@@ -127,3 +145,38 @@ def test_validate_records_rejects_duplicate_case_ids():
     errors = validate_records(records)
 
     assert "duplicate case_id: seed-0001-en" in errors
+
+
+def test_parallel_equivalence_rejects_context_dependency_gap():
+    records = [
+        {
+            "case_id": "pair-1-en",
+            "pair_id": "pair-1",
+            "language": "en",
+            "subset": "core_parallel",
+            "expected": "anxious",
+            "turn_count": 1,
+            "history": [],
+            "current_input": "I keep replaying tomorrow's interview in my head.",
+            "scenario": "workplace_interview",
+            "annotation_status": "released",
+            "context_dependency": "none",
+        },
+        {
+            "case_id": "pair-1-zh",
+            "pair_id": "pair-1",
+            "language": "zh",
+            "subset": "core_parallel",
+            "expected": "anxious",
+            "turn_count": 1,
+            "history": [],
+            "current_input": "我一直在想明天面试的事。",
+            "scenario": "workplace_interview",
+            "annotation_status": "released",
+            "context_dependency": "high",
+        },
+    ]
+
+    errors = parallel_equivalence_errors(records)
+
+    assert "pair-1: context_dependency differs by more than one level" in errors

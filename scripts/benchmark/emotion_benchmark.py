@@ -18,6 +18,7 @@ SEED_GROUPS = {"core_parallel_seed", "independent_seed"}
 ANNOTATION_STATUSES = {"candidate", "annotated", "adjudicated", "released", "rejected"}
 AMBIGUITY_LEVELS = {"low", "medium", "high"}
 CONTEXT_DEPENDENCIES = {"none", "low", "medium", "high"}
+CONTEXT_DEPENDENCY_LEVELS = {"none": 0, "low": 1, "medium": 2, "high": 3}
 SOURCE_STAGES = {"raw", "annotation", "release"}
 HISTORY_ROLES = {"human", "ai"}
 QUALITY_FLAGS = {
@@ -32,10 +33,6 @@ QUALITY_FLAGS = {
     "mixed_emotion",
     "cultural_specificity",
 }
-
-
-class BenchmarkValidationError(ValueError):
-    """Raised when benchmark validation fails."""
 
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -171,6 +168,18 @@ def parallel_equivalence_errors(
         if isinstance(first_intensity, (int, float)) and isinstance(second_intensity, (int, float)):
             if abs(float(first_intensity) - float(second_intensity)) > max_intensity_delta:
                 errors.append(f"{pair_id}: intensity delta exceeds {max_intensity_delta}")
+        first_context_dependency = first.get("context_dependency")
+        second_context_dependency = second.get("context_dependency")
+        if (
+            first_context_dependency in CONTEXT_DEPENDENCY_LEVELS
+            and second_context_dependency in CONTEXT_DEPENDENCY_LEVELS
+            and abs(
+                CONTEXT_DEPENDENCY_LEVELS[first_context_dependency]
+                - CONTEXT_DEPENDENCY_LEVELS[second_context_dependency]
+            )
+            > 1
+        ):
+            errors.append(f"{pair_id}: context_dependency differs by more than one level")
     return errors
 
 
@@ -221,7 +230,11 @@ def _validate_secondary_emotions(value: Any, errors: list[str]) -> None:
 
 
 def _validate_intensity(value: Any, errors: list[str]) -> None:
-    if not isinstance(value, (int, float)) or not 0.0 <= float(value) <= 1.0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not 0.0 <= float(value) <= 1.0
+    ):
         errors.append("intensity must be a number from 0.0 to 1.0")
 
 
