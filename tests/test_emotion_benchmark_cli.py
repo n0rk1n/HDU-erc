@@ -1,0 +1,54 @@
+import json
+import subprocess
+import sys
+
+
+def test_validate_cli_accepts_seed_release():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/validate_emotion_benchmark.py",
+            "--input",
+            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Validated 64 records" in result.stdout
+
+
+def test_validate_cli_rejects_invalid_record(tmp_path):
+    input_file = tmp_path / "bad.jsonl"
+    input_file.write_text(
+        json.dumps({
+            "case_id": "bad-1",
+            "language": "en",
+            "subset": "seed",
+            "expected": "worried",
+            "turn_count": 1,
+            "history": [],
+            "current_input": "I cannot stop thinking about it.",
+            "scenario": "workplace_interview",
+            "annotation_status": "released",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/validate_emotion_benchmark.py",
+            "--input",
+            str(input_file),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "expected must be one of the supported emotion labels" in result.stdout
