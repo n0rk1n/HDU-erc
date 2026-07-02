@@ -365,6 +365,23 @@ python scripts/evaluate_emotion_ablation.py \
 
 `summary.md` 可直接用于报告主表，`metrics.csv` 用于保存原始指标。
 
+### Emotion Ablation V2 Benchmark
+
+The richer bilingual benchmark lives in `data/benchmarks/emotion_ablation_v2/`. It keeps seed, release, annotation, and quality-control files separate from the small legacy smoke-test examples.
+
+Validate the seed release:
+
+    python scripts/benchmark/validate_emotion_benchmark.py \
+      --input data/benchmarks/emotion_ablation_v2/release/seed.jsonl
+
+Export it to the legacy ablation format:
+
+    python scripts/benchmark/export_emotion_ablation_v2.py \
+      --input data/benchmarks/emotion_ablation_v2/release/seed.jsonl \
+      --output-dir data/records/ablation_v2_export
+
+Then run the existing ablation scripts against the exported `dialogues.jsonl` and `labels.jsonl`.
+
 ## 测试
 
 运行完整测试：
