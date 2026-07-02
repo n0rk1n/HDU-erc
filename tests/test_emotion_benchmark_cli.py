@@ -113,3 +113,71 @@ def test_summary_cli_writes_distribution_csvs(tmp_path):
     assert (output_dir / "label_distribution.csv").exists()
     assert (output_dir / "scenario_distribution.csv").exists()
     assert "label,count" in (output_dir / "label_distribution.csv").read_text(encoding="utf-8")
+
+
+def test_parallel_check_cli_accepts_seed_pairs():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/check_parallel_equivalence.py",
+            "--input",
+            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0
+    assert "Parallel check passed" in result.stdout
+
+
+def test_parallel_check_cli_rejects_mismatched_pair(tmp_path):
+    input_file = tmp_path / "pairs.jsonl"
+    records = [
+        {
+            "case_id": "pair-1-en",
+            "pair_id": "pair-1",
+            "language": "en",
+            "subset": "core_parallel",
+            "expected": "anxious",
+            "intensity": 0.8,
+            "turn_count": 1,
+            "history": [],
+            "current_input": "I keep checking the result page.",
+            "scenario": "academic_exam",
+            "annotation_status": "released",
+        },
+        {
+            "case_id": "pair-1-zh",
+            "pair_id": "pair-1",
+            "language": "zh",
+            "subset": "core_parallel",
+            "expected": "joyful",
+            "intensity": 0.8,
+            "turn_count": 1,
+            "history": [],
+            "current_input": "我一直刷新成绩页面。",
+            "scenario": "academic_exam",
+            "annotation_status": "released",
+        },
+    ]
+    input_file.write_text(
+        "\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/benchmark/check_parallel_equivalence.py",
+            "--input",
+            str(input_file),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 1
+    assert "pair-1: expected labels differ" in result.stdout
