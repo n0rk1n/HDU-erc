@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from chatbot.emotion_labels import EMOTION_LABEL_SET
 from scripts.benchmark.emotion_benchmark import load_jsonl
 from scripts.benchmark.emotion_benchmark import parallel_equivalence_errors
 from scripts.benchmark.emotion_benchmark import validate_record
@@ -180,3 +181,36 @@ def test_parallel_equivalence_rejects_context_dependency_gap():
     errors = parallel_equivalence_errors(records)
 
     assert "pair-1: context_dependency differs by more than one level" in errors
+
+
+def test_seed_release_covers_all_supported_labels():
+    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
+    labels = {record["expected"] for record in records}
+
+    assert len(records) == 64
+    assert labels == EMOTION_LABEL_SET
+
+
+def test_seed_release_has_expected_language_mix():
+    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
+    language_counts = {}
+    for record in records:
+        language_counts[record["language"]] = language_counts.get(record["language"], 0) + 1
+
+    assert language_counts == {"en": 32, "zh": 32}
+
+
+def test_seed_release_validates_without_errors():
+    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
+
+    assert validate_records(records) == []
+
+
+def test_release_labels_match_seed_cases():
+    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
+    labels = load_jsonl(BENCHMARK_ROOT / "release" / "labels.jsonl")
+
+    assert labels == [
+        {"id": record["case_id"], "expected": record["expected"]}
+        for record in records
+    ]
