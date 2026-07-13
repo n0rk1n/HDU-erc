@@ -142,11 +142,17 @@ def run_ablation(
     emotion_interval: int,
     invoke: Any = invoke_codex,
 ) -> list[dict[str, Any]]:
+    if retries not in {0, 1}:
+        raise ValueError("retries must be 0 or 1")
     existing = _load_existing(output_file)
     by_case = {
         record["case_id"]: record
         for record in existing
-        if isinstance(record.get("case_id"), str) and record.get("success") is True
+        if (
+            isinstance(record.get("case_id"), str)
+            and record.get("run") == config.name
+            and record.get("success") is True
+        )
     }
     max_turns = config.max_turns or emotion_interval
     for index, case in enumerate(cases, start=1):
@@ -216,8 +222,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--limit must be positive")
     if args.timeout <= 0:
         parser.error("--timeout must be positive")
-    if args.retries < 0:
-        parser.error("--retries must be non-negative")
+    if args.retries not in {0, 1}:
+        parser.error("--retries must be 0 or 1")
     if args.emotion_interval <= 0:
         parser.error("--emotion-interval must be positive")
     return args

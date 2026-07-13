@@ -127,6 +127,32 @@ def test_run_ablation_skips_existing_success_and_preserves_case_order(tmp_path):
     assert not output_file.with_suffix(".json.tmp").exists()
 
 
+def test_run_ablation_reinvokes_success_from_another_run(tmp_path):
+    output_file = tmp_path / "full.json"
+    output_file.write_text(json.dumps([{
+        "case_id": "case-001",
+        "run": "zero_shot",
+        "emotion": "sad",
+        "success": True,
+    }]), encoding="utf-8")
+    calls = []
+
+    def fake_invoke(prompt, **kwargs):
+        calls.append(prompt)
+        return runner.CodexResult("anxious", '{"emotion":"anxious"}', True)
+
+    records = runner.run_ablation(
+        runner.RUN_CONFIGS["full"], CASES[:1], output_file,
+        schema_file=tmp_path / "schema.json", model=None, timeout=60,
+        retries=0, emotion_interval=5, invoke=fake_invoke,
+    )
+
+    assert len(calls) == 1
+    assert records[0]["run"] == "full"
+    assert records[0]["emotion"] == "anxious"
+    assert json.loads(output_file.read_text(encoding="utf-8")) == records
+
+
 def test_run_ablation_retries_failure_and_snapshots_last_result(tmp_path):
     results = [
         runner.CodexResult("", "bad", False, "Invalid JSON"),
@@ -149,6 +175,23 @@ def test_run_ablation_retries_failure_and_snapshots_last_result(tmp_path):
     assert records[0]["success"] is True
     assert records[0]["emotion"] == "grateful"
     assert records[0]["error"] == ""
+
+
+def test_run_ablation_rejects_more_than_one_retry_before_invocation(tmp_path):
+    calls = []
+
+    def fake_invoke(prompt, **kwargs):
+        calls.append(prompt)
+        return runner.CodexResult("anxious", '{"emotion":"anxious"}', True)
+
+    with pytest.raises(ValueError, match="retries must be 0 or 1"):
+        runner.run_ablation(
+            runner.RUN_CONFIGS["full"], CASES[:1], tmp_path / "full.json",
+            schema_file=tmp_path / "schema.json", model=None, timeout=60,
+            retries=2, emotion_interval=5, invoke=fake_invoke,
+        )
+
+    assert calls == []
 
 
 @pytest.mark.parametrize(
@@ -204,7 +247,7 @@ def test_main_runs_selected_configs_with_limit_and_cli_options(tmp_path, monkeyp
         "--run", "full",
         "--model", "gpt-test",
         "--timeout", "45",
-        "--retries", "2",
+        "--retries", "1",
         "--emotion-interval", "7",
     ])
 
@@ -218,14 +261,20 @@ def test_main_runs_selected_configs_with_limit_and_cli_options(tmp_path, monkeyp
         "schema_file": tmp_path / "schema.json",
         "model": "gpt-test",
         "timeout": 45,
-        "retries": 2,
+        "retries": 1,
         "emotion_interval": 7,
     }
 
 
 @pytest.mark.parametrize(
     ("option", "value"),
-    [("--limit", "0"), ("--timeout", "0"), ("--emotion-interval", "0"), ("--retries", "-1")],
+    [
+        ("--limit", "0"),
+        ("--timeout", "0"),
+        ("--emotion-interval", "0"),
+        ("--retries", "-1"),
+        ("--retries", "2"),
+    ],
 )
 def test_main_rejects_invalid_numeric_option_before_loading_dialogues(option, value, monkeypatch):
     def fail_load_dialogues(path):
