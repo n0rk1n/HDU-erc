@@ -1,500 +1,500 @@
-{"expected": "surprised", "id": "core-0001-en"}
-{"expected": "surprised", "id": "core-0001-zh"}
-{"expected": "excited", "id": "core-0002-en"}
-{"expected": "excited", "id": "core-0002-zh"}
-{"expected": "annoyed", "id": "core-0003-en"}
-{"expected": "annoyed", "id": "core-0003-zh"}
-{"expected": "proud", "id": "core-0004-en"}
-{"expected": "proud", "id": "core-0004-zh"}
-{"expected": "angry", "id": "core-0005-en"}
-{"expected": "angry", "id": "core-0005-zh"}
-{"expected": "sad", "id": "core-0006-en"}
-{"expected": "sad", "id": "core-0006-zh"}
-{"expected": "grateful", "id": "core-0007-en"}
-{"expected": "grateful", "id": "core-0007-zh"}
-{"expected": "lonely", "id": "core-0008-en"}
-{"expected": "lonely", "id": "core-0008-zh"}
-{"expected": "impressed", "id": "core-0009-en"}
-{"expected": "impressed", "id": "core-0009-zh"}
-{"expected": "afraid", "id": "core-0010-en"}
-{"expected": "afraid", "id": "core-0010-zh"}
-{"expected": "disgusted", "id": "core-0011-en"}
-{"expected": "disgusted", "id": "core-0011-zh"}
-{"expected": "confident", "id": "core-0012-en"}
-{"expected": "confident", "id": "core-0012-zh"}
-{"expected": "terrified", "id": "core-0013-en"}
-{"expected": "terrified", "id": "core-0013-zh"}
-{"expected": "hopeful", "id": "core-0014-en"}
-{"expected": "hopeful", "id": "core-0014-zh"}
-{"expected": "anxious", "id": "core-0015-en"}
-{"expected": "anxious", "id": "core-0015-zh"}
-{"expected": "disappointed", "id": "core-0016-en"}
-{"expected": "disappointed", "id": "core-0016-zh"}
-{"expected": "joyful", "id": "core-0017-en"}
-{"expected": "joyful", "id": "core-0017-zh"}
-{"expected": "prepared", "id": "core-0018-en"}
-{"expected": "prepared", "id": "core-0018-zh"}
-{"expected": "guilty", "id": "core-0019-en"}
-{"expected": "guilty", "id": "core-0019-zh"}
-{"expected": "furious", "id": "core-0020-en"}
-{"expected": "furious", "id": "core-0020-zh"}
-{"expected": "nostalgic", "id": "core-0021-en"}
-{"expected": "nostalgic", "id": "core-0021-zh"}
-{"expected": "jealous", "id": "core-0022-en"}
-{"expected": "jealous", "id": "core-0022-zh"}
-{"expected": "anticipating", "id": "core-0023-en"}
-{"expected": "anticipating", "id": "core-0023-zh"}
-{"expected": "embarrassed", "id": "core-0024-en"}
-{"expected": "embarrassed", "id": "core-0024-zh"}
-{"expected": "content", "id": "core-0025-en"}
-{"expected": "content", "id": "core-0025-zh"}
-{"expected": "devastated", "id": "core-0026-en"}
-{"expected": "devastated", "id": "core-0026-zh"}
-{"expected": "sentimental", "id": "core-0027-en"}
-{"expected": "sentimental", "id": "core-0027-zh"}
-{"expected": "caring", "id": "core-0028-en"}
-{"expected": "caring", "id": "core-0028-zh"}
-{"expected": "trusting", "id": "core-0029-en"}
-{"expected": "trusting", "id": "core-0029-zh"}
-{"expected": "ashamed", "id": "core-0030-en"}
-{"expected": "ashamed", "id": "core-0030-zh"}
-{"expected": "apprehensive", "id": "core-0031-en"}
-{"expected": "apprehensive", "id": "core-0031-zh"}
-{"expected": "faithful", "id": "core-0032-en"}
-{"expected": "faithful", "id": "core-0032-zh"}
-{"expected": "surprised", "id": "core-0033-en"}
-{"expected": "surprised", "id": "core-0033-zh"}
-{"expected": "excited", "id": "core-0034-en"}
-{"expected": "excited", "id": "core-0034-zh"}
-{"expected": "annoyed", "id": "core-0035-en"}
-{"expected": "annoyed", "id": "core-0035-zh"}
-{"expected": "proud", "id": "core-0036-en"}
-{"expected": "proud", "id": "core-0036-zh"}
-{"expected": "angry", "id": "core-0037-en"}
-{"expected": "angry", "id": "core-0037-zh"}
-{"expected": "sad", "id": "core-0038-en"}
-{"expected": "sad", "id": "core-0038-zh"}
-{"expected": "grateful", "id": "core-0039-en"}
-{"expected": "grateful", "id": "core-0039-zh"}
-{"expected": "lonely", "id": "core-0040-en"}
-{"expected": "lonely", "id": "core-0040-zh"}
-{"expected": "impressed", "id": "core-0041-en"}
-{"expected": "impressed", "id": "core-0041-zh"}
-{"expected": "afraid", "id": "core-0042-en"}
-{"expected": "afraid", "id": "core-0042-zh"}
-{"expected": "disgusted", "id": "core-0043-en"}
-{"expected": "disgusted", "id": "core-0043-zh"}
-{"expected": "confident", "id": "core-0044-en"}
-{"expected": "confident", "id": "core-0044-zh"}
-{"expected": "terrified", "id": "core-0045-en"}
-{"expected": "terrified", "id": "core-0045-zh"}
-{"expected": "hopeful", "id": "core-0046-en"}
-{"expected": "hopeful", "id": "core-0046-zh"}
-{"expected": "anxious", "id": "core-0047-en"}
-{"expected": "anxious", "id": "core-0047-zh"}
-{"expected": "disappointed", "id": "core-0048-en"}
-{"expected": "disappointed", "id": "core-0048-zh"}
-{"expected": "joyful", "id": "core-0049-en"}
-{"expected": "joyful", "id": "core-0049-zh"}
-{"expected": "prepared", "id": "core-0050-en"}
-{"expected": "prepared", "id": "core-0050-zh"}
-{"expected": "guilty", "id": "core-0051-en"}
-{"expected": "guilty", "id": "core-0051-zh"}
-{"expected": "furious", "id": "core-0052-en"}
-{"expected": "furious", "id": "core-0052-zh"}
-{"expected": "nostalgic", "id": "core-0053-en"}
-{"expected": "nostalgic", "id": "core-0053-zh"}
-{"expected": "jealous", "id": "core-0054-en"}
-{"expected": "jealous", "id": "core-0054-zh"}
-{"expected": "anticipating", "id": "core-0055-en"}
-{"expected": "anticipating", "id": "core-0055-zh"}
-{"expected": "embarrassed", "id": "core-0056-en"}
-{"expected": "embarrassed", "id": "core-0056-zh"}
-{"expected": "content", "id": "core-0057-en"}
-{"expected": "content", "id": "core-0057-zh"}
-{"expected": "devastated", "id": "core-0058-en"}
-{"expected": "devastated", "id": "core-0058-zh"}
-{"expected": "sentimental", "id": "core-0059-en"}
-{"expected": "sentimental", "id": "core-0059-zh"}
-{"expected": "caring", "id": "core-0060-en"}
-{"expected": "caring", "id": "core-0060-zh"}
-{"expected": "trusting", "id": "core-0061-en"}
-{"expected": "trusting", "id": "core-0061-zh"}
-{"expected": "ashamed", "id": "core-0062-en"}
-{"expected": "ashamed", "id": "core-0062-zh"}
-{"expected": "apprehensive", "id": "core-0063-en"}
-{"expected": "apprehensive", "id": "core-0063-zh"}
-{"expected": "faithful", "id": "core-0064-en"}
-{"expected": "faithful", "id": "core-0064-zh"}
-{"expected": "surprised", "id": "core-0065-en"}
-{"expected": "surprised", "id": "core-0065-zh"}
-{"expected": "excited", "id": "core-0066-en"}
-{"expected": "excited", "id": "core-0066-zh"}
-{"expected": "annoyed", "id": "core-0067-en"}
-{"expected": "annoyed", "id": "core-0067-zh"}
-{"expected": "proud", "id": "core-0068-en"}
-{"expected": "proud", "id": "core-0068-zh"}
-{"expected": "angry", "id": "core-0069-en"}
-{"expected": "angry", "id": "core-0069-zh"}
-{"expected": "sad", "id": "core-0070-en"}
-{"expected": "sad", "id": "core-0070-zh"}
-{"expected": "grateful", "id": "core-0071-en"}
-{"expected": "grateful", "id": "core-0071-zh"}
-{"expected": "lonely", "id": "core-0072-en"}
-{"expected": "lonely", "id": "core-0072-zh"}
-{"expected": "impressed", "id": "core-0073-en"}
-{"expected": "impressed", "id": "core-0073-zh"}
-{"expected": "afraid", "id": "core-0074-en"}
-{"expected": "afraid", "id": "core-0074-zh"}
-{"expected": "disgusted", "id": "core-0075-en"}
-{"expected": "disgusted", "id": "core-0075-zh"}
-{"expected": "confident", "id": "core-0076-en"}
-{"expected": "confident", "id": "core-0076-zh"}
-{"expected": "terrified", "id": "core-0077-en"}
-{"expected": "terrified", "id": "core-0077-zh"}
-{"expected": "hopeful", "id": "core-0078-en"}
-{"expected": "hopeful", "id": "core-0078-zh"}
-{"expected": "anxious", "id": "core-0079-en"}
-{"expected": "anxious", "id": "core-0079-zh"}
-{"expected": "disappointed", "id": "core-0080-en"}
-{"expected": "disappointed", "id": "core-0080-zh"}
-{"expected": "joyful", "id": "core-0081-en"}
-{"expected": "joyful", "id": "core-0081-zh"}
-{"expected": "prepared", "id": "core-0082-en"}
-{"expected": "prepared", "id": "core-0082-zh"}
-{"expected": "guilty", "id": "core-0083-en"}
-{"expected": "guilty", "id": "core-0083-zh"}
-{"expected": "furious", "id": "core-0084-en"}
-{"expected": "furious", "id": "core-0084-zh"}
-{"expected": "nostalgic", "id": "core-0085-en"}
-{"expected": "nostalgic", "id": "core-0085-zh"}
-{"expected": "jealous", "id": "core-0086-en"}
-{"expected": "jealous", "id": "core-0086-zh"}
-{"expected": "anticipating", "id": "core-0087-en"}
-{"expected": "anticipating", "id": "core-0087-zh"}
-{"expected": "embarrassed", "id": "core-0088-en"}
-{"expected": "embarrassed", "id": "core-0088-zh"}
-{"expected": "content", "id": "core-0089-en"}
-{"expected": "content", "id": "core-0089-zh"}
-{"expected": "devastated", "id": "core-0090-en"}
-{"expected": "devastated", "id": "core-0090-zh"}
-{"expected": "sentimental", "id": "core-0091-en"}
-{"expected": "sentimental", "id": "core-0091-zh"}
-{"expected": "caring", "id": "core-0092-en"}
-{"expected": "caring", "id": "core-0092-zh"}
-{"expected": "trusting", "id": "core-0093-en"}
-{"expected": "trusting", "id": "core-0093-zh"}
-{"expected": "ashamed", "id": "core-0094-en"}
-{"expected": "ashamed", "id": "core-0094-zh"}
-{"expected": "apprehensive", "id": "core-0095-en"}
-{"expected": "apprehensive", "id": "core-0095-zh"}
-{"expected": "faithful", "id": "core-0096-en"}
-{"expected": "faithful", "id": "core-0096-zh"}
-{"expected": "surprised", "id": "core-0097-en"}
-{"expected": "surprised", "id": "core-0097-zh"}
-{"expected": "excited", "id": "core-0098-en"}
-{"expected": "excited", "id": "core-0098-zh"}
-{"expected": "annoyed", "id": "core-0099-en"}
-{"expected": "annoyed", "id": "core-0099-zh"}
-{"expected": "proud", "id": "core-0100-en"}
-{"expected": "proud", "id": "core-0100-zh"}
-{"expected": "angry", "id": "core-0101-en"}
-{"expected": "angry", "id": "core-0101-zh"}
-{"expected": "sad", "id": "core-0102-en"}
-{"expected": "sad", "id": "core-0102-zh"}
-{"expected": "grateful", "id": "core-0103-en"}
-{"expected": "grateful", "id": "core-0103-zh"}
-{"expected": "lonely", "id": "core-0104-en"}
-{"expected": "lonely", "id": "core-0104-zh"}
-{"expected": "impressed", "id": "core-0105-en"}
-{"expected": "impressed", "id": "core-0105-zh"}
-{"expected": "afraid", "id": "core-0106-en"}
-{"expected": "afraid", "id": "core-0106-zh"}
-{"expected": "disgusted", "id": "core-0107-en"}
-{"expected": "disgusted", "id": "core-0107-zh"}
-{"expected": "confident", "id": "core-0108-en"}
-{"expected": "confident", "id": "core-0108-zh"}
-{"expected": "terrified", "id": "core-0109-en"}
-{"expected": "terrified", "id": "core-0109-zh"}
-{"expected": "hopeful", "id": "core-0110-en"}
-{"expected": "hopeful", "id": "core-0110-zh"}
-{"expected": "anxious", "id": "core-0111-en"}
-{"expected": "anxious", "id": "core-0111-zh"}
-{"expected": "disappointed", "id": "core-0112-en"}
-{"expected": "disappointed", "id": "core-0112-zh"}
-{"expected": "joyful", "id": "core-0113-en"}
-{"expected": "joyful", "id": "core-0113-zh"}
-{"expected": "prepared", "id": "core-0114-en"}
-{"expected": "prepared", "id": "core-0114-zh"}
-{"expected": "guilty", "id": "core-0115-en"}
-{"expected": "guilty", "id": "core-0115-zh"}
-{"expected": "furious", "id": "core-0116-en"}
-{"expected": "furious", "id": "core-0116-zh"}
-{"expected": "nostalgic", "id": "core-0117-en"}
-{"expected": "nostalgic", "id": "core-0117-zh"}
-{"expected": "jealous", "id": "core-0118-en"}
-{"expected": "jealous", "id": "core-0118-zh"}
-{"expected": "anticipating", "id": "core-0119-en"}
-{"expected": "anticipating", "id": "core-0119-zh"}
-{"expected": "embarrassed", "id": "core-0120-en"}
-{"expected": "embarrassed", "id": "core-0120-zh"}
-{"expected": "content", "id": "core-0121-en"}
-{"expected": "content", "id": "core-0121-zh"}
-{"expected": "devastated", "id": "core-0122-en"}
-{"expected": "devastated", "id": "core-0122-zh"}
-{"expected": "sentimental", "id": "core-0123-en"}
-{"expected": "sentimental", "id": "core-0123-zh"}
-{"expected": "caring", "id": "core-0124-en"}
-{"expected": "caring", "id": "core-0124-zh"}
-{"expected": "trusting", "id": "core-0125-en"}
-{"expected": "trusting", "id": "core-0125-zh"}
-{"expected": "ashamed", "id": "core-0126-en"}
-{"expected": "ashamed", "id": "core-0126-zh"}
-{"expected": "apprehensive", "id": "core-0127-en"}
-{"expected": "apprehensive", "id": "core-0127-zh"}
-{"expected": "faithful", "id": "core-0128-en"}
-{"expected": "faithful", "id": "core-0128-zh"}
-{"expected": "surprised", "id": "extended-en-0001"}
-{"expected": "excited", "id": "extended-en-0002"}
-{"expected": "annoyed", "id": "extended-en-0003"}
-{"expected": "proud", "id": "extended-en-0004"}
-{"expected": "angry", "id": "extended-en-0005"}
-{"expected": "sad", "id": "extended-en-0006"}
-{"expected": "grateful", "id": "extended-en-0007"}
-{"expected": "lonely", "id": "extended-en-0008"}
-{"expected": "impressed", "id": "extended-en-0009"}
-{"expected": "afraid", "id": "extended-en-0010"}
-{"expected": "disgusted", "id": "extended-en-0011"}
-{"expected": "confident", "id": "extended-en-0012"}
-{"expected": "terrified", "id": "extended-en-0013"}
-{"expected": "hopeful", "id": "extended-en-0014"}
-{"expected": "anxious", "id": "extended-en-0015"}
-{"expected": "disappointed", "id": "extended-en-0016"}
-{"expected": "joyful", "id": "extended-en-0017"}
-{"expected": "prepared", "id": "extended-en-0018"}
-{"expected": "guilty", "id": "extended-en-0019"}
-{"expected": "furious", "id": "extended-en-0020"}
-{"expected": "nostalgic", "id": "extended-en-0021"}
-{"expected": "jealous", "id": "extended-en-0022"}
-{"expected": "anticipating", "id": "extended-en-0023"}
-{"expected": "embarrassed", "id": "extended-en-0024"}
-{"expected": "content", "id": "extended-en-0025"}
-{"expected": "devastated", "id": "extended-en-0026"}
-{"expected": "sentimental", "id": "extended-en-0027"}
-{"expected": "caring", "id": "extended-en-0028"}
-{"expected": "trusting", "id": "extended-en-0029"}
-{"expected": "ashamed", "id": "extended-en-0030"}
-{"expected": "apprehensive", "id": "extended-en-0031"}
-{"expected": "faithful", "id": "extended-en-0032"}
-{"expected": "surprised", "id": "extended-en-0033"}
-{"expected": "excited", "id": "extended-en-0034"}
-{"expected": "annoyed", "id": "extended-en-0035"}
-{"expected": "proud", "id": "extended-en-0036"}
-{"expected": "angry", "id": "extended-en-0037"}
-{"expected": "sad", "id": "extended-en-0038"}
-{"expected": "grateful", "id": "extended-en-0039"}
-{"expected": "lonely", "id": "extended-en-0040"}
-{"expected": "impressed", "id": "extended-en-0041"}
-{"expected": "afraid", "id": "extended-en-0042"}
-{"expected": "disgusted", "id": "extended-en-0043"}
-{"expected": "confident", "id": "extended-en-0044"}
-{"expected": "terrified", "id": "extended-en-0045"}
-{"expected": "hopeful", "id": "extended-en-0046"}
-{"expected": "anxious", "id": "extended-en-0047"}
-{"expected": "disappointed", "id": "extended-en-0048"}
-{"expected": "joyful", "id": "extended-en-0049"}
-{"expected": "prepared", "id": "extended-en-0050"}
-{"expected": "guilty", "id": "extended-en-0051"}
-{"expected": "furious", "id": "extended-en-0052"}
-{"expected": "nostalgic", "id": "extended-en-0053"}
-{"expected": "jealous", "id": "extended-en-0054"}
-{"expected": "anticipating", "id": "extended-en-0055"}
-{"expected": "embarrassed", "id": "extended-en-0056"}
-{"expected": "content", "id": "extended-en-0057"}
-{"expected": "devastated", "id": "extended-en-0058"}
-{"expected": "sentimental", "id": "extended-en-0059"}
-{"expected": "caring", "id": "extended-en-0060"}
-{"expected": "trusting", "id": "extended-en-0061"}
-{"expected": "ashamed", "id": "extended-en-0062"}
-{"expected": "apprehensive", "id": "extended-en-0063"}
-{"expected": "faithful", "id": "extended-en-0064"}
-{"expected": "surprised", "id": "extended-en-0065"}
-{"expected": "excited", "id": "extended-en-0066"}
-{"expected": "annoyed", "id": "extended-en-0067"}
-{"expected": "proud", "id": "extended-en-0068"}
-{"expected": "angry", "id": "extended-en-0069"}
-{"expected": "sad", "id": "extended-en-0070"}
-{"expected": "grateful", "id": "extended-en-0071"}
-{"expected": "lonely", "id": "extended-en-0072"}
-{"expected": "impressed", "id": "extended-en-0073"}
-{"expected": "afraid", "id": "extended-en-0074"}
-{"expected": "disgusted", "id": "extended-en-0075"}
-{"expected": "confident", "id": "extended-en-0076"}
-{"expected": "terrified", "id": "extended-en-0077"}
-{"expected": "hopeful", "id": "extended-en-0078"}
-{"expected": "anxious", "id": "extended-en-0079"}
-{"expected": "disappointed", "id": "extended-en-0080"}
-{"expected": "joyful", "id": "extended-en-0081"}
-{"expected": "prepared", "id": "extended-en-0082"}
-{"expected": "guilty", "id": "extended-en-0083"}
-{"expected": "furious", "id": "extended-en-0084"}
-{"expected": "nostalgic", "id": "extended-en-0085"}
-{"expected": "jealous", "id": "extended-en-0086"}
-{"expected": "anticipating", "id": "extended-en-0087"}
-{"expected": "embarrassed", "id": "extended-en-0088"}
-{"expected": "content", "id": "extended-en-0089"}
-{"expected": "devastated", "id": "extended-en-0090"}
-{"expected": "sentimental", "id": "extended-zh-0001"}
-{"expected": "caring", "id": "extended-zh-0002"}
-{"expected": "trusting", "id": "extended-zh-0003"}
-{"expected": "ashamed", "id": "extended-zh-0004"}
-{"expected": "apprehensive", "id": "extended-zh-0005"}
-{"expected": "faithful", "id": "extended-zh-0006"}
-{"expected": "surprised", "id": "extended-zh-0007"}
-{"expected": "excited", "id": "extended-zh-0008"}
-{"expected": "annoyed", "id": "extended-zh-0009"}
-{"expected": "proud", "id": "extended-zh-0010"}
-{"expected": "angry", "id": "extended-zh-0011"}
-{"expected": "sad", "id": "extended-zh-0012"}
-{"expected": "grateful", "id": "extended-zh-0013"}
-{"expected": "lonely", "id": "extended-zh-0014"}
-{"expected": "impressed", "id": "extended-zh-0015"}
-{"expected": "afraid", "id": "extended-zh-0016"}
-{"expected": "disgusted", "id": "extended-zh-0017"}
-{"expected": "confident", "id": "extended-zh-0018"}
-{"expected": "terrified", "id": "extended-zh-0019"}
-{"expected": "hopeful", "id": "extended-zh-0020"}
-{"expected": "anxious", "id": "extended-zh-0021"}
-{"expected": "disappointed", "id": "extended-zh-0022"}
-{"expected": "joyful", "id": "extended-zh-0023"}
-{"expected": "prepared", "id": "extended-zh-0024"}
-{"expected": "guilty", "id": "extended-zh-0025"}
-{"expected": "furious", "id": "extended-zh-0026"}
-{"expected": "nostalgic", "id": "extended-zh-0027"}
-{"expected": "jealous", "id": "extended-zh-0028"}
-{"expected": "anticipating", "id": "extended-zh-0029"}
-{"expected": "embarrassed", "id": "extended-zh-0030"}
-{"expected": "content", "id": "extended-zh-0031"}
-{"expected": "devastated", "id": "extended-zh-0032"}
-{"expected": "sentimental", "id": "extended-zh-0033"}
-{"expected": "caring", "id": "extended-zh-0034"}
-{"expected": "trusting", "id": "extended-zh-0035"}
-{"expected": "ashamed", "id": "extended-zh-0036"}
-{"expected": "apprehensive", "id": "extended-zh-0037"}
-{"expected": "faithful", "id": "extended-zh-0038"}
-{"expected": "surprised", "id": "extended-zh-0039"}
-{"expected": "excited", "id": "extended-zh-0040"}
-{"expected": "annoyed", "id": "extended-zh-0041"}
-{"expected": "proud", "id": "extended-zh-0042"}
-{"expected": "angry", "id": "extended-zh-0043"}
-{"expected": "sad", "id": "extended-zh-0044"}
-{"expected": "grateful", "id": "extended-zh-0045"}
-{"expected": "lonely", "id": "extended-zh-0046"}
-{"expected": "impressed", "id": "extended-zh-0047"}
-{"expected": "afraid", "id": "extended-zh-0048"}
-{"expected": "disgusted", "id": "extended-zh-0049"}
-{"expected": "confident", "id": "extended-zh-0050"}
-{"expected": "terrified", "id": "extended-zh-0051"}
-{"expected": "hopeful", "id": "extended-zh-0052"}
-{"expected": "anxious", "id": "extended-zh-0053"}
-{"expected": "disappointed", "id": "extended-zh-0054"}
-{"expected": "joyful", "id": "extended-zh-0055"}
-{"expected": "prepared", "id": "extended-zh-0056"}
-{"expected": "guilty", "id": "extended-zh-0057"}
-{"expected": "furious", "id": "extended-zh-0058"}
-{"expected": "nostalgic", "id": "extended-zh-0059"}
-{"expected": "jealous", "id": "extended-zh-0060"}
-{"expected": "anticipating", "id": "extended-zh-0061"}
-{"expected": "embarrassed", "id": "extended-zh-0062"}
-{"expected": "content", "id": "extended-zh-0063"}
-{"expected": "devastated", "id": "extended-zh-0064"}
-{"expected": "sentimental", "id": "extended-zh-0065"}
-{"expected": "caring", "id": "extended-zh-0066"}
-{"expected": "trusting", "id": "extended-zh-0067"}
-{"expected": "ashamed", "id": "extended-zh-0068"}
-{"expected": "apprehensive", "id": "extended-zh-0069"}
-{"expected": "faithful", "id": "extended-zh-0070"}
-{"expected": "surprised", "id": "extended-zh-0071"}
-{"expected": "excited", "id": "extended-zh-0072"}
-{"expected": "annoyed", "id": "extended-zh-0073"}
-{"expected": "proud", "id": "extended-zh-0074"}
-{"expected": "angry", "id": "extended-zh-0075"}
-{"expected": "sad", "id": "extended-zh-0076"}
-{"expected": "grateful", "id": "extended-zh-0077"}
-{"expected": "lonely", "id": "extended-zh-0078"}
-{"expected": "impressed", "id": "extended-zh-0079"}
-{"expected": "afraid", "id": "extended-zh-0080"}
-{"expected": "disgusted", "id": "extended-zh-0081"}
-{"expected": "confident", "id": "extended-zh-0082"}
-{"expected": "terrified", "id": "extended-zh-0083"}
-{"expected": "hopeful", "id": "extended-zh-0084"}
-{"expected": "anxious", "id": "extended-zh-0085"}
-{"expected": "disappointed", "id": "extended-zh-0086"}
-{"expected": "joyful", "id": "extended-zh-0087"}
-{"expected": "prepared", "id": "extended-zh-0088"}
-{"expected": "guilty", "id": "extended-zh-0089"}
-{"expected": "furious", "id": "extended-zh-0090"}
-{"expected": "surprised", "id": "challenge-en-0001"}
-{"expected": "excited", "id": "challenge-en-0002"}
-{"expected": "annoyed", "id": "challenge-en-0003"}
-{"expected": "proud", "id": "challenge-en-0004"}
-{"expected": "angry", "id": "challenge-en-0005"}
-{"expected": "sad", "id": "challenge-en-0006"}
-{"expected": "grateful", "id": "challenge-en-0007"}
-{"expected": "lonely", "id": "challenge-en-0008"}
-{"expected": "impressed", "id": "challenge-en-0009"}
-{"expected": "afraid", "id": "challenge-en-0010"}
-{"expected": "disgusted", "id": "challenge-en-0011"}
-{"expected": "confident", "id": "challenge-en-0012"}
-{"expected": "terrified", "id": "challenge-en-0013"}
-{"expected": "hopeful", "id": "challenge-en-0014"}
-{"expected": "anxious", "id": "challenge-en-0015"}
-{"expected": "disappointed", "id": "challenge-en-0016"}
-{"expected": "joyful", "id": "challenge-en-0017"}
-{"expected": "prepared", "id": "challenge-en-0018"}
-{"expected": "guilty", "id": "challenge-en-0019"}
-{"expected": "furious", "id": "challenge-en-0020"}
-{"expected": "nostalgic", "id": "challenge-en-0021"}
-{"expected": "jealous", "id": "challenge-en-0022"}
-{"expected": "anticipating", "id": "challenge-en-0023"}
-{"expected": "embarrassed", "id": "challenge-en-0024"}
-{"expected": "content", "id": "challenge-en-0025"}
-{"expected": "devastated", "id": "challenge-en-0026"}
-{"expected": "sentimental", "id": "challenge-en-0027"}
-{"expected": "caring", "id": "challenge-en-0028"}
-{"expected": "trusting", "id": "challenge-en-0029"}
-{"expected": "ashamed", "id": "challenge-en-0030"}
-{"expected": "apprehensive", "id": "challenge-en-0031"}
-{"expected": "faithful", "id": "challenge-en-0032"}
-{"expected": "surprised", "id": "challenge-zh-0001"}
-{"expected": "excited", "id": "challenge-zh-0002"}
-{"expected": "annoyed", "id": "challenge-zh-0003"}
-{"expected": "proud", "id": "challenge-zh-0004"}
-{"expected": "angry", "id": "challenge-zh-0005"}
-{"expected": "sad", "id": "challenge-zh-0006"}
-{"expected": "grateful", "id": "challenge-zh-0007"}
-{"expected": "lonely", "id": "challenge-zh-0008"}
-{"expected": "impressed", "id": "challenge-zh-0009"}
-{"expected": "afraid", "id": "challenge-zh-0010"}
-{"expected": "disgusted", "id": "challenge-zh-0011"}
-{"expected": "confident", "id": "challenge-zh-0012"}
-{"expected": "terrified", "id": "challenge-zh-0013"}
-{"expected": "hopeful", "id": "challenge-zh-0014"}
-{"expected": "anxious", "id": "challenge-zh-0015"}
-{"expected": "disappointed", "id": "challenge-zh-0016"}
-{"expected": "joyful", "id": "challenge-zh-0017"}
-{"expected": "prepared", "id": "challenge-zh-0018"}
-{"expected": "guilty", "id": "challenge-zh-0019"}
-{"expected": "furious", "id": "challenge-zh-0020"}
-{"expected": "nostalgic", "id": "challenge-zh-0021"}
-{"expected": "jealous", "id": "challenge-zh-0022"}
-{"expected": "anticipating", "id": "challenge-zh-0023"}
-{"expected": "embarrassed", "id": "challenge-zh-0024"}
-{"expected": "content", "id": "challenge-zh-0025"}
-{"expected": "devastated", "id": "challenge-zh-0026"}
-{"expected": "sentimental", "id": "challenge-zh-0027"}
-{"expected": "caring", "id": "challenge-zh-0028"}
-{"expected": "trusting", "id": "challenge-zh-0029"}
-{"expected": "ashamed", "id": "challenge-zh-0030"}
-{"expected": "apprehensive", "id": "challenge-zh-0031"}
-{"expected": "faithful", "id": "challenge-zh-0032"}
+{"expected": "surprised", "id": "core-0001-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0001-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0002-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0002-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0003-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0003-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0004-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0004-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0005-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0005-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0006-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0006-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0007-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0007-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0008-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0008-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0009-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0009-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0010-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0010-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0011-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0011-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0012-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0012-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0013-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0013-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0014-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0014-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0015-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0015-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0016-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0016-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0017-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0017-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0018-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0018-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0019-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0019-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0020-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0020-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0021-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0021-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0022-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0022-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0023-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0023-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0024-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0024-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0025-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0025-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0026-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0026-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0027-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0027-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0028-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0028-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0029-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0029-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0030-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0030-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0031-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0031-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0032-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0032-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0033-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0033-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0034-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0034-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0035-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0035-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0036-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0036-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0037-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0037-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0038-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0038-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0039-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0039-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0040-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0040-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0041-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0041-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0042-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0042-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0043-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0043-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0044-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0044-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0045-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0045-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0046-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0046-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0047-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0047-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0048-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0048-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0049-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0049-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0050-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0050-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0051-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0051-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0052-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0052-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0053-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0053-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0054-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0054-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0055-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0055-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0056-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0056-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0057-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0057-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0058-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0058-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0059-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0059-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0060-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0060-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0061-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0061-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0062-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0062-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0063-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0063-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0064-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0064-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0065-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0065-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0066-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0066-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0067-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0067-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0068-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0068-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0069-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0069-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0070-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0070-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0071-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0071-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0072-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0072-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0073-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0073-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0074-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0074-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0075-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0075-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0076-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0076-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0077-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0077-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0078-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0078-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0079-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0079-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0080-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0080-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0081-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0081-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0082-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0082-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0083-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0083-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0084-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0084-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0085-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0085-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0086-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0086-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0087-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0087-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0088-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0088-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0089-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0089-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0090-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0090-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0091-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0091-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0092-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0092-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0093-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0093-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0094-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0094-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0095-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0095-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0096-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0096-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0097-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "core-0097-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0098-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "core-0098-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0099-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "core-0099-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0100-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "core-0100-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0101-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "core-0101-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0102-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "core-0102-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0103-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "core-0103-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0104-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "core-0104-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0105-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "core-0105-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0106-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "core-0106-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0107-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "core-0107-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0108-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "core-0108-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0109-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "core-0109-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0110-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "core-0110-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0111-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "core-0111-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0112-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "core-0112-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0113-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "core-0113-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0114-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "core-0114-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0115-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "core-0115-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0116-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "core-0116-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0117-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "core-0117-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0118-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "core-0118-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0119-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "core-0119-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0120-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "core-0120-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0121-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "core-0121-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0122-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "core-0122-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0123-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "core-0123-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0124-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "core-0124-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0125-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "core-0125-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0126-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "core-0126-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0127-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "core-0127-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0128-en", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "core-0128-zh", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "extended-en-0001", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "extended-en-0002", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "extended-en-0003", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "extended-en-0004", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "extended-en-0005", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "extended-en-0006", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "extended-en-0007", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "extended-en-0008", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "extended-en-0009", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "extended-en-0010", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "extended-en-0011", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "extended-en-0012", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "extended-en-0013", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "extended-en-0014", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "extended-en-0015", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "extended-en-0016", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "extended-en-0017", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "extended-en-0018", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "extended-en-0019", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "extended-en-0020", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "extended-en-0021", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "extended-en-0022", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "extended-en-0023", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "extended-en-0024", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "extended-en-0025", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "extended-en-0026", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "extended-en-0027", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "extended-en-0028", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "extended-en-0029", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "extended-en-0030", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "extended-en-0031", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "extended-en-0032", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "extended-en-0033", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "extended-en-0034", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "extended-en-0035", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "extended-en-0036", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "extended-en-0037", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "extended-en-0038", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "extended-en-0039", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "extended-en-0040", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "extended-en-0041", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "extended-en-0042", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "extended-en-0043", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "extended-en-0044", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "extended-en-0045", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "extended-en-0046", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "extended-en-0047", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "extended-en-0048", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "extended-en-0049", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "extended-en-0050", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "extended-en-0051", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "extended-en-0052", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "extended-en-0053", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "extended-en-0054", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "extended-en-0055", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "extended-en-0056", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "extended-en-0057", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "extended-en-0058", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "extended-en-0059", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "extended-en-0060", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "extended-en-0061", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "extended-en-0062", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "extended-en-0063", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "extended-en-0064", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "extended-en-0065", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "extended-en-0066", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "extended-en-0067", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "extended-en-0068", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "extended-en-0069", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "extended-en-0070", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "extended-en-0071", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "extended-en-0072", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "extended-en-0073", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "extended-en-0074", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "extended-en-0075", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "extended-en-0076", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "extended-en-0077", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "extended-en-0078", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "extended-en-0079", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "extended-en-0080", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "extended-en-0081", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "extended-en-0082", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "extended-en-0083", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "extended-en-0084", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "extended-en-0085", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "extended-en-0086", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "extended-en-0087", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "extended-en-0088", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "extended-en-0089", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "extended-en-0090", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "extended-zh-0001", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "extended-zh-0002", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "extended-zh-0003", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "extended-zh-0004", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "extended-zh-0005", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "extended-zh-0006", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "extended-zh-0007", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "extended-zh-0008", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "extended-zh-0009", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "extended-zh-0010", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "extended-zh-0011", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "extended-zh-0012", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "extended-zh-0013", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "extended-zh-0014", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "extended-zh-0015", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "extended-zh-0016", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "extended-zh-0017", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "extended-zh-0018", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "extended-zh-0019", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "extended-zh-0020", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "extended-zh-0021", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "extended-zh-0022", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "extended-zh-0023", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "extended-zh-0024", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "extended-zh-0025", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "extended-zh-0026", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "extended-zh-0027", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "extended-zh-0028", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "extended-zh-0029", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "extended-zh-0030", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "extended-zh-0031", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "extended-zh-0032", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "extended-zh-0033", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "extended-zh-0034", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "extended-zh-0035", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "extended-zh-0036", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "extended-zh-0037", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "extended-zh-0038", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "extended-zh-0039", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "extended-zh-0040", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "extended-zh-0041", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "extended-zh-0042", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "extended-zh-0043", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "extended-zh-0044", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "extended-zh-0045", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "extended-zh-0046", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "extended-zh-0047", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "extended-zh-0048", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "extended-zh-0049", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "extended-zh-0050", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "extended-zh-0051", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "extended-zh-0052", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "extended-zh-0053", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "extended-zh-0054", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "extended-zh-0055", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "extended-zh-0056", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "extended-zh-0057", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "extended-zh-0058", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "extended-zh-0059", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "extended-zh-0060", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "extended-zh-0061", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "extended-zh-0062", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "extended-zh-0063", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "extended-zh-0064", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "extended-zh-0065", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "extended-zh-0066", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "extended-zh-0067", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "extended-zh-0068", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "extended-zh-0069", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "extended-zh-0070", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "extended-zh-0071", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "extended-zh-0072", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "extended-zh-0073", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "extended-zh-0074", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "extended-zh-0075", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "extended-zh-0076", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "extended-zh-0077", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "extended-zh-0078", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "extended-zh-0079", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "extended-zh-0080", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "extended-zh-0081", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "extended-zh-0082", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "extended-zh-0083", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "extended-zh-0084", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "extended-zh-0085", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "extended-zh-0086", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "extended-zh-0087", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "extended-zh-0088", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "extended-zh-0089", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "extended-zh-0090", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "challenge-en-0001", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "challenge-en-0002", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "challenge-en-0003", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "challenge-en-0004", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "challenge-en-0005", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "challenge-en-0006", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "challenge-en-0007", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "challenge-en-0008", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "challenge-en-0009", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "challenge-en-0010", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "challenge-en-0011", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "challenge-en-0012", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "challenge-en-0013", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "challenge-en-0014", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "challenge-en-0015", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "challenge-en-0016", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "challenge-en-0017", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "challenge-en-0018", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "challenge-en-0019", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "challenge-en-0020", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "challenge-en-0021", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "challenge-en-0022", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "challenge-en-0023", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "challenge-en-0024", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "challenge-en-0025", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "challenge-en-0026", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "challenge-en-0027", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "challenge-en-0028", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "challenge-en-0029", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "challenge-en-0030", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "challenge-en-0031", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "challenge-en-0032", "label_provenance": "synthetic_generator_target"}
+{"expected": "surprised", "id": "challenge-zh-0001", "label_provenance": "synthetic_generator_target"}
+{"expected": "excited", "id": "challenge-zh-0002", "label_provenance": "synthetic_generator_target"}
+{"expected": "annoyed", "id": "challenge-zh-0003", "label_provenance": "synthetic_generator_target"}
+{"expected": "proud", "id": "challenge-zh-0004", "label_provenance": "synthetic_generator_target"}
+{"expected": "angry", "id": "challenge-zh-0005", "label_provenance": "synthetic_generator_target"}
+{"expected": "sad", "id": "challenge-zh-0006", "label_provenance": "synthetic_generator_target"}
+{"expected": "grateful", "id": "challenge-zh-0007", "label_provenance": "synthetic_generator_target"}
+{"expected": "lonely", "id": "challenge-zh-0008", "label_provenance": "synthetic_generator_target"}
+{"expected": "impressed", "id": "challenge-zh-0009", "label_provenance": "synthetic_generator_target"}
+{"expected": "afraid", "id": "challenge-zh-0010", "label_provenance": "synthetic_generator_target"}
+{"expected": "disgusted", "id": "challenge-zh-0011", "label_provenance": "synthetic_generator_target"}
+{"expected": "confident", "id": "challenge-zh-0012", "label_provenance": "synthetic_generator_target"}
+{"expected": "terrified", "id": "challenge-zh-0013", "label_provenance": "synthetic_generator_target"}
+{"expected": "hopeful", "id": "challenge-zh-0014", "label_provenance": "synthetic_generator_target"}
+{"expected": "anxious", "id": "challenge-zh-0015", "label_provenance": "synthetic_generator_target"}
+{"expected": "disappointed", "id": "challenge-zh-0016", "label_provenance": "synthetic_generator_target"}
+{"expected": "joyful", "id": "challenge-zh-0017", "label_provenance": "synthetic_generator_target"}
+{"expected": "prepared", "id": "challenge-zh-0018", "label_provenance": "synthetic_generator_target"}
+{"expected": "guilty", "id": "challenge-zh-0019", "label_provenance": "synthetic_generator_target"}
+{"expected": "furious", "id": "challenge-zh-0020", "label_provenance": "synthetic_generator_target"}
+{"expected": "nostalgic", "id": "challenge-zh-0021", "label_provenance": "synthetic_generator_target"}
+{"expected": "jealous", "id": "challenge-zh-0022", "label_provenance": "synthetic_generator_target"}
+{"expected": "anticipating", "id": "challenge-zh-0023", "label_provenance": "synthetic_generator_target"}
+{"expected": "embarrassed", "id": "challenge-zh-0024", "label_provenance": "synthetic_generator_target"}
+{"expected": "content", "id": "challenge-zh-0025", "label_provenance": "synthetic_generator_target"}
+{"expected": "devastated", "id": "challenge-zh-0026", "label_provenance": "synthetic_generator_target"}
+{"expected": "sentimental", "id": "challenge-zh-0027", "label_provenance": "synthetic_generator_target"}
+{"expected": "caring", "id": "challenge-zh-0028", "label_provenance": "synthetic_generator_target"}
+{"expected": "trusting", "id": "challenge-zh-0029", "label_provenance": "synthetic_generator_target"}
+{"expected": "ashamed", "id": "challenge-zh-0030", "label_provenance": "synthetic_generator_target"}
+{"expected": "apprehensive", "id": "challenge-zh-0031", "label_provenance": "synthetic_generator_target"}
+{"expected": "faithful", "id": "challenge-zh-0032", "label_provenance": "synthetic_generator_target"}

@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -56,6 +57,7 @@ def test_invoke_codex_passes_instruction_to_subprocess(tmp_path):
         return subprocess.CompletedProcess(command, 0, '{"emotion":"anxious"}\n', "")
 
     schema_file = tmp_path / "schema.json"
+    schema_file.write_text("{}", encoding="utf-8")
     result = runner.invoke_codex(
         "Emotion prompt",
         schema_file=schema_file,
@@ -69,7 +71,7 @@ def test_invoke_codex_passes_instruction_to_subprocess(tmp_path):
     command, kwargs = calls[0]
     assert command == [
         "codex", "exec", "--ephemeral", "--sandbox", "read-only",
-        "--skip-git-repo-check", "--output-schema", str(schema_file), "-",
+        "--skip-git-repo-check", "--output-schema", str(schema_file.resolve()), "-",
     ]
     assert kwargs == {
         "input": (
@@ -81,7 +83,14 @@ def test_invoke_codex_passes_instruction_to_subprocess(tmp_path):
         "capture_output": True,
         "timeout": 45,
         "check": False,
+        "cwd": calls[0][1]["cwd"],
     }
+    invocation_cwd = Path(kwargs["cwd"])
+    assert invocation_cwd.is_absolute()
+    repository_root = Path(runner.__file__).resolve().parents[1]
+    assert invocation_cwd != repository_root
+    assert repository_root not in invocation_cwd.parents
+    assert Path(command[command.index("--output-schema") + 1]).is_absolute()
 
 
 def test_invoke_codex_returns_timeout_failure(tmp_path):
@@ -103,9 +112,16 @@ def test_invoke_codex_returns_timeout_failure(tmp_path):
 
 
 def test_run_ablation_skips_existing_success_and_preserves_case_order(tmp_path):
+    schema_file = tmp_path / "schema.json"
+    schema_file.write_text('{"type":"object"}', encoding="utf-8")
+    prompt = runner.build_case_prompt(runner.RUN_CONFIGS["full"], CASES[0], 1, emotion_interval=7)
+    provenance = runner.build_resume_provenance(
+        prompt, schema_file=schema_file, model="gpt-test", codex_cli_version="codex-cli test"
+    )
     output_file = tmp_path / "full.json"
     output_file.write_text(json.dumps([{
-        "case_id": "case-001", "run": "full", "emotion": "anxious", "success": True
+        "case_id": "case-001", "run": "full", "emotion": "anxious", "success": True,
+        **provenance,
     }]), encoding="utf-8")
     calls = []
 
@@ -115,8 +131,8 @@ def test_run_ablation_skips_existing_success_and_preserves_case_order(tmp_path):
 
     records = runner.run_ablation(
         runner.RUN_CONFIGS["full"], CASES, output_file,
-        schema_file=tmp_path / "schema.json", model=None, timeout=60,
-        retries=1, emotion_interval=7, invoke=fake_invoke,
+        schema_file=schema_file, model="gpt-test", timeout=60,
+        retries=1, emotion_interval=7, codex_cli_version="codex-cli test", invoke=fake_invoke,
     )
 
     assert [record["case_id"] for record in records] == ["case-001", "case-002"]
@@ -125,6 +141,36 @@ def test_run_ablation_skips_existing_success_and_preserves_case_order(tmp_path):
     assert records[1]["emotion_interval"] == 7
     assert json.loads(output_file.read_text(encoding="utf-8")) == records
     assert not output_file.with_suffix(".json.tmp").exists()
+
+
+@pytest.mark.parametrize("mismatch", ["prompt_sha256", "model", "schema_sha256", "codex_cli_version", "runtime_provenance"])
+def test_run_ablation_reinvokes_success_when_resume_provenance_mismatches(tmp_path, mismatch):
+    schema_file = tmp_path / "schema.json"
+    schema_file.write_text('{"type":"object"}', encoding="utf-8")
+    prompt = runner.build_case_prompt(runner.RUN_CONFIGS["full"], CASES[0], 1, emotion_interval=5)
+    provenance = runner.build_resume_provenance(
+        prompt, schema_file=schema_file, model="gpt-test", codex_cli_version="codex-cli test"
+    )
+    provenance[mismatch] = "stale"
+    output_file = tmp_path / "full.json"
+    output_file.write_text(json.dumps([{
+        "case_id": "case-001", "run": "full", "emotion": "sad", "success": True,
+        **provenance,
+    }]), encoding="utf-8")
+    calls = []
+
+    def fake_invoke(prompt, **kwargs):
+        calls.append(prompt)
+        return runner.CodexResult("anxious", '{"emotion":"anxious"}', True)
+
+    records = runner.run_ablation(
+        runner.RUN_CONFIGS["full"], CASES[:1], output_file,
+        schema_file=schema_file, model="gpt-test", timeout=60, retries=0,
+        emotion_interval=5, codex_cli_version="codex-cli test", invoke=fake_invoke,
+    )
+
+    assert len(calls) == 1
+    assert records[0][mismatch] != "stale"
 
 
 def test_run_ablation_reinvokes_success_from_another_run(tmp_path):
@@ -238,6 +284,7 @@ def test_main_runs_selected_configs_with_limit_and_cli_options(tmp_path, monkeyp
         return []
 
     monkeypatch.setattr(runner, "run_ablation", fake_run)
+    monkeypatch.setattr(runner, "detect_codex_cli_version", lambda: "codex-cli test")
 
     result = runner.main([
         "--dialogues-file", str(dialogues_file),
@@ -263,6 +310,7 @@ def test_main_runs_selected_configs_with_limit_and_cli_options(tmp_path, monkeyp
         "timeout": 45,
         "retries": 1,
         "emotion_interval": 7,
+        "codex_cli_version": "codex-cli test",
     }
 
 

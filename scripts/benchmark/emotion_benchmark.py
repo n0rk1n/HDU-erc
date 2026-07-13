@@ -21,6 +21,7 @@ AMBIGUITY_LEVELS = {"low", "medium", "high"}
 CONTEXT_DEPENDENCIES = {"none", "low", "medium", "high"}
 CONTEXT_DEPENDENCY_LEVELS = {"none": 0, "low": 1, "medium": 2, "high": 3}
 SOURCE_STAGES = {"raw", "annotation", "release"}
+LABEL_PROVENANCES = {"synthetic_generator_target", "human_annotation"}
 HISTORY_ROLES = {"human", "ai"}
 QUALITY_FLAGS = {
     "too_template_like",
@@ -72,6 +73,8 @@ def validate_record(record: dict[str, Any]) -> list[str]:
     _require_string(record, "current_input", errors)
     _validate_scenario(record, errors)
     _validate_enum(record, "annotation_status", ANNOTATION_STATUSES, errors)
+    if record.get("subset") in {"core_parallel", "extended_independent", "challenge"}:
+        _validate_enum(record, "label_provenance", LABEL_PROVENANCES, errors)
 
     if record.get("subset") == "core_parallel" and not _clean_string(record.get("pair_id")):
         errors.append("core_parallel records must include pair_id")
@@ -93,7 +96,7 @@ def validate_record(record: dict[str, Any]) -> list[str]:
             record.get("source_stage") == "release"
             and record.get("annotation_status") not in {"adjudicated", "released"}
         ):
-            errors.append("release records must be adjudicated or released")
+            errors.append("release packaging records must use adjudicated or released status")
     if "quality_flags" in record:
         _validate_quality_flags(record.get("quality_flags"), errors)
     return errors

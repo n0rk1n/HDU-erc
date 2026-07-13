@@ -384,7 +384,7 @@ Run:
 ./.venv312/bin/python scripts/run_codex_cli_emotion_ablation.py \
   --dialogues-file data/records/codex_cli_ablation/input/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/smoke \
-  --run full --limit 1 --timeout 180 --retries 1
+  --run full --limit 1 --model gpt-5.5 --timeout 180 --retries 1
 ```
 
 Expected: one valid, supported emotion result or a concrete Codex connectivity/rate-limit error recorded for diagnosis.
@@ -397,7 +397,7 @@ Run:
 ./.venv312/bin/python scripts/run_codex_cli_emotion_ablation.py \
   --dialogues-file data/records/codex_cli_ablation/input/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/pilot \
-  --limit 10 --timeout 180 --retries 1
+  --limit 10 --model gpt-5.5 --timeout 180 --retries 1
 ```
 
 Expected: five files with 10 records each.
@@ -426,7 +426,7 @@ Run:
 ./.venv312/bin/python scripts/run_codex_cli_emotion_ablation.py \
   --dialogues-file data/records/codex_cli_ablation/input/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/seed64 \
-  --timeout 180 --retries 1
+  --model gpt-5.5 --timeout 180 --retries 1
 ```
 
 Expected: five JSON files with 64 traceable records each; reruns resume successful pairs.
@@ -437,9 +437,20 @@ Run:
 
 ```bash
 ./.venv312/bin/python scripts/report_codex_cli_emotion_ablation.py \
-  --benchmark-file data/benchmarks/emotion_ablation_v2/release/seed.jsonl \
-  --results-dir data/records/codex_cli_ablation/seed64 \
-  --output-dir data/records/codex_cli_ablation/seed64
+  --seed-file data/benchmarks/emotion_ablation_v2/release/seed.jsonl \
+  --run full=data/records/codex_cli_ablation/seed64/full.json \
+  --run no_dynamic_examples=data/records/codex_cli_ablation/seed64/no_dynamic_examples.json \
+  --run no_emotion_history=data/records/codex_cli_ablation/seed64/no_emotion_history.json \
+  --run short_context=data/records/codex_cli_ablation/seed64/short_context.json \
+  --run zero_shot=data/records/codex_cli_ablation/seed64/zero_shot.json \
+  --output-dir data/records/codex_cli_ablation/seed64 \
+  --branch codex/emotion-ablation-v2 \
+  --commit 03b4e7601bb9595e13e7a7fcd50af0e8d465026f \
+  --codex-version "codex-cli 0.142.4" \
+  --model gpt-5.5 \
+  --started-at 2026-07-13T13:44:03+08:00 \
+  --ended-at 2026-07-13T14:39:19+08:00 \
+  --execution-note "The run resumed after a capacity interruption without deleting successful records."
 ```
 
 Expected: `metrics.csv`, `summary.md`, and `report-zh.md` are created.

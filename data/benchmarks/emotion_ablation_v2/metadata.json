@@ -17,6 +17,13 @@
     "released",
     "rejected"
   ],
+  "annotation_status_semantics": "Packaging/workflow state only; released does not imply human review or adjudication.",
+  "formal_release_type": "deterministic_synthetic_generated_benchmark",
+  "label_provenance_values": [
+    "synthetic_generator_target",
+    "human_annotation"
+  ],
+  "formal_release_label_provenance": "synthetic_generator_target",
   "emotion_labels": [
     "surprised",
     "excited",

@@ -1,5 +1,9 @@
 # Annotation Guidelines
 
+These guidelines describe future human-labeling work. They have not been applied
+to the 500 deterministic synthetic records in version `0.1.0`; their labels are
+generator targets, and the zero-byte annotation files are placeholders.
+
 Annotators assign one `expected` primary emotion from the 32-label set. They may add up to three `secondary_emotions`.
 
 Required annotation fields:

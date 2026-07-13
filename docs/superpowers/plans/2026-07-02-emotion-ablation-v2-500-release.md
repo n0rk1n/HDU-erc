@@ -4,6 +4,8 @@
 
 **Goal:** Expand `emotion_ablation_v2` from a 64-record seed release to a 500-record formal release while preserving the seed set as reference examples.
 
+**Provenance clarification:** The resulting 500 records are deterministic synthetic generated cases. Their `expected` fields are generator target labels, not human-reviewed/adjudicated annotations. Human dual annotation and adjudication remain future work.
+
 **Architecture:** Keep the 64-record `release/seed.jsonl` unchanged as the reference seed. Populate the formal release splits with `core_parallel.jsonl` (256 records), `extended_independent.jsonl` (180 records), and `challenge.jsonl` (64 records), then regenerate `release/labels.jsonl` and distribution reports from those 500 formal records. Add a deterministic generator script so future updates are reproducible.
 
 **Tech Stack:** Python standard library, JSONL, CSV, pytest, existing benchmark helper functions.
@@ -81,7 +83,7 @@ Create a deterministic Python script that builds:
 - `labels.jsonl` from the formal release order: core, extended, challenge.
 - `label_distribution.csv` and `scenario_distribution.csv` from the 500 formal records.
 
-Every record must include all benchmark metadata fields already used by seed records.
+Every record must include all benchmark metadata fields already used by seed records plus `label_provenance=synthetic_generator_target`.
 
 - [ ] **Step 2: Run generator**
 
@@ -143,4 +145,3 @@ Expected: all commands pass.
 git add README.md data/benchmarks/emotion_ablation_v2 scripts/benchmark tests/test_emotion_benchmark.py docs/superpowers/plans/2026-07-02-emotion-ablation-v2-500-release.md
 git commit -m "data: expand emotion benchmark release to 500"
 ```
-

@@ -139,7 +139,7 @@ def test_validate_record_rejects_release_stage_candidate_status():
 
     errors = validate_record(record)
 
-    assert "release records must be adjudicated or released" in errors
+    assert "release packaging records must use adjudicated or released status" in errors
 
 
 def test_validate_record_rejects_boolean_intensity():
@@ -261,6 +261,22 @@ def test_formal_release_validates_without_errors():
     assert validate_records(load_formal_release_records()) == []
 
 
+def test_formal_release_declares_synthetic_generator_label_provenance():
+    records = load_formal_release_records()
+
+    assert {record.get("label_provenance") for record in records} == {
+        "synthetic_generator_target"
+    }
+
+
+def test_benchmark_docs_do_not_claim_formal_labels_were_human_reviewed():
+    paths = [*BENCHMARK_ROOT.rglob("*.md"), Path("README.md")]
+    text = "\n".join(path.read_text(encoding="utf-8").lower() for path in paths)
+
+    assert "reviewed labels" not in text
+    assert "release reviewed records" not in text
+
+
 def test_formal_release_covers_labels_in_both_languages():
     records = load_formal_release_records()
     language_counts = {}
@@ -278,7 +294,11 @@ def test_formal_release_labels_match_all_release_cases():
     labels = load_jsonl(BENCHMARK_ROOT / "release" / "labels.jsonl")
 
     assert labels == [
-        {"id": record["case_id"], "expected": record["expected"]}
+        {
+            "id": record["case_id"],
+            "expected": record["expected"],
+            "label_provenance": "synthetic_generator_target",
+        }
         for record in records
     ]
 

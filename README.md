@@ -367,7 +367,7 @@ python scripts/evaluate_emotion_ablation.py \
 
 ### Emotion Ablation V2 Benchmark
 
-The richer bilingual benchmark lives in `data/benchmarks/emotion_ablation_v2/`. It keeps seed, release, annotation, and quality-control files separate from the small legacy smoke-test examples. Version `0.1.0` includes a 500-record formal release plus a 64-record seed reference set.
+The richer bilingual benchmark lives in `data/benchmarks/emotion_ablation_v2/`. It keeps seed, release, annotation, and quality-control files separate from the small legacy smoke-test examples. Version `0.1.0` includes a deterministic synthetic generated 500-record formal release plus a 64-record seed reference set. The formal `expected` values are generator target labels (`label_provenance=synthetic_generator_target`), not human-reviewed or adjudicated annotations; the empty annotation files are placeholders for future work.
 
 Validate a formal release split:
 

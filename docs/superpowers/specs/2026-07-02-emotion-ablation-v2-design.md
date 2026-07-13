@@ -2,7 +2,7 @@
 
 ## Summary
 
-Build `emotion_ablation_v2`, a complete bilingual emotion-recognition benchmark for the chatbot's ablation experiments. The benchmark expands the current 6-case JSONL sample into a governed dataset system with candidate generation, bilingual parallel cases, independent natural-language cases, challenge cases, dual annotation, adjudication, quality reports, schema validation, compatibility export, and layered evaluation.
+Build `emotion_ablation_v2`, a bilingual emotion-recognition benchmark system for the chatbot's ablation experiments. The version `0.1.0` 500-record release implemented from this design is deterministic synthetic generated data: `expected` is the generator target and not a human-reviewed or adjudicated label. Dual annotation and adjudication below describe the intended future workflow; the current zero-byte annotation files are placeholders.
 
 This design favors completeness over minimum viable scope. The first implementation should create the full directory structure, documentation, schema, validation/export tooling, and a high-quality seed set. The full dataset can then scale to 600+ released cases without changing the core format.
 

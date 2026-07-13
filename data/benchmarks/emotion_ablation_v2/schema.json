@@ -29,6 +29,9 @@
     "seed_group": {"enum": ["core_parallel_seed", "independent_seed"]},
     "target_emotion": {"type": "string"},
     "expected": {"type": "string"},
+    "label_provenance": {
+      "enum": ["synthetic_generator_target", "human_annotation"]
+    },
     "secondary_emotions": {
       "type": "array",
       "items": {"type": "string"},
@@ -63,5 +66,15 @@
     },
     "source_stage": {"enum": ["raw", "annotation", "release"]}
   },
-  "additionalProperties": true
+  "additionalProperties": true,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "subset": {"enum": ["core_parallel", "extended_independent", "challenge"]}
+        }
+      },
+      "then": {"required": ["label_provenance"]}
+    }
+  ]
 }

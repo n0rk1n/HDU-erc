@@ -380,7 +380,11 @@ def main() -> int:
     write_jsonl(RELEASE_DIR / "extended_independent.jsonl", extended)
     write_jsonl(RELEASE_DIR / "challenge.jsonl", challenge)
     write_jsonl(RELEASE_DIR / "labels.jsonl", [
-        {"id": record["case_id"], "expected": record["expected"]}
+        {
+            "id": record["case_id"],
+            "expected": record["expected"],
+            "label_provenance": record["label_provenance"],
+        }
         for record in formal
     ])
     write_distribution(REPORTS_DIR / "label_distribution.csv", "label", Counter(
@@ -389,6 +393,7 @@ def main() -> int:
     write_distribution(REPORTS_DIR / "scenario_distribution.csv", "scenario", Counter(
         record["scenario"] for record in formal
     ))
+    write_quality_report(formal)
     print("Generated 500 formal release records")
     return 0
 
@@ -482,6 +487,7 @@ def make_record(
         "subset": subset,
         "target_emotion": label,
         "expected": label,
+        "label_provenance": "synthetic_generator_target",
         "secondary_emotions": profile["secondary"][:2],
         "intensity": round(intensity, 2),
         "ambiguity_level": ambiguity_level(index, challenge),
@@ -499,6 +505,35 @@ def make_record(
     if pair_id is not None:
         record["pair_id"] = pair_id
     return record
+
+
+def write_quality_report(records: list[dict[str, Any]]) -> None:
+    language_counts = Counter(record["language"] for record in records)
+    text = f"""# Quality Report
+
+This quality report covers the deterministic synthetic version `0.1.0` formal release and the retained seed reference set.
+
+## Formal Release Checks
+
+- Records: {len(records)}
+- Splits: `core_parallel=256`, `extended_independent=180`, `challenge=64`
+- Languages: {language_counts['en']} English, {language_counts['zh']} Chinese
+- Label coverage: all 32 generator target labels appear in both languages
+- Label provenance: `synthetic_generator_target`; `expected` is the generator target, not an independently annotated ground truth label
+- Annotation/adjudication files: zero-byte placeholders reserved for future human dual annotation and adjudication
+- `annotation_status=released`: packaging state only; it does not assert human review
+- Generation command: `python scripts/benchmark/generate_emotion_ablation_v2_release.py`
+
+## Seed Release Checks
+
+- Records: 64
+- Languages: 32 English, 32 Chinese
+- Label coverage: all 32 labels appear exactly twice
+- Parallel seed pairs: 16
+
+Human dual annotation, adjudication, agreement statistics, and rejection-reason reporting remain future work.
+"""
+    (REPORTS_DIR / "quality_report.md").write_text(text, encoding="utf-8")
 
 
 def make_history(language: str, event: str, index: int, context_dependency: str) -> list[dict[str, str]]:

@@ -64,6 +64,43 @@ def _normalize_annotations(records: list[dict[str, Any]]) -> list[dict[str, Any]
     return normalized
 
 
+def _validate_run_inputs(
+    runs: dict[str, list[dict[str, Any]]],
+    annotations: list[dict[str, Any]],
+) -> None:
+    benchmark_ids = [_identifier(item) for item in annotations]
+    if any(not case_id for case_id in benchmark_ids):
+        raise ValueError("benchmark contains a missing case ID")
+    duplicate_benchmark_ids = sorted(
+        case_id for case_id, count in Counter(benchmark_ids).items() if count > 1
+    )
+    if duplicate_benchmark_ids:
+        raise ValueError(f"benchmark contains duplicate case IDs: {duplicate_benchmark_ids}")
+    expected_ids = set(benchmark_ids)
+
+    for name, records in runs.items():
+        ids = [
+            record["case_id"].strip()
+            if isinstance(record.get("case_id"), str)
+            else ""
+            for record in records
+        ]
+        if any(not case_id for case_id in ids):
+            raise ValueError(f"run {name!r} contains a missing case ID")
+        duplicate_ids = sorted(case_id for case_id, count in Counter(ids).items() if case_id and count > 1)
+        if duplicate_ids:
+            raise ValueError(f"run {name!r} contains duplicate case IDs: {duplicate_ids}")
+        actual_ids = set(ids)
+        unknown_ids = sorted(actual_ids - expected_ids)
+        if unknown_ids:
+            raise ValueError(f"run {name!r} contains unknown case IDs: {unknown_ids}")
+        missing_ids = sorted(expected_ids - actual_ids)
+        if missing_ids:
+            raise ValueError(f"run {name!r} contains missing case IDs: {missing_ids}")
+        if any(record.get("run") != name for record in records):
+            raise ValueError(f"run {name!r} contains a wrong or missing run name")
+
+
 def _slice(
     records: list[dict[str, Any]],
     annotations: list[dict[str, Any]],
@@ -81,6 +118,7 @@ def build_report_data(
 ) -> dict[str, Any]:
     """Evaluate every run globally and over fixed language/context slices."""
     normalized = _normalize_annotations(annotations)
+    _validate_run_inputs(runs, normalized)
     output: dict[str, Any] = {"runs": {}, "annotations": normalized}
     full_by_id = {
         _identifier(record): record
@@ -380,6 +418,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--commit")
     parser.add_argument("--codex-version")
+    parser.add_argument("--branch")
+    parser.add_argument("--started-at")
+    parser.add_argument("--ended-at")
+    parser.add_argument("--model")
     parser.add_argument(
         "--execution-note",
         help="Explicit reproducibility note, such as capacity interruption and resume history.",
@@ -404,6 +446,10 @@ def main(argv: list[str] | None = None) -> int:
         for key, value in {
             "commit": args.commit,
             "codex_version": args.codex_version,
+            "branch": args.branch,
+            "started_at": args.started_at,
+            "ended_at": args.ended_at,
+            "model": args.model,
             "execution_note": args.execution_note,
         }.items()
         if value is not None

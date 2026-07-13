@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,7 +35,11 @@ class CodexResult:
     error: str = ""
 
 
+RUNTIME_PROVENANCE = "codex_exec_ephemeral_read_only_isolated_cwd_v1"
+
+
 def build_command(schema_file: Path, *, model: str | None) -> list[str]:
+    schema_file = schema_file.resolve()
     command = [
         "codex",
         "exec",
@@ -74,15 +80,21 @@ def invoke_codex(
         "Return exactly the JSON object required by the output schema.\n\n" + prompt
     )
     try:
-        completed = run_subprocess(
-            build_command(schema_file, model=model),
-            input=instruction,
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except (subprocess.TimeoutExpired, OSError) as exc:
+        with tempfile.TemporaryDirectory(prefix="codex-emotion-") as isolated_cwd:
+            repository_root = Path(__file__).resolve().parents[1]
+            isolated_path = Path(isolated_cwd).resolve()
+            if isolated_path == repository_root or repository_root in isolated_path.parents:
+                raise RuntimeError("Temporary Codex working directory is inside the repository")
+            completed = run_subprocess(
+                build_command(schema_file.resolve(), model=model),
+                input=instruction,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                check=False,
+                cwd=isolated_cwd,
+            )
+    except (subprocess.TimeoutExpired, OSError, RuntimeError) as exc:
         return CodexResult("", "", False, str(exc))
     if completed.returncode != 0:
         return CodexResult("", completed.stdout, False, completed.stderr.strip())
@@ -116,6 +128,7 @@ def _record_from_result(
     index: int,
     *,
     emotion_interval: int,
+    provenance: dict[str, str],
 ) -> dict[str, Any]:
     return {
         "case_id": case["id"].strip(),
@@ -127,7 +140,57 @@ def _record_from_result(
         "emotion": result.emotion,
         "success": result.success,
         "error": result.error,
+        **provenance,
     }
+
+
+def build_case_prompt(
+    config: AblationRunConfig,
+    case: dict[str, Any],
+    index: int,
+    *,
+    emotion_interval: int,
+) -> str:
+    history = _history_records(case)
+    return build_emotion_prompt(
+        history,
+        case["current_input"],
+        previous_emotion=_previous_emotion(history),
+        likely_emotions=_likely_emotions(history),
+        max_turns=config.max_turns or emotion_interval,
+        example_mode=config.example_mode,
+        include_emotion_history=config.include_emotion_history,
+    )
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def build_resume_provenance(
+    prompt: str,
+    *,
+    schema_file: Path,
+    model: str | None,
+    codex_cli_version: str,
+) -> dict[str, str]:
+    schema_bytes = schema_file.read_bytes() if schema_file.exists() else b"<missing-schema>"
+    return {
+        "prompt_sha256": _sha256_bytes(prompt.encode("utf-8")),
+        "model": model or "<codex-default>",
+        "schema_sha256": _sha256_bytes(schema_bytes),
+        "codex_cli_version": codex_cli_version,
+        "runtime_provenance": RUNTIME_PROVENANCE,
+    }
+
+
+def detect_codex_cli_version(run_subprocess: Any = subprocess.run) -> str:
+    completed = run_subprocess(
+        ["codex", "--version"], text=True, capture_output=True, check=False
+    )
+    if completed.returncode != 0 or not completed.stdout.strip():
+        raise RuntimeError(f"Unable to determine Codex CLI version: {completed.stderr.strip()}")
+    return completed.stdout.strip()
 
 
 def run_ablation(
@@ -140,12 +203,13 @@ def run_ablation(
     timeout: int,
     retries: int,
     emotion_interval: int,
+    codex_cli_version: str = "unknown",
     invoke: Any = invoke_codex,
 ) -> list[dict[str, Any]]:
     if retries not in {0, 1}:
         raise ValueError("retries must be 0 or 1")
     existing = _load_existing(output_file)
-    by_case = {
+    existing_by_case = {
         record["case_id"]: record
         for record in existing
         if (
@@ -154,21 +218,24 @@ def run_ablation(
             and record.get("success") is True
         )
     }
-    max_turns = config.max_turns or emotion_interval
+    by_case: dict[str, dict[str, Any]] = {}
     for index, case in enumerate(cases, start=1):
         case_id = case["id"].strip()
-        if case_id in by_case:
-            continue
-        history = _history_records(case)
-        prompt = build_emotion_prompt(
-            history,
-            case["current_input"],
-            previous_emotion=_previous_emotion(history),
-            likely_emotions=_likely_emotions(history),
-            max_turns=max_turns,
-            example_mode=config.example_mode,
-            include_emotion_history=config.include_emotion_history,
+        prompt = build_case_prompt(
+            config, case, index, emotion_interval=emotion_interval
         )
+        provenance = build_resume_provenance(
+            prompt,
+            schema_file=schema_file,
+            model=model,
+            codex_cli_version=codex_cli_version,
+        )
+        existing_record = existing_by_case.get(case_id)
+        if existing_record is not None and all(
+            existing_record.get(key) == value for key, value in provenance.items()
+        ):
+            by_case[case_id] = existing_record
+            continue
         result = CodexResult("", "", False, "not invoked")
         for _ in range(retries + 1):
             result = invoke(
@@ -185,7 +252,8 @@ def run_ablation(
             prompt,
             result,
             index,
-            emotion_interval=max_turns,
+            emotion_interval=config.max_turns or emotion_interval,
+            provenance=provenance,
         )
         ordered_records = [
             by_case[item["id"].strip()]
@@ -213,7 +281,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=sorted(RUN_CONFIGS),
         help="Run name to execute. Defaults to all runs.",
     )
-    parser.add_argument("--model")
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--codex-version", help="Override detected Codex CLI version.")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--emotion-interval", type=int, default=5)
@@ -235,6 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit is not None:
         cases = cases[:args.limit]
     run_names = args.run or list(RUN_CONFIGS)
+    codex_cli_version = args.codex_version or detect_codex_cli_version()
     for run_name in run_names:
         output_file = Path(args.output_dir) / f"{run_name}.json"
         records = run_ablation(
@@ -246,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
             timeout=args.timeout,
             retries=args.retries,
             emotion_interval=args.emotion_interval,
+            codex_cli_version=codex_cli_version,
         )
         print(f"{run_name}: wrote {len(records)} records to {output_file}")
     return 0

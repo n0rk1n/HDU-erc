@@ -1,6 +1,8 @@
 import csv
 import json
 
+import pytest
+
 from scripts.report_codex_cli_emotion_ablation import (
     build_report_data,
     main,
@@ -29,14 +31,44 @@ SEED_RECORDS = [
 
 RUNS = {
     "full": [
-        {"case_id": "case-001", "emotion": "anxious", "success": True},
-        {"case_id": "case-002", "emotion": "sad", "success": True},
+        {"case_id": "case-001", "run": "full", "emotion": "anxious", "success": True},
+        {"case_id": "case-002", "run": "full", "emotion": "sad", "success": True},
     ],
     "no_emotion_history": [
-        {"case_id": "case-001", "emotion": "", "success": False},
-        {"case_id": "case-002", "emotion": "grateful", "success": True},
+        {"case_id": "case-001", "run": "no_emotion_history", "emotion": "", "success": False},
+        {"case_id": "case-002", "run": "no_emotion_history", "emotion": "grateful", "success": True},
     ],
 }
+
+
+@pytest.mark.parametrize(
+    ("records", "message"),
+    [
+        ([{"case_id": "case-001", "run": "full", "emotion": "anxious", "success": True}], "missing case IDs"),
+        ([
+            {"case_id": "case-001", "run": "full", "emotion": "anxious", "success": True},
+            {"case_id": "case-001", "run": "full", "emotion": "sad", "success": True},
+            {"case_id": "case-002", "run": "full", "emotion": "grateful", "success": True},
+        ], "duplicate case IDs"),
+        ([
+            {"case_id": "case-001", "run": "full", "emotion": "anxious", "success": True},
+            {"case_id": " case-001 ", "run": "full", "emotion": "sad", "success": True},
+            {"case_id": "case-002", "run": "full", "emotion": "grateful", "success": True},
+        ], "duplicate case IDs"),
+        ([
+            {"case_id": "case-001", "run": "full", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "run": "full", "emotion": "grateful", "success": True},
+            {"case_id": "case-999", "run": "full", "emotion": "sad", "success": True},
+        ], "unknown case IDs"),
+        ([
+            {"case_id": "case-001", "run": "wrong", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "run": "full", "emotion": "grateful", "success": True},
+        ], "wrong or missing run name"),
+    ],
+)
+def test_build_report_data_rejects_invalid_run_coverage(records, message):
+    with pytest.raises(ValueError, match=message):
+        build_report_data({"full": records}, SEED_RECORDS)
 
 
 def test_build_report_data_includes_global_language_and_context_slices():
@@ -112,16 +144,16 @@ def test_render_metrics_csv_has_required_columns_and_full_deltas():
 def test_build_report_data_detects_noop_from_case_matched_prompt_identity():
     runs = {
         "full": [
-            {"case_id": "case-001", "input": "prompt one", "emotion": "anxious", "success": True},
-            {"case_id": "case-002", "input": "prompt two", "emotion": "grateful", "success": True},
+            {"case_id": "case-001", "run": "full", "input": "prompt one", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "run": "full", "input": "prompt two", "emotion": "grateful", "success": True},
         ],
         "no_emotion_history": [
-            {"case_id": "case-002", "input": "prompt two", "emotion": "grateful", "success": True},
-            {"case_id": "case-001", "input": "prompt one", "emotion": "sad", "success": True},
+            {"case_id": "case-002", "run": "no_emotion_history", "input": "prompt two", "emotion": "grateful", "success": True},
+            {"case_id": "case-001", "run": "no_emotion_history", "input": "prompt one", "emotion": "sad", "success": True},
         ],
         "short_context": [
-            {"case_id": "case-001", "input": "shortened prompt", "emotion": "anxious", "success": True},
-            {"case_id": "case-002", "input": "prompt two", "emotion": "grateful", "success": True},
+            {"case_id": "case-001", "run": "short_context", "input": "shortened prompt", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "run": "short_context", "input": "prompt two", "emotion": "grateful", "success": True},
         ],
     }
 
@@ -143,16 +175,16 @@ def test_build_report_data_detects_noop_from_case_matched_prompt_identity():
 def test_noop_warning_is_prominent_in_summary_csv_and_chinese_report():
     runs = {
         "full": [
-            {"case_id": "case-001", "input": "same one", "emotion": "anxious", "success": True},
-            {"case_id": "case-002", "input": "same two", "emotion": "sad", "success": True},
+            {"case_id": "case-001", "run": "full", "input": "same one", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "run": "full", "input": "same two", "emotion": "sad", "success": True},
         ],
         "no_emotion_history": [
-            {"case_id": "case-001", "input": "same one", "emotion": "sad", "success": True},
-            {"case_id": "case-002", "input": "same two", "emotion": "grateful", "success": True},
+            {"case_id": "case-001", "run": "no_emotion_history", "input": "same one", "emotion": "sad", "success": True},
+            {"case_id": "case-002", "run": "no_emotion_history", "input": "same two", "emotion": "grateful", "success": True},
         ],
         "short_context": [
-            {"case_id": "case-001", "input": "same one", "emotion": "anxious", "success": True},
-            {"case_id": "case-002", "input": "same two", "emotion": "grateful", "success": True},
+            {"case_id": "case-001", "run": "short_context", "input": "same one", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "run": "short_context", "input": "same two", "emotion": "grateful", "success": True},
         ],
     }
     report = build_report_data(runs, SEED_RECORDS)
@@ -185,7 +217,8 @@ def test_chinese_report_uses_singular_wording_for_one_discovered_noop_run():
     runs = {
         "full": [
             {
-                "case_id": "case-001",
+                    "case_id": "case-001",
+                    "run": "full",
                 "input": "same prompt",
                 "emotion": "anxious",
                 "success": True,
@@ -193,7 +226,8 @@ def test_chinese_report_uses_singular_wording_for_one_discovered_noop_run():
         ],
         "no_emotion_history": [
             {
-                "case_id": "case-001",
+                    "case_id": "case-001",
+                    "run": "no_emotion_history",
                 "input": "same prompt",
                 "emotion": "sad",
                 "success": True,
@@ -245,6 +279,14 @@ def test_main_writes_deterministic_report_artifacts(tmp_path):
         "abc123",
         "--codex-version",
         "0.142.4",
+        "--branch",
+        "codex/test",
+        "--started-at",
+        "2026-07-13T13:44:03+08:00",
+        "--ended-at",
+        "2026-07-13T14:39:19+08:00",
+        "--model",
+        "gpt-test",
         *run_args,
     ])
 
@@ -254,10 +296,15 @@ def test_main_writes_deterministic_report_artifacts(tmp_path):
     report_path = output_dir / "report-zh.md"
     assert report_path.exists()
     assert "abc123" in report_path.read_text(encoding="utf-8")
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "codex/test" in report_text
+    assert "2026-07-13T13:44:03+08:00" in report_text
+    assert "2026-07-13T14:39:19+08:00" in report_text
+    assert "gpt-test" in report_text
 
 
 def test_seed_id_alias_is_normalized_without_losing_slice_metadata():
-    records = [{"case_id": "legacy-id", "emotion": "sad", "success": True}]
+    records = [{"case_id": "legacy-id", "run": "full", "emotion": "sad", "success": True}]
     seed = [{
         "id": "legacy-id",
         "label": "sad",
@@ -274,8 +321,7 @@ def test_seed_id_alias_is_normalized_without_losing_slice_metadata():
 
 def test_seed_case_id_takes_precedence_over_legacy_id():
     records = [
-        {"case_id": "legacy-id", "emotion": "anxious", "success": True},
-        {"case_id": "canonical-id", "emotion": "sad", "success": True},
+        {"case_id": "canonical-id", "run": "full", "emotion": "sad", "success": True},
     ]
     seed = [{
         "case_id": "canonical-id",
