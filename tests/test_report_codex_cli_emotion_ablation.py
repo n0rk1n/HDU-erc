@@ -6,6 +6,7 @@ from scripts.report_codex_cli_emotion_ablation import (
     main,
     render_chinese_report,
     render_metrics_csv,
+    render_summary,
 )
 
 
@@ -98,10 +99,101 @@ def test_render_metrics_csv_has_required_columns_and_full_deltas():
         "macro_f1",
         "accuracy_delta_vs_full",
         "macro_f1_delta_vs_full",
+        "prompt_identical_to_full",
+        "prompt_compared_to_full",
+        "treatment_status",
+        "treatment_provenance",
     ]
     assert rows[0]["run"] == "full"
     assert rows[0]["accuracy_delta_vs_full"] == "0.000000"
     assert rows[0]["macro_f1_delta_vs_full"] == "0.000000"
+
+
+def test_build_report_data_detects_noop_from_case_matched_prompt_identity():
+    runs = {
+        "full": [
+            {"case_id": "case-001", "input": "prompt one", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "input": "prompt two", "emotion": "grateful", "success": True},
+        ],
+        "no_emotion_history": [
+            {"case_id": "case-002", "input": "prompt two", "emotion": "grateful", "success": True},
+            {"case_id": "case-001", "input": "prompt one", "emotion": "sad", "success": True},
+        ],
+        "short_context": [
+            {"case_id": "case-001", "input": "shortened prompt", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "input": "prompt two", "emotion": "grateful", "success": True},
+        ],
+    }
+
+    report = build_report_data(runs, SEED_RECORDS)
+
+    no_history = report["runs"]["no_emotion_history"]["treatment"]
+    assert no_history == {
+        "prompt_identical_to_full": 2,
+        "prompt_compared_to_full": 2,
+        "status": "no_op_identical_to_full",
+        "provenance": "record_input_vs_full_by_case_id",
+    }
+    short_context = report["runs"]["short_context"]["treatment"]
+    assert short_context["prompt_identical_to_full"] == 1
+    assert short_context["prompt_compared_to_full"] == 2
+    assert short_context["status"] == "effective_prompt_change"
+
+
+def test_noop_warning_is_prominent_in_summary_csv_and_chinese_report():
+    runs = {
+        "full": [
+            {"case_id": "case-001", "input": "same one", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "input": "same two", "emotion": "sad", "success": True},
+        ],
+        "no_emotion_history": [
+            {"case_id": "case-001", "input": "same one", "emotion": "sad", "success": True},
+            {"case_id": "case-002", "input": "same two", "emotion": "grateful", "success": True},
+        ],
+        "short_context": [
+            {"case_id": "case-001", "input": "same one", "emotion": "anxious", "success": True},
+            {"case_id": "case-002", "input": "same two", "emotion": "grateful", "success": True},
+        ],
+    }
+    report = build_report_data(runs, SEED_RECORDS)
+
+    summary = render_summary(report)
+    csv_rows = list(csv.DictReader(render_metrics_csv(report).splitlines()))
+    chinese = render_chinese_report(
+        report,
+        metadata={"execution_note": "曾因容量中断，随后从已有成功记录继续执行。"},
+    )
+
+    assert "⚠️ treatment 有效性警告" in summary
+    assert "no_emotion_history` 与 `short_context` 的输入 Prompt 均为 2/2 与 `full` 完全相同" in summary
+    assert "指标差异只能视为重复调用波动，不能归因于消融组件" in summary
+    by_run = {row["run"]: row for row in csv_rows}
+    assert by_run["no_emotion_history"]["prompt_identical_to_full"] == "2"
+    assert by_run["no_emotion_history"]["prompt_compared_to_full"] == "2"
+    assert by_run["no_emotion_history"]["treatment_status"] == "no_op_identical_to_full"
+    assert (
+        by_run["no_emotion_history"]["treatment_provenance"]
+        == "record_input_vs_full_by_case_id"
+    )
+    assert "## 结论有效性警告" in chinese
+    assert "`no_emotion_history` 与 `short_context` 的输入 Prompt 均为 2/2 与 `full` 完全相同" in chinese
+    assert "这两组是 no-op 重复对照，其指标差异是重复调用波动，不是消融效果" in chinese
+    assert "不能据此归因情绪历史或上下文长度的组件贡献" in chinese
+
+
+def test_chinese_report_discloses_required_seed64_limitations():
+    report = build_report_data(RUNS, SEED_RECORDS)
+
+    text = render_chinese_report(
+        report,
+        metadata={"execution_note": "容量中断后续跑"},
+    )
+
+    assert "本次基准仅包含 2 条合成 seed 记录" in text
+    assert "高上下文依赖样本为 1 条" in text
+    assert "Codex CLI Agent 执行链路，不是裸模型 API 评测" in text
+    assert "容量中断后续跑" in text
+    assert "`zero_shot` 同时禁用 few-shot 示例和情绪历史先验" in text
 
 
 def test_main_writes_deterministic_report_artifacts(tmp_path):

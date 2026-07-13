@@ -28,7 +28,13 @@ METRIC_FIELDS = (
     "macro_f1",
     "accuracy_delta_vs_full",
     "macro_f1_delta_vs_full",
+    "prompt_identical_to_full",
+    "prompt_compared_to_full",
+    "treatment_status",
+    "treatment_provenance",
 )
+
+TREATMENT_PROVENANCE = "record_input_vs_full_by_case_id"
 
 
 def _identifier(item: dict[str, Any]) -> str:
@@ -76,8 +82,33 @@ def build_report_data(
     """Evaluate every run globally and over fixed language/context slices."""
     normalized = _normalize_annotations(annotations)
     output: dict[str, Any] = {"runs": {}, "annotations": normalized}
+    full_by_id = {
+        _identifier(record): record
+        for record in runs.get("full", [])
+        if _identifier(record)
+    }
     for name in sorted(runs):
         records = runs[name]
+        identical = 0
+        compared = 0
+        for record in records:
+            full_record = full_by_id.get(_identifier(record))
+            prompt = record.get("input")
+            full_prompt = full_record.get("input") if full_record is not None else None
+            if not isinstance(prompt, str) or not isinstance(full_prompt, str):
+                continue
+            compared += 1
+            identical += prompt == full_prompt
+
+        if name == "full":
+            treatment_status = "baseline"
+        elif compared == len(records) and compared > 0 and identical == compared:
+            treatment_status = "no_op_identical_to_full"
+        elif compared == len(records) and compared > 0:
+            treatment_status = "effective_prompt_change"
+        else:
+            treatment_status = "incomplete_prompt_evidence"
+
         output["runs"][name] = {
             "overall": evaluate_records(records, normalized),
             "languages": {
@@ -101,6 +132,12 @@ def build_report_data(
                 record.get("success") is True and bool(str(record.get("emotion", "")).strip())
                 for record in records
             ),
+            "treatment": {
+                "prompt_identical_to_full": identical,
+                "prompt_compared_to_full": compared,
+                "status": treatment_status,
+                "provenance": TREATMENT_PROVENANCE,
+            },
         }
     return output
 
@@ -124,6 +161,10 @@ def _metric_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "macro_f1": overall["macro_f1"],
             "accuracy_delta_vs_full": overall["accuracy"] - full["accuracy"],
             "macro_f1_delta_vs_full": overall["macro_f1"] - full["macro_f1"],
+            "prompt_identical_to_full": run["treatment"]["prompt_identical_to_full"],
+            "prompt_compared_to_full": run["treatment"]["prompt_compared_to_full"],
+            "treatment_status": run["treatment"]["status"],
+            "treatment_provenance": run["treatment"]["provenance"],
         })
     return rows
 
@@ -146,20 +187,58 @@ def render_metrics_csv(report: dict[str, Any]) -> str:
     return buffer.getvalue()
 
 
-def render_summary(report: dict[str, Any]) -> str:
+def _noop_warning_lines(report: dict[str, Any]) -> list[str]:
+    noops = [
+        (name, run["treatment"])
+        for name, run in sorted(report["runs"].items())
+        if name != "full" and run["treatment"]["status"] == "no_op_identical_to_full"
+    ]
+    if not noops:
+        return []
+    names = " 与 ".join(f"`{name}`" for name, _ in noops)
+    counts = {
+        (treatment["prompt_identical_to_full"], treatment["prompt_compared_to_full"])
+        for _, treatment in noops
+    }
+    if len(counts) == 1:
+        identical, compared = counts.pop()
+        identity = f"{names} 的输入 Prompt 均为 {identical}/{compared} 与 `full` 完全相同"
+    else:
+        details = "；".join(
+            f"`{name}` 为 {treatment['prompt_identical_to_full']}/"
+            f"{treatment['prompt_compared_to_full']}"
+            for name, treatment in noops
+        )
+        identity = f"{details} 的输入 Prompt 与 `full` 完全相同"
+    return [
+        "⚠️ treatment 有效性警告：" + identity + "。",
+        "这些运行属于 no-op 重复对照；指标差异只能视为重复调用波动，不能归因于消融组件。",
+    ]
+
+
+def _summary_table_lines(report: dict[str, Any]) -> list[str]:
     lines = [
-        "# Codex CLI 情绪识别消融摘要",
-        "",
-        "| Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy | Macro F1 | Δ Accuracy vs full | Δ Macro F1 vs full |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy | Macro F1 | Δ Accuracy vs full | Δ Macro F1 vs full | Prompt identical/full | Treatment status | Provenance |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for row in _metric_rows(report):
         lines.append(
             f"| {row['run']} | {row['samples']} | {row['valid_predictions']} | "
             f"{row['failures']} | {row['correct']} | {row['accuracy']:.2%} | "
             f"{row['macro_f1']:.2%} | {row['accuracy_delta_vs_full']:+.2%} | "
-            f"{row['macro_f1_delta_vs_full']:+.2%} |"
+            f"{row['macro_f1_delta_vs_full']:+.2%} | "
+            f"{row['prompt_identical_to_full']}/{row['prompt_compared_to_full']} | "
+            f"{row['treatment_status']} | {row['treatment_provenance']} |"
         )
+    return lines
+
+
+def render_summary(report: dict[str, Any]) -> str:
+    lines = ["# Codex CLI 情绪识别消融摘要", ""]
+    warning_lines = _noop_warning_lines(report)
+    if warning_lines:
+        lines.extend([*warning_lines, ""])
+    lines.extend(_summary_table_lines(report))
     return "\n".join(lines) + "\n"
 
 
@@ -232,7 +311,20 @@ def render_chinese_report(
             lines.append(f"- {key}: `{_escape_cell(metadata[key])}`")
         lines.append("")
 
-    lines.extend(["## 整体结果", "", *render_summary(report).splitlines()[2:], ""])
+    warning_lines = _noop_warning_lines(report)
+    if warning_lines:
+        lines.extend([
+            "## 结论有效性警告",
+            "",
+            warning_lines[0].removeprefix("⚠️ treatment 有效性警告："),
+            (
+                "这两组是 no-op 重复对照，其指标差异是重复调用波动，不是消融效果；"
+                "不能据此归因情绪历史或上下文长度的组件贡献。"
+            ),
+            "",
+        ])
+
+    lines.extend(["## 整体结果", "", *_summary_table_lines(report), ""])
     lines.extend(["## 语言切片", "", *_slice_table(report, "languages", LANGUAGES), ""])
     lines.extend([
         "## 上下文依赖切片",
@@ -246,16 +338,25 @@ def render_chinese_report(
         "## 方法",
         "",
         "- 使用现有 `evaluate_records` 进行 case_id 匹配、Accuracy 和 Macro F1 计算。",
+        "- treatment 有效性来自逐条记录的 `input` Prompt 与同 `case_id` 的 `full` Prompt 比对；"
+        "全部相同时标记为 `no_op_identical_to_full`。",
         "- 按 `language` 和 `context_dependency` 的预定义枚举值切片，空切片显式记为 0。",
         "- `success is not True` 单独计为调用失败，失败预测仍保留在标注分母中。",
         "",
         "## 局限性",
         "",
+        f"- 本次基准仅包含 {len(report.get('annotations', []))} 条合成 seed 记录；"
+        f"高上下文依赖样本为 {sum(item.get('context_dependency') == 'high' for item in report.get('annotations', []))} 条。",
+        "- 本实验评估的是 Codex CLI Agent 执行链路，不是裸模型 API 评测；"
+        "结果包含 Codex 系统指令和 Agent 运行环境的影响。",
         "- 切片样本较少时，Accuracy 和 Macro F1 波动较大，不应单独解读。",
         "- 调用失败同时会拉低指标，需与分类错误分开观察。",
         "- `zero_shot` 同时禁用 few-shot 示例和情绪历史先验，因此属于组合消融；"
         "其相对 `full` 的指标差值不能单独归因于任一组件。",
     ])
+    execution_note = metadata.get("execution_note")
+    if execution_note:
+        lines.append(f"- 执行过程说明：{_escape_cell(execution_note)}")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -268,6 +369,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--commit")
     parser.add_argument("--codex-version")
+    parser.add_argument(
+        "--execution-note",
+        help="Explicit reproducibility note, such as capacity interruption and resume history.",
+    )
     return parser.parse_args(argv)
 
 
@@ -288,6 +393,7 @@ def main(argv: list[str] | None = None) -> int:
         for key, value in {
             "commit": args.commit,
             "codex_version": args.codex_version,
+            "execution_note": args.execution_note,
         }.items()
         if value is not None
     }
