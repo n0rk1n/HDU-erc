@@ -68,7 +68,10 @@ def test_render_chinese_report_contains_metrics_failures_and_limitations():
     assert "# Codex CLI 情绪识别消融实验报告" in text
     assert "Macro F1" in text
     assert "调用失败" in text
-    assert "组合消融" in text
+    assert (
+        "`zero_shot` 同时禁用 few-shot 示例和情绪历史先验，因此属于组合消融；"
+        "其相对 `full` 的指标差值不能单独归因于任一组件。"
+    ) in text
     assert "## 整体结果" in text
     assert "## 语言切片" in text
     assert "## 上下文依赖切片" in text

@@ -253,7 +253,8 @@ def render_chinese_report(
         "",
         "- 切片样本较少时，Accuracy 和 Macro F1 波动较大，不应单独解读。",
         "- 调用失败同时会拉低指标，需与分类错误分开观察。",
-        "- 本报告比较单因素消融，不能替代组合消融或显著性检验。",
+        "- `zero_shot` 同时禁用 few-shot 示例和情绪历史先验，因此属于组合消融；"
+        "其相对 `full` 的指标差值不能单独归因于任一组件。",
     ])
     return "\n".join(lines).rstrip() + "\n"
 
