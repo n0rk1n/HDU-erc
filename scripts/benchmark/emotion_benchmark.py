@@ -128,7 +128,10 @@ def export_dialogue(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def export_label(record: dict[str, Any]) -> dict[str, Any]:
-    return {"id": record["case_id"], "expected": record["expected"]}
+    exported = {"id": record["case_id"], "expected": record["expected"]}
+    if "label_provenance" in record:
+        exported["label_provenance"] = record["label_provenance"]
+    return exported
 
 
 def summarize_records(records: list[dict[str, Any]]) -> dict[str, Counter[str]]:

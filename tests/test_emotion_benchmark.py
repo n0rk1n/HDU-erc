@@ -2,6 +2,7 @@ from pathlib import Path
 
 from chatbot.emotion_labels import EMOTION_LABEL_SET
 from scripts.benchmark.emotion_benchmark import load_jsonl
+from scripts.benchmark.emotion_benchmark import export_label
 from scripts.benchmark.emotion_benchmark import parallel_equivalence_errors
 from scripts.benchmark.emotion_benchmark import validate_record
 from scripts.benchmark.emotion_benchmark import validate_records
@@ -63,6 +64,27 @@ def test_load_jsonl_reports_line_number_for_bad_json(tmp_path):
         assert f"{path}:2" in str(exc)
     else:
         raise AssertionError("Expected ValueError")
+
+
+def test_export_label_retains_label_provenance():
+    record = {
+        "case_id": "core-0001-en",
+        "expected": "anxious",
+        "label_provenance": "synthetic_generator_target",
+    }
+
+    assert export_label(record) == {
+        "id": "core-0001-en",
+        "expected": "anxious",
+        "label_provenance": "synthetic_generator_target",
+    }
+
+
+def test_generated_distribution_csvs_use_lf_line_endings():
+    for filename in ("label_distribution.csv", "scenario_distribution.csv"):
+        content = (BENCHMARK_ROOT / "reports" / filename).read_bytes()
+        assert b"\r\n" not in content
+        assert content.endswith(b"\n")
 
 
 def test_validate_record_accepts_complete_seed_case():

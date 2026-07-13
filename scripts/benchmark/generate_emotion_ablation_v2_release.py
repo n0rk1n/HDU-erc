@@ -627,7 +627,7 @@ def quality_flags(label: str, index: int, context_dependency: str, challenge: bo
 def write_distribution(path: Path, key_name: str, counts: Counter[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
+        writer = csv.writer(file, lineterminator="\n")
         writer.writerow([key_name, "count"])
         for key, count in sorted(counts.items()):
             writer.writerow([key, count])
