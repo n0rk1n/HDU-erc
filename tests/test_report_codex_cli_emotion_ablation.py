@@ -181,6 +181,33 @@ def test_noop_warning_is_prominent_in_summary_csv_and_chinese_report():
     assert "不能据此归因情绪历史或上下文长度的组件贡献" in chinese
 
 
+def test_chinese_report_uses_singular_wording_for_one_discovered_noop_run():
+    runs = {
+        "full": [
+            {
+                "case_id": "case-001",
+                "input": "same prompt",
+                "emotion": "anxious",
+                "success": True,
+            },
+        ],
+        "no_emotion_history": [
+            {
+                "case_id": "case-001",
+                "input": "same prompt",
+                "emotion": "sad",
+                "success": True,
+            },
+        ],
+    }
+
+    text = render_chinese_report(build_report_data(runs, SEED_RECORDS[:1]))
+
+    assert "`no_emotion_history` 的输入 Prompt 均为 1/1 与 `full` 完全相同" in text
+    assert "该运行是 no-op 重复对照" in text
+    assert "这两组是 no-op 重复对照" not in text
+
+
 def test_chinese_report_discloses_required_seed64_limitations():
     report = build_report_data(RUNS, SEED_RECORDS)
 

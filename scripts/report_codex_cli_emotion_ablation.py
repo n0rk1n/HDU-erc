@@ -313,12 +313,23 @@ def render_chinese_report(
 
     warning_lines = _noop_warning_lines(report)
     if warning_lines:
+        noop_count = sum(
+            name != "full"
+            and run["treatment"]["status"] == "no_op_identical_to_full"
+            for name, run in report["runs"].items()
+        )
+        if noop_count == 1:
+            noop_subject = "该运行"
+        elif noop_count == 2:
+            noop_subject = "这两组"
+        else:
+            noop_subject = f"上述 {noop_count} 组运行"
         lines.extend([
             "## 结论有效性警告",
             "",
             warning_lines[0].removeprefix("⚠️ treatment 有效性警告："),
             (
-                "这两组是 no-op 重复对照，其指标差异是重复调用波动，不是消融效果；"
+                f"{noop_subject}是 no-op 重复对照，其指标差异是重复调用波动，不是消融效果；"
                 "不能据此归因情绪历史或上下文长度的组件贡献。"
             ),
             "",
