@@ -12,6 +12,8 @@ def test_build_emotion_analysis_prompt_renders_examples_and_candidates():
     )
 
     assert "Emotion labels: anxious, sad, grateful" in prompt
+    assert "anxious: uneasy worry about an uncertain outcome" in prompt
+    assert "sad: general unhappiness or sorrow" in prompt
     assert "Response Format: Return exactly one JSON object" in prompt
     assert '"primary_emotion": "anxious"' in prompt
     assert '"confidence": 0.0' in prompt
@@ -36,7 +38,7 @@ def test_build_emotion_analysis_prompt_renders_dynamic_examples():
                 "dialogue": "I feel alone tonight.",
                 "emotion": "lonely",
                 "score": 2.0,
-                "reason": "overlap=alone,tonight",
+                "reason": "weighted-overlap=alone:1.00,tonight:1.00",
             }
         ],
     )
@@ -44,7 +46,7 @@ def test_build_emotion_analysis_prompt_renders_dynamic_examples():
     assert "Dynamic EICL examples:" in prompt
     assert "- Dialogue: I feel alone tonight." in prompt
     assert "True emotion label: lonely" in prompt
-    assert "Selection reason: overlap=alone,tonight (score=2.00)" in prompt
+    assert "Selection reason: weighted-overlap=alone:1.00,tonight:1.00 (score=2.00)" in prompt
     assert "Response Format: Return exactly one JSON object" in prompt
 
 

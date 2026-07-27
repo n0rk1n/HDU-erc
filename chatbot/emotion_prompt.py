@@ -3,6 +3,7 @@
 from typing import Any
 
 from chatbot.emotion_examples import EmotionExample, select_emotion_examples
+from chatbot.emotion_labels import format_emotion_label_guidance
 from chatbot.prompt_config import DEFAULT_EMOTION_ANALYSIS_PROMPT, load_prompt_config
 
 
@@ -39,6 +40,7 @@ def build_emotion_analysis_prompt(
     labels = ", ".join(emotion_labels)
     values = {
         "emotion_labels": labels,
+        "label_guidance": format_emotion_label_guidance(emotion_labels),
         "example_block": example_block,
         "likely_line": likely_line,
         "dialogue_context": dialogue_context,

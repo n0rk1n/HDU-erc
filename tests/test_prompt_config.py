@@ -9,7 +9,7 @@ def test_load_prompt_config_returns_defaults_when_file_missing(tmp_path, monkeyp
     config = load_prompt_config()
 
     assert "gentle emotional companion" in config.chat_system
-    assert "Infer the user's current emotion" in config.emotion_analysis
+    assert "Infer the emotion expressed by the target user" in config.emotion_analysis
 
 
 def test_load_prompt_config_overrides_non_empty_prompt_values(tmp_path, monkeypatch):
@@ -43,4 +43,4 @@ def test_load_prompt_config_keeps_defaults_for_empty_or_invalid_values(tmp_path,
     config = load_prompt_config()
 
     assert "gentle emotional companion" in config.chat_system
-    assert "Infer the user's current emotion" in config.emotion_analysis
+    assert "Infer the emotion expressed by the target user" in config.emotion_analysis

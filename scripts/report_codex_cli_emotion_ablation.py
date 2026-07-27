@@ -25,7 +25,11 @@ METRIC_FIELDS = (
     "failures",
     "correct",
     "accuracy",
+    "accuracy_ci95_low",
+    "accuracy_ci95_high",
     "macro_f1",
+    "family_accuracy",
+    "family_macro_f1",
     "accuracy_delta_vs_full",
     "macro_f1_delta_vs_full",
     "prompt_identical_to_full",
@@ -196,7 +200,11 @@ def _metric_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "failures": run["failures"],
             "correct": overall["correct"],
             "accuracy": overall["accuracy"],
+            "accuracy_ci95_low": overall["accuracy_ci95_low"],
+            "accuracy_ci95_high": overall["accuracy_ci95_high"],
             "macro_f1": overall["macro_f1"],
+            "family_accuracy": overall["family_accuracy"],
+            "family_macro_f1": overall["family_macro_f1"],
             "accuracy_delta_vs_full": overall["accuracy"] - full["accuracy"],
             "macro_f1_delta_vs_full": overall["macro_f1"] - full["macro_f1"],
             "prompt_identical_to_full": run["treatment"]["prompt_identical_to_full"],
@@ -216,7 +224,11 @@ def render_metrics_csv(report: dict[str, Any]) -> str:
         row = dict(raw_row)
         for field in (
             "accuracy",
+            "accuracy_ci95_low",
+            "accuracy_ci95_high",
             "macro_f1",
+            "family_accuracy",
+            "family_macro_f1",
             "accuracy_delta_vs_full",
             "macro_f1_delta_vs_full",
         ):
@@ -256,14 +268,16 @@ def _noop_warning_lines(report: dict[str, Any]) -> list[str]:
 
 def _summary_table_lines(report: dict[str, Any]) -> list[str]:
     lines = [
-        "| Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy | Macro F1 | Δ Accuracy vs full | Δ Macro F1 vs full | Prompt identical/full | Treatment status | Provenance |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy (95% CI) | Macro F1 | Family Accuracy* | Family Macro F1* | Δ Accuracy vs full | Δ Macro F1 vs full | Prompt identical/full | Treatment status | Provenance |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for row in _metric_rows(report):
         lines.append(
             f"| {row['run']} | {row['samples']} | {row['valid_predictions']} | "
-            f"{row['failures']} | {row['correct']} | {row['accuracy']:.2%} | "
-            f"{row['macro_f1']:.2%} | {row['accuracy_delta_vs_full']:+.2%} | "
+            f"{row['failures']} | {row['correct']} | {row['accuracy']:.2%} "
+            f"({row['accuracy_ci95_low']:.2%}–{row['accuracy_ci95_high']:.2%}) | "
+            f"{row['macro_f1']:.2%} | {row['family_accuracy']:.2%} | "
+            f"{row['family_macro_f1']:.2%} | {row['accuracy_delta_vs_full']:+.2%} | "
             f"{row['macro_f1_delta_vs_full']:+.2%} | "
             f"{row['prompt_identical_to_full']}/{row['prompt_compared_to_full']} | "
             f"{row['treatment_status']} | {row['treatment_provenance']} |"
@@ -329,9 +343,10 @@ def _error_example_lines(report: dict[str, Any]) -> list[str]:
             annotation = annotations.get(error.get("case_id", ""), {})
             text = _escape_cell(annotation.get("current_input", "<not available>"))
             predicted = error["predicted"] or "<missing>"
+            relation = "同情绪族边界错误" if error.get("family_match") else "跨情绪族错误"
             lines.append(
                 f"- `{name}` / `{error.get('case_id') or 'unknown'}`: "
-                f"expected=`{error['expected']}`, predicted=`{predicted}`; 输入：{text}"
+                f"expected=`{error['expected']}`, predicted=`{predicted}`，{relation}; 输入：{text}"
             )
     return lines or ["- 未发现分类错误。"]
 
@@ -390,6 +405,11 @@ def render_chinese_report(
         ])
 
     lines.extend(["## 整体结果", "", *_summary_table_lines(report), ""])
+    lines.extend([
+        "*Family 指标只用于诊断相邻标签（例如 afraid/terrified、annoyed/angry）的边界错误，",
+        "不能替代 32 类 exact Accuracy 与 Macro F1。",
+        "",
+    ])
     lines.extend(["## 语言切片", "", *_slice_table(report, "languages", LANGUAGES), ""])
     lines.extend([
         "## 上下文依赖切片",

@@ -51,9 +51,11 @@ def _context_dependency(history_length: int) -> str:
 
 
 def build_benchmark_records(
-    rows: Iterable[dict[str, Any]], *, split: str
+    rows: Iterable[dict[str, Any]], *, split: str, target: str = "situation"
 ) -> list[dict[str, Any]]:
-    """Create one classification case per dialogue for the original speaker."""
+    """Create one case per dialogue, separating aligned and weak-label targets."""
+    if target not in {"situation", "context_diagnostic"}:
+        raise ValueError("target must be situation or context_diagnostic")
     conversations: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         conversation_id = str(row.get("conv_id", "")).strip()
@@ -74,7 +76,9 @@ def build_benchmark_records(
         if not target_turns:
             raise ValueError(f"{conversation_id}: no non-empty target-speaker utterance")
 
-        current_position, current_row = target_turns[-1]
+        current_position, current_row = (
+            target_turns[0] if target == "situation" else target_turns[-1]
+        )
         label = str(current_row.get("context", "")).strip().lower()
         if label not in EMOTION_LABEL_SET:
             raise ValueError(f"{conversation_id}: unsupported emotion label {label!r}")
@@ -92,11 +96,16 @@ def build_benchmark_records(
             if _restore_text(str(row.get("utterance", "")))
         ]
         utterance_idx = int(str(current_row["utterance_idx"]))
+        aligned = target == "situation"
         records.append(
             {
-                "case_id": _case_id(split, conversation_id),
+                "case_id": _case_id(split, conversation_id) + ("" if aligned else "-context"),
                 "language": "en",
-                "subset": f"empathetic_dialogues_{split}",
+                "subset": (
+                    f"empathetic_dialogues_{split}"
+                    if aligned
+                    else "empathetic_dialogues_context_diagnostic"
+                ),
                 "expected": label,
                 "turn_count": utterance_idx,
                 "history": history,
@@ -106,16 +115,30 @@ def build_benchmark_records(
                 "source_stage": "release",
                 "label_provenance": LABEL_PROVENANCE,
                 "context_dependency": _context_dependency(len(history)),
-                "quality_flags": [],
+                "quality_flags": [] if aligned else ["emotion_evidence_weak"],
                 "source_dataset": "EmpatheticDialogues",
                 "source_split": split,
                 "source_conversation_id": conversation_id,
                 "source_utterance_idx": utterance_idx,
                 "source_situation": _restore_text(str(current_row.get("prompt", ""))),
                 "source_license": "CC BY-NC 4.0",
+                "evaluation_target": (
+                    "conversation_situation_emotion"
+                    if aligned
+                    else "later_turn_current_emotion"
+                ),
+                "ground_truth_alignment": (
+                    "aligned_first_speaker_grounding"
+                    if aligned
+                    else "weak_conversation_label_on_later_turn"
+                ),
                 "rationale": (
-                    "The expected label is the conversation-level emotion grounding "
-                    "provided by EmpatheticDialogues, not a post-hoc utterance annotation."
+                    "The first target-speaker utterance initiates the human-authored "
+                    "situation grounded by the conversation-level emotion label."
+                    if aligned
+                    else
+                    "Diagnostic only: the conversation-level emotion label is not an "
+                    "independent annotation of this later target-speaker utterance."
                 ),
             }
         )
@@ -142,12 +165,34 @@ def select_balanced_seed(
         )
 
     selected = []
-    for label in sorted(EMOTION_LABEL_SET):
-        for record in by_label[label][:per_label]:
+    # Round-robin ordering makes every prefix more representative: the first 32
+    # records cover all labels once instead of concentrating on alphabetic labels.
+    for occurrence in range(per_label):
+        for label in sorted(EMOTION_LABEL_SET):
+            record = by_label[label][occurrence]
             selected.append(
                 {**record, "subset": "empathetic_dialogues_balanced_seed"}
             )
     return selected
+
+
+def build_few_shot_examples(
+    rows: Iterable[dict[str, Any]], *, per_label: int = 2
+) -> list[dict[str, Any]]:
+    """Select human-authored train examples only; test examples never enter prompts."""
+    train_records = build_benchmark_records(rows, split="train", target="situation")
+    selected = select_balanced_seed(train_records, per_label=per_label)
+    return [
+        {
+            "example_id": record["case_id"],
+            "dialogue": record["current_input"],
+            "emotion": record["expected"],
+            "source_dataset": "EmpatheticDialogues",
+            "source_split": "train",
+            "label_provenance": LABEL_PROVENANCE,
+        }
+        for record in selected
+    ]
 
 
 def _sha256(path: Path) -> str:
@@ -182,18 +227,31 @@ def prepare_dataset(
     *,
     split: str = "test",
     per_label: int = 2,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     verify_archive(archive_path)
-    records = build_benchmark_records(load_source_rows(archive_path, split=split), split=split)
+    source_rows = load_source_rows(archive_path, split=split)
+    records = build_benchmark_records(source_rows, split=split, target="situation")
+    diagnostic_records = build_benchmark_records(
+        source_rows, split=split, target="context_diagnostic"
+    )
     seed_records = select_balanced_seed(records, per_label=per_label)
-    errors = validate_records(records) + validate_records(seed_records)
+    few_shot_examples = build_few_shot_examples(
+        load_source_rows(archive_path, split="train"), per_label=per_label
+    )
+    errors = (
+        validate_records(records)
+        + validate_records(diagnostic_records)
+        + validate_records(seed_records)
+    )
     if errors:
         raise ValueError("Converted records failed validation:\n" + "\n".join(errors))
 
     release_dir = output_root / "release"
     write_jsonl(release_dir / f"{split}.jsonl", records)
+    write_jsonl(release_dir / "context_diagnostic.jsonl", diagnostic_records)
     write_jsonl(release_dir / "balanced_seed.jsonl", seed_records)
-    return records, seed_records
+    write_jsonl(output_root / "few_shot" / "train_examples.jsonl", few_shot_examples)
+    return records, seed_records, few_shot_examples
 
 
 def download_archive(path: Path) -> None:
@@ -226,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     if args.archive:
         archive_path = Path(args.archive)
-        records, seed_records = prepare_dataset(
+        records, seed_records, few_shot_examples = prepare_dataset(
             archive_path,
             Path(args.output_root),
             per_label=args.per_label,
@@ -235,14 +293,15 @@ def main(argv: list[str] | None = None) -> int:
         with tempfile.TemporaryDirectory(prefix="empathetic-dialogues-") as directory:
             archive_path = Path(directory) / "empatheticdialogues.tar.gz"
             download_archive(archive_path)
-            records, seed_records = prepare_dataset(
+            records, seed_records, few_shot_examples = prepare_dataset(
                 archive_path,
                 Path(args.output_root),
                 per_label=args.per_label,
             )
     print(
         f"Prepared {len(records)} official test dialogues and "
-        f"{len(seed_records)} balanced seed cases in {args.output_root}"
+        f"{len(seed_records)} balanced seed cases plus "
+        f"{len(few_shot_examples)} train-only prompt examples in {args.output_root}"
     )
     return 0
 

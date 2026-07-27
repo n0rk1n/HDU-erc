@@ -37,9 +37,11 @@ DEFAULT_CHAT_SYSTEM_PROMPT = (
     "professional help."
 )
 
-DEFAULT_EMOTION_ANALYSIS_PROMPT = """Infer the user's current emotion from the dialogue context.
+DEFAULT_EMOTION_ANALYSIS_PROMPT = """Infer the emotion expressed by the target user in the described situation or current input.
 - Dialogue context: The conversation history between user and assistant, with utterances separated by </s>.
 - Emotion labels: {emotion_labels}
+- Label definitions (use these boundaries when labels are adjacent):
+{label_guidance}
 - Choose a single inferred emotion from the provided Emotion labels, not outside of them.
 {example_block}
 - Response Format: Return exactly one JSON object with these fields:

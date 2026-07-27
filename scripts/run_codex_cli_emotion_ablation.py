@@ -163,6 +163,33 @@ def build_case_prompt(
     )
 
 
+def noop_runs_against_full(
+    cases: list[dict[str, Any]],
+    run_names: list[str],
+    *,
+    emotion_interval: int,
+) -> list[str]:
+    """Detect treatments whose prompts are identical to full for every case."""
+    full = RUN_CONFIGS["full"]
+    full_prompts = [
+        build_case_prompt(full, case, index, emotion_interval=emotion_interval)
+        for index, case in enumerate(cases, start=1)
+    ]
+    return [
+        run_name
+        for run_name in run_names
+        if run_name != "full" and all(
+            build_case_prompt(
+                RUN_CONFIGS[run_name], case, index, emotion_interval=emotion_interval
+            )
+            == full_prompt
+            for index, (case, full_prompt) in enumerate(
+                zip(cases, full_prompts), start=1
+            )
+        )
+    ]
+
+
 def _sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
@@ -304,6 +331,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit is not None:
         cases = cases[:args.limit]
     run_names = args.run or list(RUN_CONFIGS)
+    noops = noop_runs_against_full(
+        cases, run_names, emotion_interval=args.emotion_interval
+    )
+    for run_name in noops:
+        print(
+            f"{run_name}: skipped because every prompt is identical to full "
+            "for this dataset"
+        )
+    run_names = [run_name for run_name in run_names if run_name not in noops]
+    if not run_names:
+        return 0
     codex_cli_version = args.codex_version or detect_codex_cli_version()
     for run_name in run_names:
         output_file = Path(args.output_dir) / f"{run_name}.json"

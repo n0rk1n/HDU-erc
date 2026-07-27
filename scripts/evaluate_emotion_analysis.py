@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from collections import Counter
 from pathlib import Path
@@ -13,6 +14,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from chatbot.emotion import EMOTION_LABEL_SET
+from chatbot.emotion_labels import emotion_family
 
 DEFAULT_ANALYSIS_FILE = "data/records/emotion_analysis.json"
 
@@ -39,18 +41,70 @@ def evaluate_records(
     total = len(pairs)
     accuracy = correct / total if total else 0.0
     macro_f1 = _macro_f1(pairs, labels) if total else 0.0
+    family_pairs = [
+        {
+            **pair,
+            "expected": emotion_family(pair["expected"]),
+            "predicted": emotion_family(pair["predicted"]) if pair["predicted"] else "",
+        }
+        for pair in pairs
+    ]
+    family_labels = sorted({
+        label
+        for pair in family_pairs
+        for label in (pair["expected"], pair["predicted"])
+        if label
+    })
+    family_correct = sum(
+        pair["expected"] == pair["predicted"] for pair in family_pairs
+    )
+    accuracy_ci95_low, accuracy_ci95_high = _wilson_interval(correct, total)
 
     return {
         "total": total,
         "correct": correct,
         "accuracy": accuracy,
+        "accuracy_ci95_low": accuracy_ci95_low,
+        "accuracy_ci95_high": accuracy_ci95_high,
         "macro_f1": macro_f1,
+        "family_correct": family_correct,
+        "family_accuracy": family_correct / total if total else 0.0,
+        "family_macro_f1": _macro_f1(family_pairs, family_labels) if total else 0.0,
         "labels": labels,
         "errors": [
-            pair for pair in pairs
+            {
+                **pair,
+                "expected_family": emotion_family(pair["expected"]),
+                "predicted_family": (
+                    emotion_family(pair["predicted"]) if pair["predicted"] else ""
+                ),
+                "family_match": bool(pair["predicted"]) and (
+                    emotion_family(pair["expected"])
+                    == emotion_family(pair["predicted"])
+                ),
+            }
+            for pair in pairs
             if pair["expected"] != pair["predicted"]
         ],
     }
+
+
+def _wilson_interval(successes: int, total: int) -> tuple[float, float]:
+    """Return the 95% Wilson score interval for a binomial proportion."""
+    if total == 0:
+        return 0.0, 0.0
+    z = 1.959963984540054
+    proportion = successes / total
+    denominator = 1 + z * z / total
+    center = (proportion + z * z / (2 * total)) / denominator
+    margin = (
+        z
+        * math.sqrt(
+            proportion * (1 - proportion) / total + z * z / (4 * total * total)
+        )
+        / denominator
+    )
+    return max(0.0, center - margin), min(1.0, center + margin)
 
 
 def _load_json_or_jsonl(path: Path) -> Any:
@@ -190,7 +244,14 @@ def print_report(result: dict[str, Any], max_errors: int) -> None:
     print(f"Samples: {result['total']}")
     print(f"Correct: {result['correct']}")
     print(f"Accuracy: {result['accuracy'] * 100:.2f}%")
+    print(
+        "Accuracy 95% CI: "
+        f"[{result['accuracy_ci95_low'] * 100:.2f}%, "
+        f"{result['accuracy_ci95_high'] * 100:.2f}%]"
+    )
     print(f"Macro F1: {result['macro_f1'] * 100:.2f}%")
+    print(f"Family accuracy (diagnostic): {result['family_accuracy'] * 100:.2f}%")
+    print(f"Family Macro F1 (diagnostic): {result['family_macro_f1'] * 100:.2f}%")
 
     errors = result["errors"]
     if not errors:

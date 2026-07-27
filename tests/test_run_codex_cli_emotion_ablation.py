@@ -240,6 +240,18 @@ def test_run_ablation_rejects_more_than_one_retry_before_invocation(tmp_path):
     assert calls == []
 
 
+def test_noop_runs_against_full_detects_history_ablations_without_history():
+    cases = [CASES[1]]
+
+    noops = runner.noop_runs_against_full(
+        cases,
+        ["full", "no_dynamic_examples", "no_emotion_history", "short_context", "zero_shot"],
+        emotion_interval=5,
+    )
+
+    assert noops == ["no_emotion_history", "short_context"]
+
+
 @pytest.mark.parametrize(
     ("run_name", "included", "omitted"),
     [

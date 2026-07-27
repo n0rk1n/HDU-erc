@@ -1,0 +1,4 @@
+run,samples,valid_predictions,failures,correct,accuracy,accuracy_ci95_low,accuracy_ci95_high,macro_f1,family_accuracy,family_macro_f1,accuracy_delta_vs_full,macro_f1_delta_vs_full,prompt_identical_to_full,prompt_compared_to_full,treatment_status,treatment_provenance
+full,32,32,0,19,0.593750,0.422600,0.744804,0.505208,0.750000,0.688322,0.000000,0.000000,32,32,baseline,record_input_vs_full_by_case_id
+no_dynamic_examples,32,32,0,18,0.562500,0.393256,0.718347,0.468750,0.718750,0.607370,-0.031250,-0.036458,0,32,effective_prompt_change,record_input_vs_full_by_case_id
+zero_shot,32,32,0,18,0.562500,0.393256,0.718347,0.463542,0.718750,0.607370,-0.031250,-0.041667,0,32,effective_prompt_change,record_input_vs_full_by_case_id

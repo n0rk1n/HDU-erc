@@ -1,15 +1,21 @@
 """Few-shot examples for emotion recognition prompts."""
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
+
+from chatbot.emotion_labels import EMOTION_LABEL_SET
 
 
 @dataclass(frozen=True)
 class EmotionExample:
     dialogue: str
     emotion: str
+    example_id: str = ""
+    source_split: str = ""
 
 
-DEFAULT_EMOTION_EXAMPLES = [
+FALLBACK_EMOTION_EXAMPLES = [
     EmotionExample(
         dialogue="I keep thinking about the interview tomorrow</s>I can barely sit still.",
         emotion="anxious",
@@ -43,6 +49,45 @@ DEFAULT_EMOTION_EXAMPLES = [
         emotion="joyful",
     ),
 ]
+
+DEFAULT_EXAMPLE_BANK_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "data"
+    / "benchmarks"
+    / "empathetic_dialogues_v1"
+    / "few_shot"
+    / "train_examples.jsonl"
+)
+
+
+def load_emotion_examples(path: Path = DEFAULT_EXAMPLE_BANK_PATH) -> list[EmotionExample]:
+    """Load the human-authored train bank, with a small offline fallback."""
+    if not path.exists():
+        return list(FALLBACK_EMOTION_EXAMPLES)
+    examples = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid example JSONL at {path}:{line_number}") from exc
+        dialogue = str(item.get("dialogue", "")).strip()
+        emotion = str(item.get("emotion", "")).strip().lower()
+        if not dialogue or emotion not in EMOTION_LABEL_SET:
+            raise ValueError(f"Invalid emotion example at {path}:{line_number}")
+        examples.append(
+            EmotionExample(
+                dialogue=dialogue,
+                emotion=emotion,
+                example_id=str(item.get("example_id", "")),
+                source_split=str(item.get("source_split", "")),
+            )
+        )
+    return examples or list(FALLBACK_EMOTION_EXAMPLES)
+
+
+DEFAULT_EMOTION_EXAMPLES = load_emotion_examples()
 
 
 def select_emotion_examples(

@@ -16,8 +16,10 @@
 
 ## 已纳入的数据
 
-- `release/test.jsonl`：官方 `test.csv` 转换得到的 2,542 段对话，覆盖全部 32 类。
-- `release/balanced_seed.jsonl`：从测试集按源文件顺序为每类取 2 条，共 64 条，便于沿用原来的低成本 Codex CLI 五组消融。
+- `release/test.jsonl`：正式主基准。官方 `test.csv` 的 2,542 段对话，每段只取首位说话者的第一条情境表达，覆盖全部 32 类。
+- `release/balanced_seed.jsonl`：从正式主基准为每类取 2 条，共 64 条；按轮询顺序排列，因此前 32 条就覆盖全部 32 类。
+- `release/context_diagnostic.jsonl`：保留旧方法的“最后一条目标用户发言 + 历史”转换，仅作为弱标签诊断集，不计入正式准确率结论。
+- `few_shot/train_examples.jsonl`：从官方 **train split** 每类取 2 条人工撰写示例，共 64 条；只用于 Prompt，不与 test 样本重叠。
 - `reports/*.csv`：完整测试集的标签、语言、上下文依赖和场景分布。
 - `metadata.json`：来源 URL、论文、许可、原包 SHA-256 和转换版本。
 
@@ -25,13 +27,15 @@
 
 ## 转换规则
 
-每段对话的第一位说话者是目标用户：
+EmpatheticDialogues 的 `context` 是整段对话的情绪情境标签，不是每一句话的独立标注。正式转换因此遵循：
 
-1. 取该用户最后一次非空发言作为 `current_input`；
-2. 将此前发言按目标用户=`human`、另一位参与者=`ai` 写入 `history`；
+1. 取目标用户第一条非空发言作为 `current_input`，该发言是情境展开的起点；
+2. 正式样本的 `history=[]`，避免把整段标签错误地当作后续句子的当前情绪标签；
 3. 使用源数据的 conversation-level `context` 作为 `expected`；
 4. 不把含有情绪情境描述的 `prompt` 放进模型输入，避免直接泄漏标签；仅保留为 `source_situation` 供追溯；
 5. 恢复源数据中的 `_comma_` 占位符。
+
+旧转换仍写入 `context_diagnostic.jsonl`，并显式标记 `ground_truth_alignment=weak_conversation_label_on_later_turn` 与 `emotion_evidence_weak`。它可用于观察对话末段的标签漂移，但不能作为“当前句情绪识别”的正式 ground truth。
 
 ## 可复现生成与校验
 
@@ -53,9 +57,19 @@ python scripts/benchmark/export_emotion_ablation_v2.py \
   --output-dir data/records/empathetic_dialogues_seed_export
 ```
 
-导出后的 `dialogues.jsonl` 和 `labels.jsonl` 可不改评估代码，直接交给 `run_emotion_ablation.py`、`run_codex_cli_emotion_ablation.py`、`evaluate_emotion_ablation.py` 或 `report_codex_cli_emotion_ablation.py`。指标仍为 Accuracy、Macro F1、失败数、语言/上下文切片和标签混淆。
+导出后的 `dialogues.jsonl` 和 `labels.jsonl` 可不改评估链路。正式主指标仍为 exact Accuracy 和 32 类 Macro F1；另报告 Family Accuracy / Family Macro F1，仅用于区分 `afraid→terrified` 一类的近邻边界错误，不能替代主指标。
 
-## 已完成的原方法 pilot
+正式集没有历史，因此只运行三组实际会改变 Prompt 的对照：
+
+```bash
+python scripts/run_codex_cli_emotion_ablation.py ... --run full
+python scripts/run_codex_cli_emotion_ablation.py ... --run no_dynamic_examples
+python scripts/run_codex_cli_emotion_ablation.py ... --run zero_shot
+```
+
+`no_emotion_history` 与 `short_context` 在该数据上都与 `full` 完全同构，不应调用、更不应把随机波动解释成组件贡献。历史相关消融需换用带**逐句人工标签**的数据集（例如 MELD/CPED）另做实验。
+
+## 原方法 pilot（已判定标签错位，仅保留追溯）
 
 仓库保留了 `reports/codex_pilot10/`：使用 Codex CLI 0.142.4、`gpt-5.6-sol`，对平衡 seed 前 10 条运行原有 5 组消融，共 50 次调用，调用失败为 0。
 
@@ -67,11 +81,11 @@ python scripts/benchmark/export_emotion_ablation_v2.py \
 | `short_context` | 30.00% | 15.00% | 2/10 发生变化 |
 | `zero_shot` | 20.00% | 10.00% | effective |
 
-这 10 条仅覆盖 `afraid`、`angry`、`annoyed`、`anticipating`、`anxious` 五类，只能证明真实数据已贯通原验证链路并提供初步错误样例，不能用于 32 类总体结论，也不能据此断言静态示例优于动态示例。`no_emotion_history` 在这些样本没有可供移除的历史情绪字段，因此是无效消融；其指标波动不能归因于该组件。
+这批结果的输入使用目标用户最后一条发言，而标签仍是整段情境标签，存在 ground-truth 错位；加上 10 条只覆盖 5 类、两组无效消融，因此不得继续作为模型准确率结论。完整诊断和修复过程见 `reports/remediation_report.md`，修复后的实验见 `reports/aligned_pilot32/`。
 
 ## 研究限制
 
 - 当前数据只有英文，不能支撑中文效果结论。
-- 标签针对整段情绪情境，不是每个目标 utterance 的独立复标结果。
-- 为公平评测只使用官方 test split；不要用 train split 构造 few-shot 示例后再把同源样本泄漏回测试输入。
+- 标签针对整段情绪情境，不是每个目标 utterance 的独立复标结果，因此后续句子只作为弱标签诊断。
+- test split 只用于评测；few-shot 只来自 train split，并保留 split 和样本 ID 供泄漏检查。
 - CC BY-NC 4.0 不允许把数据用于以商业利益为主要目的的场景。

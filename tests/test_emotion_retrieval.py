@@ -50,5 +50,19 @@ def test_select_dynamic_examples_accepts_emotion_example_dataclasses():
         "dialogue": "I feel alone tonight.",
         "emotion": "lonely",
         "score": 2.0,
-        "reason": "overlap=alone,tonight",
+        "reason": "weighted-overlap=alone:1.00,tonight:1.00",
     }]
+
+
+def test_select_dynamic_examples_ignores_common_stopwords():
+    selected = select_dynamic_examples(
+        examples=[
+            {"dialogue": "I am in the room with you.", "emotion": "content"},
+            {"dialogue": "The exam deadline makes me worried.", "emotion": "anxious"},
+        ],
+        dialogue_context="I am worried about the exam.",
+        limit=1,
+    )
+
+    assert selected[0]["emotion"] == "anxious"
+    assert "exam" in selected[0]["reason"]

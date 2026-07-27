@@ -22,6 +22,7 @@ SUBSETS = {
     "legacy_compat",
     "empathetic_dialogues_test",
     "empathetic_dialogues_balanced_seed",
+    "empathetic_dialogues_context_diagnostic",
 }
 SEED_GROUPS = {"core_parallel_seed", "independent_seed"}
 ANNOTATION_STATUSES = {"candidate", "annotated", "adjudicated", "released", "rejected"}

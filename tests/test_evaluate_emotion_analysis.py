@@ -21,7 +21,10 @@ def test_evaluate_records_matches_by_turn_count():
     assert result["total"] == 3
     assert result["correct"] == 2
     assert round(result["accuracy"], 4) == 0.6667
+    assert 0.20 < result["accuracy_ci95_low"] < result["accuracy"]
+    assert result["accuracy"] < result["accuracy_ci95_high"] < 1.0
     assert round(result["macro_f1"], 4) == 0.5556
+    assert round(result["family_accuracy"], 4) == 0.6667
     assert result["errors"] == [
         {
             "position": 1,
@@ -31,8 +34,22 @@ def test_evaluate_records_matches_by_turn_count():
             "expected": "joyful",
             "predicted": "sad",
             "matched": True,
+            "expected_family": "joy_contentment",
+            "predicted_family": "sadness_loss",
+            "family_match": False,
         }
     ]
+
+
+def test_family_metric_marks_adjacent_intensity_error_without_hiding_exact_error():
+    result = evaluate_records(
+        [{"case_id": "fear", "emotion": "terrified", "success": True}],
+        [{"case_id": "fear", "expected": "afraid"}],
+    )
+
+    assert result["accuracy"] == 0.0
+    assert result["family_accuracy"] == 1.0
+    assert result["errors"][0]["family_match"] is True
 
 
 def test_evaluate_records_falls_back_to_successful_record_order():

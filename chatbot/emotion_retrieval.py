@@ -1,9 +1,18 @@
 """Dynamic example retrieval for emotion recognition prompts."""
 
+import math
 import re
+from collections import Counter
 from typing import Any
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]")
+STOPWORDS = {
+    "a", "about", "after", "am", "an", "and", "are", "as", "at", "be",
+    "been", "but", "by", "do", "feel", "for", "from", "had", "has", "have",
+    "he", "her", "him", "his", "i", "in", "is", "it", "me", "my", "of",
+    "on", "or", "our", "she", "so", "still", "that", "the", "their", "them",
+    "they", "this", "to", "was", "we", "were", "with", "you", "your",
+}
 
 
 def select_dynamic_examples(
@@ -14,6 +23,11 @@ def select_dynamic_examples(
     limit: int = 4,
 ) -> list[dict[str, Any]]:
     context_tokens = _tokenize(dialogue_context)
+    tokenized_examples = [_tokenize(_example_value(example, "dialogue")) for example in examples]
+    document_frequency = Counter(
+        token for tokens in tokenized_examples for token in tokens
+    )
+    example_count = len(examples)
     likely_set = {
         emotion.strip().lower()
         for emotion in (likely_emotions or [])
@@ -25,6 +39,8 @@ def select_dynamic_examples(
             example=example,
             context_tokens=context_tokens,
             likely_emotions=likely_set,
+            document_frequency=document_frequency,
+            example_count=example_count,
         )
         for index, example in enumerate(examples)
     ]
@@ -39,18 +55,27 @@ def _score_example(
     example: Any,
     context_tokens: set[str],
     likely_emotions: set[str],
+    document_frequency: Counter[str],
+    example_count: int,
 ) -> dict[str, Any]:
     dialogue = _example_value(example, "dialogue")
     emotion = _example_value(example, "emotion").strip().lower()
     overlap = sorted(context_tokens & _tokenize(dialogue))
     boosted = emotion in likely_emotions
-    score = float(len(overlap))
+    overlap_weights = {
+        token: math.log((example_count + 1) / (document_frequency[token] + 1)) + 1.0
+        for token in overlap
+    }
+    score = sum(overlap_weights.values())
     if boosted:
         score += 2.0
 
     reasons = []
     if overlap:
-        reasons.append(f"overlap={','.join(overlap)}")
+        reasons.append(
+            "weighted-overlap="
+            + ",".join(f"{token}:{overlap_weights[token]:.2f}" for token in overlap)
+        )
     if boosted:
         reasons.append("recent-emotion-prior")
     if not reasons:
@@ -66,7 +91,11 @@ def _score_example(
 
 
 def _tokenize(text: str) -> set[str]:
-    return {match.group(0).lower() for match in TOKEN_PATTERN.finditer(text)}
+    return {
+        token
+        for match in TOKEN_PATTERN.finditer(text)
+        if (token := match.group(0).lower()) not in STOPWORDS
+    }
 
 
 def _example_value(example: Any, name: str) -> str:

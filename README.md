@@ -65,7 +65,7 @@ flowchart LR
 
 ### 5. 可复现实验体系
 
-项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、EmpatheticDialogues 真实数据基准、双语合成诊断集和 Codex CLI 隔离运行器。实验输出可以按样本、语言和上下文依赖程度统计 Accuracy 与 Macro F1，并检查消融 Prompt 是否真正发生变化。
+项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、EmpatheticDialogues 真实数据基准、双语合成诊断集和 Codex CLI 隔离运行器。实验输出以 exact Accuracy 与 Macro F1 为主，补充 95% 置信区间和情绪族诊断指标，并在调用前跳过对当前数据无效的 no-op 消融。
 
 ## 技术路线
 
@@ -361,12 +361,14 @@ python scripts/evaluate_emotion_ablation.py \
 `data/benchmarks/empathetic_dialogues_v1/` 接入公开的 EmpatheticDialogues 官方测试集：
 
 - 2,542 段英文人工众包对话，覆盖项目现有全部 32 类情绪；
-- `balanced_seed.jsonl` 按每类 2 条组成 64 条平衡子集，可直接复用原五组消融；
+- 正式集取首位说话者的第一条情境表达，使整段情绪标签与模型输入目标对齐；旧的后续轮次转换单列为弱标签诊断集；
+- `balanced_seed.jsonl` 按每类 2 条组成 64 条平衡子集，前 32 条即覆盖全部 32 类；
+- few-shot 示例只来自官方 train split，每类 2 条，test 样本不进入 Prompt；
 - 标签与项目逐项一致，不需要把粗粒度标签主观映射到 32 类；
 - 原始压缩包使用固定 SHA-256 校验，转换、数据校验、分布统计和旧格式导出均可复现；
 - 数据许可为 CC BY-NC 4.0，只能用于非商业用途并需保留署名。
 
-该数据由人类参与者按给定情绪情境撰写，不是生成式 AI 合成。不过，`expected` 是整段对话的情绪情境锚点，不是对最终单句另行独立复标和仲裁，因此使用 `label_provenance=human_authored_emotion_grounding`，论文中不应表述为“逐句人工复核金标准”。
+该数据由人类参与者按给定情绪情境撰写，不是生成式 AI 合成。不过，`expected` 是整段对话的情绪情境锚点，不是每个后续句子的独立复标，因此正式评测只使用情境起始表达；后续句子不得表述为“逐句人工复核金标准”。
 
 ```bash
 python scripts/benchmark/prepare_empathetic_dialogues.py \
@@ -423,36 +425,36 @@ python scripts/benchmark/export_emotion_ablation_v2.py \
   --output-dir data/records/empathetic_dialogues_seed_export
 ```
 
-执行 10 条 pilot。`--model` 必填，请替换为当前 Codex CLI 支持的模型：
+执行覆盖全部标签的 32 条 pilot。`--model` 必填，请替换为当前 Codex CLI 支持的模型，并只选择会实际改变 Prompt 的三组：
 
 ```bash
 python scripts/run_codex_cli_emotion_ablation.py \
   --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot \
-  --limit 10 \
+  --limit 32 \
+  --run full --run no_dynamic_examples --run zero_shot \
   --model YOUR_CODEX_MODEL
 ```
 
-pilot 报告必须使用相同的 `--limit 10`，确保标注范围与运行结果一致：
+pilot 报告必须使用相同的 `--limit 32`，确保标注范围与运行结果一致：
 
 ```bash
 python scripts/report_codex_cli_emotion_ablation.py \
   --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
-  --limit 10 \
+  --limit 32 \
   --run full=data/records/codex_cli_ablation/empathetic_dialogues_pilot/full.json \
   --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_pilot/no_dynamic_examples.json \
-  --run no_emotion_history=data/records/codex_cli_ablation/empathetic_dialogues_pilot/no_emotion_history.json \
-  --run short_context=data/records/codex_cli_ablation/empathetic_dialogues_pilot/short_context.json \
   --run zero_shot=data/records/codex_cli_ablation/empathetic_dialogues_pilot/zero_shot.json \
   --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot
 ```
 
-去掉 `--limit 10` 并更换输出目录即可运行全部 64 条 seed：
+去掉 `--limit 32` 并更换输出目录即可运行全部 64 条 seed：
 
 ```bash
 python scripts/run_codex_cli_emotion_ablation.py \
   --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64 \
+  --run full --run no_dynamic_examples --run zero_shot \
   --model YOUR_CODEX_MODEL
 ```
 
@@ -465,13 +467,11 @@ python scripts/report_codex_cli_emotion_ablation.py \
   --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --run full=data/records/codex_cli_ablation/empathetic_dialogues_seed64/full.json \
   --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_seed64/no_dynamic_examples.json \
-  --run no_emotion_history=data/records/codex_cli_ablation/empathetic_dialogues_seed64/no_emotion_history.json \
-  --run short_context=data/records/codex_cli_ablation/empathetic_dialogues_seed64/short_context.json \
   --run zero_shot=data/records/codex_cli_ablation/empathetic_dialogues_seed64/zero_shot.json \
   --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64
 ```
 
-报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并检查各消融 Prompt 是否真的区别于 `full`。
+运行器会逐样本比较 treatment 与 `full` 的 Prompt，整组相同时直接跳过；所以 EmpatheticDialogues 正式集不会执行无历史可删的 `no_emotion_history` 和无上下文可截的 `short_context`。报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并再次记录 treatment 有效性。
 
 ## 项目完成情况
 
