@@ -23,14 +23,20 @@
         "extended_independent",
         "challenge",
         "seed",
-        "legacy_compat"
+        "legacy_compat",
+        "empathetic_dialogues_test",
+        "empathetic_dialogues_balanced_seed"
       ]
     },
     "seed_group": {"enum": ["core_parallel_seed", "independent_seed"]},
     "target_emotion": {"type": "string"},
     "expected": {"type": "string"},
     "label_provenance": {
-      "enum": ["synthetic_generator_target", "human_annotation"]
+      "enum": [
+        "synthetic_generator_target",
+        "human_annotation",
+        "human_authored_emotion_grounding"
+      ]
     },
     "secondary_emotions": {
       "type": "array",

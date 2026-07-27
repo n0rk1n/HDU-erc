@@ -14,14 +14,26 @@ from chatbot.emotion_labels import EMOTION_LABEL_SET
 BENCHMARK_ROOT = Path("data/benchmarks/emotion_ablation_v2")
 
 LANGUAGES = {"zh", "en"}
-SUBSETS = {"core_parallel", "extended_independent", "challenge", "seed", "legacy_compat"}
+SUBSETS = {
+    "core_parallel",
+    "extended_independent",
+    "challenge",
+    "seed",
+    "legacy_compat",
+    "empathetic_dialogues_test",
+    "empathetic_dialogues_balanced_seed",
+}
 SEED_GROUPS = {"core_parallel_seed", "independent_seed"}
 ANNOTATION_STATUSES = {"candidate", "annotated", "adjudicated", "released", "rejected"}
 AMBIGUITY_LEVELS = {"low", "medium", "high"}
 CONTEXT_DEPENDENCIES = {"none", "low", "medium", "high"}
 CONTEXT_DEPENDENCY_LEVELS = {"none": 0, "low": 1, "medium": 2, "high": 3}
 SOURCE_STAGES = {"raw", "annotation", "release"}
-LABEL_PROVENANCES = {"synthetic_generator_target", "human_annotation"}
+LABEL_PROVENANCES = {
+    "synthetic_generator_target",
+    "human_annotation",
+    "human_authored_emotion_grounding",
+}
 HISTORY_ROLES = {"human", "ai"}
 QUALITY_FLAGS = {
     "too_template_like",

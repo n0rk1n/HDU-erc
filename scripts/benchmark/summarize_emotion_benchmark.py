@@ -24,7 +24,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def write_distribution(path: Path, key_name: str, counts: Counter[str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as output_file:
-        writer = csv.writer(output_file)
+        writer = csv.writer(output_file, lineterminator="\n")
         writer.writerow([key_name, "count"])
         for key, count in sorted(counts.items()):
             if not key:

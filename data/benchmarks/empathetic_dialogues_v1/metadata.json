@@ -1,0 +1,19 @@
+{
+  "name": "empathetic_dialogues_v1",
+  "version": "1.0.0",
+  "source_dataset": "EmpatheticDialogues",
+  "source_url": "https://dl.fbaipublicfiles.com/parlai/empatheticdialogues/empatheticdialogues.tar.gz",
+  "source_repository": "https://github.com/facebookresearch/EmpatheticDialogues",
+  "source_paper": "https://aclanthology.org/P19-1534/",
+  "source_archive_sha256": "56f234d77b7dd1f005fd365bb17769cfe346c3c84295b69bc069c8ccb83be03d",
+  "converted_test_sha256": "d98b4d1d10fcb56023bdf32d14ef1ba3296a341753928a87e62caf8625da5138",
+  "converted_balanced_seed_sha256": "b9055e9c8e32e3dd47e592a5abb9e5acefa739ce40b8ac3bd0a24e25a540f6ca",
+  "source_license": "CC BY-NC 4.0",
+  "language": "en",
+  "source_split": "test",
+  "records": 2542,
+  "balanced_seed_records": 64,
+  "emotion_labels": 32,
+  "label_provenance": "human_authored_emotion_grounding",
+  "conversion_script": "scripts/benchmark/prepare_empathetic_dialogues.py"
+}

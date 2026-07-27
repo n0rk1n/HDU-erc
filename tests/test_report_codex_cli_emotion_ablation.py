@@ -242,7 +242,7 @@ def test_chinese_report_uses_singular_wording_for_one_discovered_noop_run():
     assert "这两组是 no-op 重复对照" not in text
 
 
-def test_chinese_report_discloses_required_seed64_limitations():
+def test_chinese_report_discloses_dataset_provenance_and_limitations():
     report = build_report_data(RUNS, SEED_RECORDS)
 
     text = render_chinese_report(
@@ -250,11 +250,22 @@ def test_chinese_report_discloses_required_seed64_limitations():
         metadata={"execution_note": "容量中断后续跑"},
     )
 
-    assert "本次基准仅包含 2 条合成 seed 记录" in text
+    assert "本次基准包含 2 条记录，标签来源为未声明" in text
     assert "高上下文依赖样本为 1 条" in text
     assert "Codex CLI Agent 执行链路，不是裸模型 API 评测" in text
     assert "容量中断后续跑" in text
     assert "`zero_shot` 同时禁用 few-shot 示例和情绪历史先验" in text
+
+
+def test_chinese_report_names_human_authored_emotion_grounding():
+    records = [
+        {**record, "label_provenance": "human_authored_emotion_grounding"}
+        for record in SEED_RECORDS
+    ]
+
+    text = render_chinese_report(build_report_data(RUNS, records))
+
+    assert "标签来源为人工撰写情绪情境标签" in text
 
 
 def test_main_writes_deterministic_report_artifacts(tmp_path):
@@ -301,6 +312,31 @@ def test_main_writes_deterministic_report_artifacts(tmp_path):
     assert "2026-07-13T13:44:03+08:00" in report_text
     assert "2026-07-13T14:39:19+08:00" in report_text
     assert "gpt-test" in report_text
+
+
+def test_main_limit_matches_pilot_run_to_seed_prefix(tmp_path):
+    seed_file = tmp_path / "seed.jsonl"
+    seed_file.write_text(
+        "".join(json.dumps(item) + "\n" for item in SEED_RECORDS),
+        encoding="utf-8",
+    )
+    full_file = tmp_path / "full.json"
+    full_file.write_text(json.dumps(RUNS["full"][:1]), encoding="utf-8")
+    output_dir = tmp_path / "pilot-report"
+
+    result = main([
+        "--seed-file",
+        str(seed_file),
+        "--limit",
+        "1",
+        "--run",
+        f"full={full_file}",
+        "--output-dir",
+        str(output_dir),
+    ])
+
+    assert result == 0
+    assert "| full | 1 |" in (output_dir / "summary.md").read_text(encoding="utf-8")
 
 
 def test_seed_id_alias_is_normalized_without_losing_slice_metadata():

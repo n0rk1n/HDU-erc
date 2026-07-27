@@ -65,7 +65,7 @@ flowchart LR
 
 ### 5. 可复现实验体系
 
-项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、双语 Emotion Ablation V2 数据集和 Codex CLI 隔离运行器。实验输出可以按样本、语言和上下文依赖程度统计 Accuracy 与 Macro F1，并检查消融 Prompt 是否真正发生变化。
+项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、EmpatheticDialogues 真实数据基准、双语合成诊断集和 Codex CLI 隔离运行器。实验输出可以按样本、语言和上下文依赖程度统计 Accuracy 与 Macro F1，并检查消融 Prompt 是否真正发生变化。
 
 ## 技术路线
 
@@ -356,7 +356,33 @@ python scripts/evaluate_emotion_ablation.py \
 
 `zero_shot` 同时去掉 few-shot 示例和情绪历史先验，因此是组合消融，不能把指标变化单独归因于其中一个组件。
 
-### 3. Emotion Ablation V2 双语数据集
+### 3. EmpatheticDialogues 真实数据基准（默认）
+
+`data/benchmarks/empathetic_dialogues_v1/` 接入公开的 EmpatheticDialogues 官方测试集：
+
+- 2,542 段英文人工众包对话，覆盖项目现有全部 32 类情绪；
+- `balanced_seed.jsonl` 按每类 2 条组成 64 条平衡子集，可直接复用原五组消融；
+- 标签与项目逐项一致，不需要把粗粒度标签主观映射到 32 类；
+- 原始压缩包使用固定 SHA-256 校验，转换、数据校验、分布统计和旧格式导出均可复现；
+- 数据许可为 CC BY-NC 4.0，只能用于非商业用途并需保留署名。
+
+该数据由人类参与者按给定情绪情境撰写，不是生成式 AI 合成。不过，`expected` 是整段对话的情绪情境锚点，不是对最终单句另行独立复标和仲裁，因此使用 `label_provenance=human_authored_emotion_grounding`，论文中不应表述为“逐句人工复核金标准”。
+
+```bash
+python scripts/benchmark/prepare_empathetic_dialogues.py \
+  --archive /path/to/empatheticdialogues.tar.gz
+
+python scripts/benchmark/validate_emotion_benchmark.py \
+  --input data/benchmarks/empathetic_dialogues_v1/release/test.jsonl
+
+python scripts/benchmark/export_emotion_ablation_v2.py \
+  --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
+  --output-dir data/records/empathetic_dialogues_seed_export
+```
+
+数据集选型对比、转换口径、来源、许可和研究限制详见 `data/benchmarks/empathetic_dialogues_v1/README.md`。
+
+### 4. Emotion Ablation V2 合成双语诊断集（保留）
 
 `data/benchmarks/emotion_ablation_v2/` 当前版本为 `0.1.0`：
 
@@ -387,32 +413,46 @@ python scripts/benchmark/export_emotion_ablation_v2.py \
 
 数据格式和标注语义详见 `data/benchmarks/emotion_ablation_v2/README.md`。
 
-### 4. 可选：使用 Codex CLI 运行隔离消融
+### 5. 可选：使用 Codex CLI 运行隔离消融
 
 先把 seed 集导出为现有消融格式：
 
 ```bash
 python scripts/benchmark/export_emotion_ablation_v2.py \
-  --input data/benchmarks/emotion_ablation_v2/release/seed.jsonl \
-  --output-dir data/records/ablation_v2_seed_export
+  --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
+  --output-dir data/records/empathetic_dialogues_seed_export
 ```
 
 执行 10 条 pilot。`--model` 必填，请替换为当前 Codex CLI 支持的模型：
 
 ```bash
 python scripts/run_codex_cli_emotion_ablation.py \
-  --dialogues-file data/records/ablation_v2_seed_export/dialogues.jsonl \
-  --output-dir data/records/codex_cli_ablation/pilot \
+  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
+  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot \
   --limit 10 \
   --model YOUR_CODEX_MODEL
+```
+
+pilot 报告必须使用相同的 `--limit 10`，确保标注范围与运行结果一致：
+
+```bash
+python scripts/report_codex_cli_emotion_ablation.py \
+  --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
+  --limit 10 \
+  --run full=data/records/codex_cli_ablation/empathetic_dialogues_pilot/full.json \
+  --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_pilot/no_dynamic_examples.json \
+  --run no_emotion_history=data/records/codex_cli_ablation/empathetic_dialogues_pilot/no_emotion_history.json \
+  --run short_context=data/records/codex_cli_ablation/empathetic_dialogues_pilot/short_context.json \
+  --run zero_shot=data/records/codex_cli_ablation/empathetic_dialogues_pilot/zero_shot.json \
+  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot
 ```
 
 去掉 `--limit 10` 并更换输出目录即可运行全部 64 条 seed：
 
 ```bash
 python scripts/run_codex_cli_emotion_ablation.py \
-  --dialogues-file data/records/ablation_v2_seed_export/dialogues.jsonl \
-  --output-dir data/records/codex_cli_ablation/seed64 \
+  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
+  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64 \
   --model YOUR_CODEX_MODEL
 ```
 
@@ -422,13 +462,13 @@ python scripts/run_codex_cli_emotion_ablation.py \
 
 ```bash
 python scripts/report_codex_cli_emotion_ablation.py \
-  --seed-file data/benchmarks/emotion_ablation_v2/release/seed.jsonl \
-  --run full=data/records/codex_cli_ablation/seed64/full.json \
-  --run no_dynamic_examples=data/records/codex_cli_ablation/seed64/no_dynamic_examples.json \
-  --run no_emotion_history=data/records/codex_cli_ablation/seed64/no_emotion_history.json \
-  --run short_context=data/records/codex_cli_ablation/seed64/short_context.json \
-  --run zero_shot=data/records/codex_cli_ablation/seed64/zero_shot.json \
-  --output-dir data/records/codex_cli_ablation/seed64
+  --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
+  --run full=data/records/codex_cli_ablation/empathetic_dialogues_seed64/full.json \
+  --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_seed64/no_dynamic_examples.json \
+  --run no_emotion_history=data/records/codex_cli_ablation/empathetic_dialogues_seed64/no_emotion_history.json \
+  --run short_context=data/records/codex_cli_ablation/empathetic_dialogues_seed64/short_context.json \
+  --run zero_shot=data/records/codex_cli_ablation/empathetic_dialogues_seed64/zero_shot.json \
+  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64
 ```
 
 报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并检查各消融 Prompt 是否真的区别于 `full`。
@@ -441,7 +481,7 @@ python scripts/report_codex_cli_emotion_ablation.py \
 - 完成聊天、情绪、画像、记忆、安全和反馈模块的解耦实现；
 - 完成本地 SQLite 数据持久化和历史恢复；
 - 完成固定标签、结构化输出和动态示例驱动的情绪识别链路；
-- 完成 5 组消融配置、双语 benchmark、数据校验和指标报告工具；
+- 完成 5 组消融配置、EmpatheticDialogues 真实数据基准、合成双语诊断集、数据校验和指标报告工具；
 - 建立覆盖后端服务、数据存储、Prompt、前端交互和实验脚本的自动化测试。
 
 仓库不预设某个模型一定优于其他模型，也不把合成标签直接作为人工真实标注。具体实验结论应在固定代码提交、模型版本、运行参数和数据版本后，根据生成的原始结果与报告得出。
@@ -481,12 +521,12 @@ scripts/
   evaluate_emotion_ablation.py         多组消融汇总
   run_codex_cli_emotion_ablation.py    Codex CLI 隔离运行器
   report_codex_cli_emotion_ablation.py Codex 消融报告
-  benchmark/                           V2 数据集工具
+  benchmark/                           真实/合成数据集转换、校验与导出工具
 
 data/
   config/                 Prompt 示例和 Codex 输出 Schema
   examples/               小型评估与消融样例
-  benchmarks/             Emotion Ablation V2
+  benchmarks/             EmpatheticDialogues 真实基准与 Emotion Ablation V2 合成诊断集
   records/                本地运行时数据与实验输出，不提交到 Git
 
 tests/                    单元、Web、前端脚本和实验工具测试

@@ -336,6 +336,22 @@ def _error_example_lines(report: dict[str, Any]) -> list[str]:
     return lines or ["- 未发现分类错误。"]
 
 
+def _label_provenance_summary(report: dict[str, Any]) -> str:
+    names = {
+        "synthetic_generator_target": "合成生成器目标标签",
+        "human_annotation": "人工标注",
+        "human_authored_emotion_grounding": "人工撰写情绪情境标签",
+    }
+    values = sorted({
+        str(annotation.get("label_provenance", "")).strip()
+        for annotation in report.get("annotations", [])
+        if str(annotation.get("label_provenance", "")).strip()
+    })
+    if not values:
+        return "未声明"
+    return "、".join(names.get(value, value) for value in values)
+
+
 def render_chinese_report(
     report: dict[str, Any],
     metadata: dict[str, Any] | None = None,
@@ -394,7 +410,8 @@ def render_chinese_report(
         "",
         "## 局限性",
         "",
-        f"- 本次基准仅包含 {len(report.get('annotations', []))} 条合成 seed 记录；"
+        f"- 本次基准包含 {len(report.get('annotations', []))} 条记录，"
+        f"标签来源为{_label_provenance_summary(report)}；"
         f"高上下文依赖样本为 {sum(item.get('context_dependency') == 'high' for item in report.get('annotations', []))} 条。",
         "- 本实验评估的是 Codex CLI Agent 执行链路，不是裸模型 API 评测；"
         "结果包含 Codex 系统指令和 Agent 运行环境的影响。",
@@ -414,6 +431,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Generate deterministic Chinese reports for Codex emotion ablations."
     )
     parser.add_argument("--seed-file", required=True)
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Evaluate only the first N seed records, matching a limited pilot run.",
+    )
     parser.add_argument("--run", action="append", required=True, help="NAME=path/to/analysis.json")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--commit")
@@ -426,7 +448,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--execution-note",
         help="Explicit reproducibility note, such as capacity interruption and resume history.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit must be positive")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -440,7 +465,10 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(f"Invalid or duplicate run name: {name!r}")
         runs[name] = load_records(Path(raw_path))
 
-    report = build_report_data(runs, load_records(Path(args.seed_file)))
+    annotations = load_records(Path(args.seed_file))
+    if args.limit is not None:
+        annotations = annotations[: args.limit]
+    report = build_report_data(runs, annotations)
     metadata = {
         key: value
         for key, value in {
