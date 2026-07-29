@@ -194,7 +194,11 @@ def run_cases(
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run emotion-recognition ablation experiments.")
-    parser.add_argument("--dialogues-file", default="data/examples/ablation_dialogues.jsonl")
+    parser.add_argument(
+        "--dialogues-file",
+        required=True,
+        help="Public benchmark dialogues.jsonl produced by export_emotion_benchmark.py.",
+    )
     parser.add_argument("--output-dir", default="data/records/ablation")
     parser.add_argument(
         "--run",

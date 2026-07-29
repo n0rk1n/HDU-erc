@@ -1,6 +1,6 @@
 # EmpatheticDialogues V1
 
-本目录把公开的 EmpatheticDialogues 官方测试集转换为项目现有的情绪消融格式，作为默认的真实数据基准。源数据由众包参与者撰写，不是生成式 AI 合成数据。
+本目录把公开的 EmpatheticDialogues 官方测试集转换为项目现有的情绪消融格式，作为唯一正式基准。源数据由众包参与者人工撰写。
 
 ## 为什么选择它
 
@@ -23,7 +23,7 @@
 - `reports/*.csv`：完整测试集的标签、语言、上下文依赖和场景分布。
 - `metadata.json`：来源 URL、论文、许可、原包 SHA-256 和转换版本。
 
-`expected` 使用 `label_provenance=human_authored_emotion_grounding`。这表示众包作者按给定情绪类别回忆情境并展开对话；它不是 AI 生成标签，也不等同于对每条最终 utterance 进行独立事后复标和仲裁。论文或汇报中应使用“人工撰写、情绪情境锚定”这一准确表述。
+`expected` 使用 `label_provenance=human_authored_emotion_grounding`。这表示众包作者按给定情绪类别回忆情境并展开对话；它不等同于对每条最终 utterance 进行独立事后复标和仲裁。论文或汇报中应使用“人工撰写、情绪情境锚定”这一准确表述。
 
 ## 转换规则
 
@@ -52,7 +52,7 @@ python scripts/benchmark/prepare_empathetic_dialogues.py \
 python scripts/benchmark/validate_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/test.jsonl
 
-python scripts/benchmark/export_emotion_ablation_v2.py \
+python scripts/benchmark/export_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --output-dir data/records/empathetic_dialogues_seed_export
 ```

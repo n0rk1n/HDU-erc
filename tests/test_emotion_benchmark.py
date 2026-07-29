@@ -1,39 +1,23 @@
 from pathlib import Path
 
-from chatbot.emotion_labels import EMOTION_LABEL_SET
-from scripts.benchmark.emotion_benchmark import load_jsonl
 from scripts.benchmark.emotion_benchmark import export_label
-from scripts.benchmark.emotion_benchmark import parallel_equivalence_errors
+from scripts.benchmark.emotion_benchmark import load_jsonl
 from scripts.benchmark.emotion_benchmark import validate_record
 from scripts.benchmark.emotion_benchmark import validate_records
 
 
-BENCHMARK_ROOT = Path("data/benchmarks/emotion_ablation_v2")
+BENCHMARK_ROOT = Path("data/benchmarks/empathetic_dialogues_v1")
 
 
-def load_formal_release_records():
-    records = []
-    for filename in ["core_parallel.jsonl", "extended_independent.jsonl", "challenge.jsonl"]:
-        records.extend(load_jsonl(BENCHMARK_ROOT / "release" / filename))
-    return records
-
-
-def test_benchmark_v2_structure_exists():
+def test_public_benchmark_structure_exists():
     expected_paths = [
         "README.md",
         "metadata.json",
-        "schema.json",
-        "guidelines/annotation_guidelines.md",
-        "guidelines/label_taxonomy.md",
-        "guidelines/bilingual_parallel_policy.md",
-        "guidelines/quality_control.md",
-        "raw_candidates/generated_candidates.jsonl",
-        "annotation/annotator_a.jsonl",
-        "annotation/annotator_b.jsonl",
-        "annotation/adjudication.jsonl",
-        "release/core_parallel.jsonl",
-        "release/extended_independent.jsonl",
-        "release/challenge.jsonl",
+        "LICENSE-NOTICE.md",
+        "release/test.jsonl",
+        "release/balanced_seed.jsonl",
+        "release/context_diagnostic.jsonl",
+        "few_shot/train_examples.jsonl",
         "reports/dataset_card.md",
         "reports/quality_report.md",
     ]
@@ -66,42 +50,33 @@ def test_load_jsonl_reports_line_number_for_bad_json(tmp_path):
         raise AssertionError("Expected ValueError")
 
 
-def test_export_label_retains_label_provenance():
+def test_export_label_retains_public_label_provenance():
     record = {
-        "case_id": "core-0001-en",
+        "case_id": "ed-test-1",
         "expected": "anxious",
-        "label_provenance": "synthetic_generator_target",
+        "label_provenance": "human_authored_emotion_grounding",
     }
 
     assert export_label(record) == {
-        "id": "core-0001-en",
+        "id": "ed-test-1",
         "expected": "anxious",
-        "label_provenance": "synthetic_generator_target",
+        "label_provenance": "human_authored_emotion_grounding",
     }
 
 
-def test_generated_distribution_csvs_use_lf_line_endings():
-    for filename in ("label_distribution.csv", "scenario_distribution.csv"):
-        content = (BENCHMARK_ROOT / "reports" / filename).read_bytes()
-        assert b"\r\n" not in content
-        assert content.endswith(b"\n")
-
-
-def test_validate_record_accepts_complete_seed_case():
+def test_validate_record_accepts_public_benchmark_case():
     record = {
-        "case_id": "seed-0001-en",
+        "case_id": "ed-test-1",
         "language": "en",
-        "subset": "seed",
-        "seed_group": "independent_seed",
+        "subset": "empathetic_dialogues_test",
         "expected": "anxious",
         "turn_count": 1,
         "history": [],
         "current_input": "I keep replaying tomorrow's interview in my head.",
-        "scenario": "workplace_interview",
+        "scenario": "open_domain_dialogue",
         "annotation_status": "released",
-        "secondary_emotions": ["apprehensive"],
-        "intensity": 0.7,
-        "ambiguity_level": "low",
+        "source_stage": "release",
+        "label_provenance": "human_authored_emotion_grounding",
         "context_dependency": "none",
         "quality_flags": [],
     }
@@ -111,15 +86,16 @@ def test_validate_record_accepts_complete_seed_case():
 
 def test_validate_record_rejects_invalid_label():
     record = {
-        "case_id": "seed-0001-en",
+        "case_id": "ed-test-1",
         "language": "en",
-        "subset": "seed",
+        "subset": "empathetic_dialogues_test",
         "expected": "worried",
         "turn_count": 1,
         "history": [],
         "current_input": "I keep replaying tomorrow's interview in my head.",
-        "scenario": "workplace_interview",
+        "scenario": "open_domain_dialogue",
         "annotation_status": "released",
+        "label_provenance": "human_authored_emotion_grounding",
     }
 
     errors = validate_record(record)
@@ -129,15 +105,16 @@ def test_validate_record_rejects_invalid_label():
 
 def test_validate_record_rejects_non_snake_case_scenario():
     record = {
-        "case_id": "seed-0001-en",
+        "case_id": "ed-test-1",
         "language": "en",
-        "subset": "seed",
+        "subset": "empathetic_dialogues_test",
         "expected": "anxious",
         "turn_count": 1,
         "history": [],
         "current_input": "I keep replaying tomorrow's interview in my head.",
-        "scenario": "Academic Presentation",
+        "scenario": "Open Domain Dialogue",
         "annotation_status": "released",
+        "label_provenance": "human_authored_emotion_grounding",
     }
 
     errors = validate_record(record)
@@ -147,16 +124,17 @@ def test_validate_record_rejects_non_snake_case_scenario():
 
 def test_validate_record_rejects_release_stage_candidate_status():
     record = {
-        "case_id": "seed-0001-en",
+        "case_id": "ed-test-1",
         "language": "en",
-        "subset": "seed",
+        "subset": "empathetic_dialogues_test",
         "expected": "anxious",
         "turn_count": 1,
         "history": [],
         "current_input": "I keep replaying tomorrow's interview in my head.",
-        "scenario": "workplace_interview",
+        "scenario": "open_domain_dialogue",
         "annotation_status": "candidate",
         "source_stage": "release",
+        "label_provenance": "human_authored_emotion_grounding",
     }
 
     errors = validate_record(record)
@@ -164,17 +142,39 @@ def test_validate_record_rejects_release_stage_candidate_status():
     assert "release packaging records must use adjudicated or released status" in errors
 
 
+def test_validate_record_rejects_public_benchmark_without_label_provenance():
+    record = {
+        "case_id": "ed-test-1",
+        "language": "en",
+        "subset": "empathetic_dialogues_test",
+        "expected": "anxious",
+        "turn_count": 1,
+        "history": [],
+        "current_input": "I keep worrying about tomorrow.",
+        "scenario": "open_domain_dialogue",
+        "annotation_status": "released",
+        "source_stage": "release",
+    }
+
+    errors = validate_record(record)
+
+    assert any(
+        error.startswith("label_provenance must be one of") for error in errors
+    )
+
+
 def test_validate_record_rejects_boolean_intensity():
     record = {
-        "case_id": "seed-0001-en",
+        "case_id": "ed-test-1",
         "language": "en",
-        "subset": "seed",
+        "subset": "empathetic_dialogues_test",
         "expected": "anxious",
         "turn_count": 1,
         "history": [],
         "current_input": "I keep replaying tomorrow's interview in my head.",
-        "scenario": "workplace_interview",
+        "scenario": "open_domain_dialogue",
         "annotation_status": "released",
+        "label_provenance": "human_authored_emotion_grounding",
         "intensity": True,
     }
 
@@ -184,150 +184,26 @@ def test_validate_record_rejects_boolean_intensity():
 
 
 def test_validate_records_rejects_duplicate_case_ids():
-    records = [
-        {
-            "case_id": "seed-0001-en",
-            "language": "en",
-            "subset": "seed",
-            "expected": "anxious",
-            "turn_count": 1,
-            "history": [],
-            "current_input": "I keep replaying tomorrow's interview in my head.",
-            "scenario": "workplace_interview",
-            "annotation_status": "released",
-        },
-        {
-            "case_id": "seed-0001-en",
-            "language": "zh",
-            "subset": "seed",
-            "expected": "anxious",
-            "turn_count": 1,
-            "history": [],
-            "current_input": "我一直在想明天面试的事。",
-            "scenario": "workplace_interview",
-            "annotation_status": "released",
-        },
-    ]
-
-    errors = validate_records(records)
-
-    assert "duplicate case_id: seed-0001-en" in errors
-
-
-def test_parallel_equivalence_rejects_context_dependency_gap():
-    records = [
-        {
-            "case_id": "pair-1-en",
-            "pair_id": "pair-1",
-            "language": "en",
-            "subset": "core_parallel",
-            "expected": "anxious",
-            "turn_count": 1,
-            "history": [],
-            "current_input": "I keep replaying tomorrow's interview in my head.",
-            "scenario": "workplace_interview",
-            "annotation_status": "released",
-            "context_dependency": "none",
-        },
-        {
-            "case_id": "pair-1-zh",
-            "pair_id": "pair-1",
-            "language": "zh",
-            "subset": "core_parallel",
-            "expected": "anxious",
-            "turn_count": 1,
-            "history": [],
-            "current_input": "我一直在想明天面试的事。",
-            "scenario": "workplace_interview",
-            "annotation_status": "released",
-            "context_dependency": "high",
-        },
-    ]
-
-    errors = parallel_equivalence_errors(records)
-
-    assert "pair-1: context_dependency differs by more than one level" in errors
-
-
-def test_seed_release_covers_all_supported_labels():
-    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
-    labels = {record["expected"] for record in records}
-
-    assert len(records) == 64
-    assert labels == EMOTION_LABEL_SET
-
-
-def test_seed_release_has_expected_language_mix():
-    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
-    language_counts = {}
-    for record in records:
-        language_counts[record["language"]] = language_counts.get(record["language"], 0) + 1
-
-    assert language_counts == {"en": 32, "zh": 32}
-
-
-def test_seed_release_validates_without_errors():
-    records = load_jsonl(BENCHMARK_ROOT / "release" / "seed.jsonl")
-
-    assert validate_records(records) == []
-
-
-def test_formal_release_has_500_records_across_splits():
-    assert len(load_jsonl(BENCHMARK_ROOT / "release" / "core_parallel.jsonl")) == 256
-    assert len(load_jsonl(BENCHMARK_ROOT / "release" / "extended_independent.jsonl")) == 180
-    assert len(load_jsonl(BENCHMARK_ROOT / "release" / "challenge.jsonl")) == 64
-    assert len(load_formal_release_records()) == 500
-
-
-def test_formal_release_validates_without_errors():
-    assert validate_records(load_formal_release_records()) == []
-
-
-def test_formal_release_declares_synthetic_generator_label_provenance():
-    records = load_formal_release_records()
-
-    assert {record.get("label_provenance") for record in records} == {
-        "synthetic_generator_target"
+    record = {
+        "case_id": "ed-test-1",
+        "language": "en",
+        "subset": "empathetic_dialogues_test",
+        "expected": "anxious",
+        "turn_count": 1,
+        "history": [],
+        "current_input": "I keep replaying tomorrow's interview in my head.",
+        "scenario": "open_domain_dialogue",
+        "annotation_status": "released",
+        "label_provenance": "human_authored_emotion_grounding",
     }
 
+    errors = validate_records([record, dict(record)])
 
-def test_benchmark_docs_do_not_claim_formal_labels_were_human_reviewed():
-    paths = [*BENCHMARK_ROOT.rglob("*.md"), Path("README.md")]
-    text = "\n".join(path.read_text(encoding="utf-8").lower() for path in paths)
-
-    assert "reviewed labels" not in text
-    assert "release reviewed records" not in text
+    assert "duplicate case_id: ed-test-1" in errors
 
 
-def test_formal_release_covers_labels_in_both_languages():
-    records = load_formal_release_records()
-    language_counts = {}
-    labels_by_language = {"en": set(), "zh": set()}
-    for record in records:
-        language_counts[record["language"]] = language_counts.get(record["language"], 0) + 1
-        labels_by_language[record["language"]].add(record["expected"])
+def test_public_release_validates_without_errors():
+    records = load_jsonl(BENCHMARK_ROOT / "release" / "test.jsonl")
 
-    assert language_counts == {"en": 250, "zh": 250}
-    assert labels_by_language == {"en": EMOTION_LABEL_SET, "zh": EMOTION_LABEL_SET}
-
-
-def test_formal_release_labels_match_all_release_cases():
-    records = load_formal_release_records()
-    labels = load_jsonl(BENCHMARK_ROOT / "release" / "labels.jsonl")
-
-    assert labels == [
-        {
-            "id": record["case_id"],
-            "expected": record["expected"],
-            "label_provenance": "synthetic_generator_target",
-        }
-        for record in records
-    ]
-
-
-def test_core_parallel_release_has_128_bilingual_pairs():
-    records = load_jsonl(BENCHMARK_ROOT / "release" / "core_parallel.jsonl")
-    pair_ids = {record["pair_id"] for record in records}
-
-    assert len(pair_ids) == 128
-    assert parallel_equivalence_errors(records) == []
+    assert len(records) == 2542
+    assert validate_records(records) == []

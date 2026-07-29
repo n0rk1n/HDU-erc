@@ -2,16 +2,17 @@ import json
 import subprocess
 import sys
 
-import pytest
+
+PUBLIC_SEED = "data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl"
 
 
-def test_validate_cli_accepts_seed_release():
+def test_validate_cli_accepts_public_seed_release():
     result = subprocess.run(
         [
             sys.executable,
             "scripts/benchmark/validate_emotion_benchmark.py",
             "--input",
-            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+            PUBLIC_SEED,
         ],
         check=False,
         capture_output=True,
@@ -28,13 +29,14 @@ def test_validate_cli_rejects_invalid_record(tmp_path):
         json.dumps({
             "case_id": "bad-1",
             "language": "en",
-            "subset": "seed",
+            "subset": "empathetic_dialogues_test",
             "expected": "worried",
             "turn_count": 1,
             "history": [],
             "current_input": "I cannot stop thinking about it.",
-            "scenario": "workplace_interview",
+            "scenario": "open_domain_dialogue",
             "annotation_status": "released",
+            "label_provenance": "human_authored_emotion_grounding",
         })
         + "\n",
         encoding="utf-8",
@@ -56,15 +58,15 @@ def test_validate_cli_rejects_invalid_record(tmp_path):
     assert "expected must be one of the supported emotion labels" in result.stdout
 
 
-def test_export_cli_writes_dialogues_and_labels(tmp_path):
+def test_export_cli_writes_public_dialogues_and_labels(tmp_path):
     output_dir = tmp_path / "exported"
 
     result = subprocess.run(
         [
             sys.executable,
-            "scripts/benchmark/export_emotion_ablation_v2.py",
+            "scripts/benchmark/export_emotion_benchmark.py",
             "--input",
-            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+            PUBLIC_SEED,
             "--output-dir",
             str(output_dir),
         ],
@@ -90,10 +92,10 @@ def test_export_cli_writes_dialogues_and_labels(tmp_path):
     assert len(dialogues) == 64
     assert len(labels) == 64
     assert set(dialogues[0]) == {"id", "turn_count", "history", "current_input", "notes"}
-    assert set(labels[0]) == {"id", "expected"}
+    assert set(labels[0]) == {"id", "expected", "label_provenance"}
 
 
-def test_summary_cli_writes_distribution_csvs(tmp_path):
+def test_summary_cli_writes_public_distribution_csvs(tmp_path):
     output_dir = tmp_path / "reports"
 
     result = subprocess.run(
@@ -101,7 +103,7 @@ def test_summary_cli_writes_distribution_csvs(tmp_path):
             sys.executable,
             "scripts/benchmark/summarize_emotion_benchmark.py",
             "--input",
-            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
+            PUBLIC_SEED,
             "--output-dir",
             str(output_dir),
         ],
@@ -115,92 +117,3 @@ def test_summary_cli_writes_distribution_csvs(tmp_path):
     assert (output_dir / "label_distribution.csv").exists()
     assert (output_dir / "scenario_distribution.csv").exists()
     assert "label,count" in (output_dir / "label_distribution.csv").read_text(encoding="utf-8")
-
-
-def test_parallel_check_cli_accepts_seed_pairs():
-    result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/benchmark/check_parallel_equivalence.py",
-            "--input",
-            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0
-    assert "Parallel check passed" in result.stdout
-
-
-def test_parallel_check_cli_rejects_mismatched_pair(tmp_path):
-    input_file = tmp_path / "pairs.jsonl"
-    records = [
-        {
-            "case_id": "pair-1-en",
-            "pair_id": "pair-1",
-            "language": "en",
-            "subset": "core_parallel",
-            "expected": "anxious",
-            "intensity": 0.8,
-            "turn_count": 1,
-            "history": [],
-            "current_input": "I keep checking the result page.",
-            "scenario": "academic_exam",
-            "annotation_status": "released",
-        },
-        {
-            "case_id": "pair-1-zh",
-            "pair_id": "pair-1",
-            "language": "zh",
-            "subset": "core_parallel",
-            "expected": "joyful",
-            "intensity": 0.8,
-            "turn_count": 1,
-            "history": [],
-            "current_input": "我一直刷新成绩页面。",
-            "scenario": "academic_exam",
-            "annotation_status": "released",
-        },
-    ]
-    input_file.write_text(
-        "\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n",
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/benchmark/check_parallel_equivalence.py",
-            "--input",
-            str(input_file),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 1
-    assert "pair-1: expected labels differ" in result.stdout
-
-
-@pytest.mark.parametrize("max_intensity_delta", ["nan", "inf", "-0.1"])
-def test_parallel_check_cli_rejects_invalid_intensity_delta(max_intensity_delta):
-    result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/benchmark/check_parallel_equivalence.py",
-            "--input",
-            "data/benchmarks/emotion_ablation_v2/release/seed.jsonl",
-            "--max-intensity-delta",
-            max_intensity_delta,
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode != 0
-    assert "error:" in result.stderr
-    assert "--max-intensity-delta" in result.stderr

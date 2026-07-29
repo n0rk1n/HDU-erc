@@ -353,7 +353,6 @@ def _error_example_lines(report: dict[str, Any]) -> list[str]:
 
 def _label_provenance_summary(report: dict[str, Any]) -> str:
     names = {
-        "synthetic_generator_target": "合成生成器目标标签",
         "human_annotation": "人工标注",
         "human_authored_emotion_grounding": "人工撰写情绪情境标签",
     }

@@ -1,37 +1,25 @@
-"""Shared helpers for the emotion ablation v2 benchmark."""
-
 from __future__ import annotations
 
 import json
 import re
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from chatbot.emotion_labels import EMOTION_LABEL_SET
 
 
-BENCHMARK_ROOT = Path("data/benchmarks/emotion_ablation_v2")
-
 LANGUAGES = {"zh", "en"}
 SUBSETS = {
-    "core_parallel",
-    "extended_independent",
-    "challenge",
-    "seed",
-    "legacy_compat",
     "empathetic_dialogues_test",
     "empathetic_dialogues_balanced_seed",
     "empathetic_dialogues_context_diagnostic",
 }
-SEED_GROUPS = {"core_parallel_seed", "independent_seed"}
 ANNOTATION_STATUSES = {"candidate", "annotated", "adjudicated", "released", "rejected"}
 AMBIGUITY_LEVELS = {"low", "medium", "high"}
 CONTEXT_DEPENDENCIES = {"none", "low", "medium", "high"}
-CONTEXT_DEPENDENCY_LEVELS = {"none": 0, "low": 1, "medium": 2, "high": 3}
 SOURCE_STAGES = {"raw", "annotation", "release"}
 LABEL_PROVENANCES = {
-    "synthetic_generator_target",
     "human_annotation",
     "human_authored_emotion_grounding",
 }
@@ -86,13 +74,9 @@ def validate_record(record: dict[str, Any]) -> list[str]:
     _require_string(record, "current_input", errors)
     _validate_scenario(record, errors)
     _validate_enum(record, "annotation_status", ANNOTATION_STATUSES, errors)
-    if record.get("subset") in {"core_parallel", "extended_independent", "challenge"}:
+    if record.get("subset") in SUBSETS:
         _validate_enum(record, "label_provenance", LABEL_PROVENANCES, errors)
 
-    if record.get("subset") == "core_parallel" and not _clean_string(record.get("pair_id")):
-        errors.append("core_parallel records must include pair_id")
-    if record.get("subset") == "seed" and "seed_group" in record:
-        _validate_enum(record, "seed_group", SEED_GROUPS, errors)
     if "target_emotion" in record:
         _validate_emotion(record.get("target_emotion"), "target_emotion", errors)
     if "secondary_emotions" in record:
@@ -162,51 +146,6 @@ def summarize_records(records: list[dict[str, Any]]) -> dict[str, Counter[str]]:
             if isinstance(flag, str)
         ),
     }
-
-
-def parallel_equivalence_errors(
-    records: list[dict[str, Any]], *, max_intensity_delta: float = 0.15
-) -> list[str]:
-    errors: list[str] = []
-    by_pair_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for record in records:
-        if record.get("subset") not in {"core_parallel", "seed"}:
-            continue
-        pair_id = _clean_string(record.get("pair_id"))
-        if pair_id:
-            by_pair_id[pair_id].append(record)
-
-    for pair_id, pair_records in sorted(by_pair_id.items()):
-        languages = {record.get("language") for record in pair_records}
-        if languages != {"zh", "en"}:
-            errors.append(f"{pair_id}: expected one zh and one en record")
-            continue
-        if len(pair_records) != 2:
-            errors.append(f"{pair_id}: expected exactly 2 records")
-            continue
-        first, second = pair_records
-        if first.get("expected") != second.get("expected"):
-            errors.append(f"{pair_id}: expected labels differ")
-        if _history_roles(first) != _history_roles(second):
-            errors.append(f"{pair_id}: history role sequence differs")
-        first_intensity = first.get("intensity")
-        second_intensity = second.get("intensity")
-        if isinstance(first_intensity, (int, float)) and isinstance(second_intensity, (int, float)):
-            if abs(float(first_intensity) - float(second_intensity)) > max_intensity_delta:
-                errors.append(f"{pair_id}: intensity delta exceeds {max_intensity_delta}")
-        first_context_dependency = first.get("context_dependency")
-        second_context_dependency = second.get("context_dependency")
-        if (
-            first_context_dependency in CONTEXT_DEPENDENCY_LEVELS
-            and second_context_dependency in CONTEXT_DEPENDENCY_LEVELS
-            and abs(
-                CONTEXT_DEPENDENCY_LEVELS[first_context_dependency]
-                - CONTEXT_DEPENDENCY_LEVELS[second_context_dependency]
-            )
-            > 1
-        ):
-            errors.append(f"{pair_id}: context_dependency differs by more than one level")
-    return errors
 
 
 def _require_string(record: dict[str, Any], key: str, errors: list[str]) -> None:
@@ -283,11 +222,3 @@ def _validate_quality_flags(value: Any, errors: list[str]) -> None:
 
 def _clean_string(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
-
-
-def _history_roles(record: dict[str, Any]) -> list[str]:
-    return [
-        item.get("role", "")
-        for item in record.get("history", [])
-        if isinstance(item, dict)
-    ]

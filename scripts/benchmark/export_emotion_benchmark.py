@@ -1,5 +1,3 @@
-"""Export emotion ablation v2 records to the legacy ablation JSONL format."""
-
 from __future__ import annotations
 
 import argparse
@@ -17,7 +15,7 @@ from scripts.benchmark.emotion_benchmark import write_jsonl
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Export emotion ablation v2 records.")
+    parser = argparse.ArgumentParser(description="Export public emotion benchmark records.")
     parser.add_argument("--input", required=True, help="Path to benchmark JSONL records.")
     parser.add_argument("--output-dir", required=True, help="Directory for dialogues.jsonl and labels.jsonl.")
     return parser.parse_args(argv)

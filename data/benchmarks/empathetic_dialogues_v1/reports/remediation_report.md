@@ -69,7 +69,7 @@
 python scripts/benchmark/prepare_empathetic_dialogues.py \
   --archive /private/tmp/empatheticdialogues.tar.gz
 
-python scripts/benchmark/export_emotion_ablation_v2.py \
+python scripts/benchmark/export_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --output-dir data/records/empathetic_dialogues_aligned_seed_export
 

@@ -22,7 +22,7 @@
 | 提升回复的情绪适配能力 | 按固定回合识别 32 类情绪，并生成置信度、证据、回复策略和情绪轨迹。 |
 | 保持多轮交流的连续性 | 将聊天历史、用户画像、近期情绪和相关长期记忆共同注入 Prompt。 |
 | 保护用户本地数据 | 使用 SQLite 保存运行记录和长期记忆，不依赖托管记忆服务。 |
-| 支持可复现的实验分析 | 提供双语数据集、5 组消融配置、Accuracy、Macro F1 和报告生成工具。 |
+| 支持可复现的实验分析 | 提供公开数据基准、5 组消融配置、Accuracy、Macro F1 和报告生成工具。 |
 | 保持模型接入的可替换性 | 通过 OpenAI-compatible 适配层支持聊天模型与情绪模型独立配置。 |
 
 ## 系统总体设计
@@ -65,7 +65,7 @@ flowchart LR
 
 ### 5. 可复现实验体系
 
-项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、EmpatheticDialogues 真实数据基准、双语合成诊断集和 Codex CLI 隔离运行器。实验输出以 exact Accuracy 与 Macro F1 为主，补充 95% 置信区间和情绪族诊断指标，并在调用前跳过对当前数据无效的 no-op 消融。
+项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、EmpatheticDialogues 公开数据基准和 Codex CLI 隔离运行器。实验输出以 exact Accuracy 与 Macro F1 为主，补充 95% 置信区间和情绪族诊断指标，并在调用前跳过对当前数据无效的 no-op 消融。
 
 ## 技术路线
 
@@ -75,7 +75,7 @@ flowchart LR
 2. 建立 OpenAI-compatible 模型适配层，实现聊天 LLM 与情绪 LLM 的独立配置。
 3. 设计结构化情绪状态和动态示例检索方法，并接入多轮聊天流程。
 4. 使用 SQLite 实现聊天记录、反馈、画像和长期记忆的本地持久化。
-5. 建设双语情绪识别数据集和统一数据 Schema，形成可校验、可导出的实验输入。
+5. 接入公开情绪对话数据集并统一数据 Schema，形成可校验、可导出的实验输入。
 6. 通过完整配置与受控消融配置进行对照，使用 Accuracy、Macro F1、失败数和分组指标生成实验报告。
 
 ## 系统功能
@@ -332,11 +332,19 @@ python scripts/evaluate_emotion_analysis.py \
 | `short_context` | 动态示例 | 开启 | 最近 1 轮 |
 | `zero_shot` | 无示例 | 关闭 | 默认窗口 |
 
+先将 EmpatheticDialogues 的公开平衡子集导出为消融运行格式：
+
+```bash
+python scripts/benchmark/export_emotion_benchmark.py \
+  --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
+  --output-dir data/records/empathetic_dialogues_seed_export
+```
+
 生成结果：
 
 ```bash
 python scripts/run_emotion_ablation.py \
-  --dialogues-file data/examples/ablation_dialogues.jsonl \
+  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
   --output-dir data/records/ablation
 ```
 
@@ -344,7 +352,7 @@ python scripts/run_emotion_ablation.py \
 
 ```bash
 python scripts/evaluate_emotion_ablation.py \
-  --labels-file data/examples/ablation_labels.jsonl \
+  --labels-file data/records/empathetic_dialogues_seed_export/labels.jsonl \
   --run full=data/records/ablation/full.json \
   --run no_dynamic_examples=data/records/ablation/no_dynamic_examples.json \
   --run no_emotion_history=data/records/ablation/no_emotion_history.json \
@@ -377,50 +385,19 @@ python scripts/benchmark/prepare_empathetic_dialogues.py \
 python scripts/benchmark/validate_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/test.jsonl
 
-python scripts/benchmark/export_emotion_ablation_v2.py \
+python scripts/benchmark/export_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --output-dir data/records/empathetic_dialogues_seed_export
 ```
 
 数据集选型对比、转换口径、来源、许可和研究限制详见 `data/benchmarks/empathetic_dialogues_v1/README.md`。
 
-### 4. Emotion Ablation V2 合成双语诊断集（保留）
-
-`data/benchmarks/emotion_ablation_v2/` 当前版本为 `0.1.0`：
-
-- 500 条确定性生成的正式 release：`core_parallel=256`、`extended_independent=180`、`challenge=64`；
-- 64 条 seed 参考集；
-- 中文 250 条、英文 250 条，覆盖全部 32 个目标标签；
-- validator、双语平行检查、分布汇总、导出和确定性生成脚本。
-
-正式 release 的 `expected` 是生成器目标标签，`label_provenance=synthetic_generator_target`，不是独立人工标注或仲裁后的 ground truth。`annotation/` 中的空文件只是未来双人标注流程的占位符。
-
-常用命令：
-
-```bash
-python scripts/benchmark/validate_emotion_benchmark.py \
-  --input data/benchmarks/emotion_ablation_v2/release/core_parallel.jsonl
-
-python scripts/benchmark/check_parallel_equivalence.py \
-  --input data/benchmarks/emotion_ablation_v2/release/core_parallel.jsonl
-
-python scripts/benchmark/summarize_emotion_benchmark.py \
-  --input data/benchmarks/emotion_ablation_v2/release/core_parallel.jsonl \
-  --output-dir data/benchmarks/emotion_ablation_v2/reports
-
-python scripts/benchmark/export_emotion_ablation_v2.py \
-  --input data/benchmarks/emotion_ablation_v2/release/core_parallel.jsonl \
-  --output-dir data/records/ablation_v2_export
-```
-
-数据格式和标注语义详见 `data/benchmarks/emotion_ablation_v2/README.md`。
-
-### 5. 可选：使用 Codex CLI 运行隔离消融
+### 4. 可选：使用 Codex CLI 运行隔离消融
 
 先把 seed 集导出为现有消融格式：
 
 ```bash
-python scripts/benchmark/export_emotion_ablation_v2.py \
+python scripts/benchmark/export_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --output-dir data/records/empathetic_dialogues_seed_export
 ```
@@ -481,10 +458,10 @@ python scripts/report_codex_cli_emotion_ablation.py \
 - 完成聊天、情绪、画像、记忆、安全和反馈模块的解耦实现；
 - 完成本地 SQLite 数据持久化和历史恢复；
 - 完成固定标签、结构化输出和动态示例驱动的情绪识别链路；
-- 完成 5 组消融配置、EmpatheticDialogues 真实数据基准、合成双语诊断集、数据校验和指标报告工具；
+- 完成 5 组消融配置、EmpatheticDialogues 公开数据基准、数据校验和指标报告工具；
 - 建立覆盖后端服务、数据存储、Prompt、前端交互和实验脚本的自动化测试。
 
-仓库不预设某个模型一定优于其他模型，也不把合成标签直接作为人工真实标注。具体实验结论应在固定代码提交、模型版本、运行参数和数据版本后，根据生成的原始结果与报告得出。
+仓库不预设某个模型一定优于其他模型。具体实验结论应在固定代码提交、模型版本、运行参数和数据版本后，根据公开基准上的原始结果与报告得出。
 
 ## 项目结构
 
@@ -521,7 +498,7 @@ scripts/
   evaluate_emotion_ablation.py         多组消融汇总
   run_codex_cli_emotion_ablation.py    Codex CLI 隔离运行器
   report_codex_cli_emotion_ablation.py Codex 消融报告
-  benchmark/                           真实/合成数据集转换、校验与导出工具
+  benchmark/                           公开数据集转换、校验与导出工具
 
 data/
   config/                 Prompt 示例和 Codex 输出 Schema
@@ -554,7 +531,7 @@ python -m pytest tests/test_readme.py -q
 - 一次性 SSE stream id 保存在当前进程内存中；进程重启后失效，同一 id 只能消费一次。
 - `runtime.sqlite3` 路径由代码中的默认值确定；只有长期记忆数据库提供 `MEMORY_DB_PATH` 环境变量。
 - 关键词安全层只调整回复策略，不能替代专业心理健康服务或紧急援助。
-- V2 正式 release 是确定性合成 benchmark，不能表述为人工标注真实分布。
+- EmpatheticDialogues 的标签是整段情绪情境锚点，不是每个 utterance 的独立复标结果。
 
 ### 后续工作
 
