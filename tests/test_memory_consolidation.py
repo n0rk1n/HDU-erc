@@ -1,4 +1,4 @@
-from chatbot.emotion_state import EmotionState
+from chatbot.emotion.state import EmotionState
 from chatbot.memory import MemoryRuntimeConfig
 from chatbot.memory_consolidation import (
     MemoryConsolidationConfig,

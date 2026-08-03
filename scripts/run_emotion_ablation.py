@@ -14,7 +14,7 @@ if __package__ in (None, ""):
 
 from chatbot.core.config import load_config
 from chatbot.emotion import build_emotion_prompt, parse_emotion_output
-from chatbot.emotion_state import EmotionState, emotion_state_from_output
+from chatbot.emotion.state import EmotionState, emotion_state_from_output
 from chatbot.core.llm_adapter import build_chat_model
 
 

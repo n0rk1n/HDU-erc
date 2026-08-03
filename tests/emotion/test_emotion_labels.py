@@ -1,4 +1,4 @@
-from chatbot.emotion_labels import (
+from chatbot.emotion.labels import (
     EMOTION_FAMILIES,
     EMOTION_LABEL_GUIDANCE,
     EMOTION_LABEL_SET,

@@ -1,4 +1,4 @@
-from chatbot.emotion_prompt import build_emotion_analysis_prompt
+from chatbot.emotion.prompt import build_emotion_analysis_prompt
 
 
 def test_build_emotion_analysis_prompt_renders_examples_and_candidates():

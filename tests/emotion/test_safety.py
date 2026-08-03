@@ -1,5 +1,5 @@
-from chatbot.emotion_state import EmotionState
-from chatbot.safety import assess_safety
+from chatbot.emotion.state import EmotionState
+from chatbot.emotion.safety import assess_safety
 
 
 def test_assess_safety_returns_normal_for_ordinary_message():

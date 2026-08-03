@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from chatbot.emotion_state import EmotionState
+from chatbot.emotion.state import EmotionState
 
 CRISIS_TERMS = (
     "kill myself",

@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from chatbot.emotion_labels import EMOTION_LABEL_SET
+from chatbot.emotion.labels import EMOTION_LABEL_SET
 
 SAFETY_LEVELS = {"normal", "supportive", "crisis"}
 

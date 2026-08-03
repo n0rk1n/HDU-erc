@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from chatbot.emotion_examples import DEFAULT_EMOTION_EXAMPLES
-from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
-from chatbot.emotion_prompt import build_emotion_analysis_prompt
-from chatbot.emotion_retrieval import select_dynamic_examples
-from chatbot.emotion_state import EmotionState, emotion_state_from_output
+from chatbot.emotion.examples import DEFAULT_EMOTION_EXAMPLES
+from chatbot.emotion.labels import EMOTION_LABELS, EMOTION_LABEL_SET
+from chatbot.emotion.prompt import build_emotion_analysis_prompt
+from chatbot.emotion.retrieval import select_dynamic_examples
+from chatbot.emotion.state import EmotionState, emotion_state_from_output
 from chatbot.core.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
 
 RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH

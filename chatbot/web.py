@@ -14,8 +14,8 @@ from pydantic import BaseModel
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.core.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
-from chatbot.emotion_feedback import append_emotion_feedback
-from chatbot.emotion_state import EmotionState, timeline_from_records
+from chatbot.emotion.feedback import append_emotion_feedback
+from chatbot.emotion.state import EmotionState, timeline_from_records
 from chatbot.core.history import (
     REGENERATION_REASONS,
     load_history,

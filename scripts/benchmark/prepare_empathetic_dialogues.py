@@ -17,7 +17,7 @@ from typing import Any, Iterable
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from chatbot.emotion_labels import EMOTION_LABEL_SET
+from chatbot.emotion.labels import EMOTION_LABEL_SET
 from scripts.benchmark.emotion_benchmark import validate_records, write_jsonl
 
 

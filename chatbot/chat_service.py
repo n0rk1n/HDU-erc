@@ -7,7 +7,7 @@ from typing import Any
 
 from chatbot.core.config import ChatConfig
 from chatbot.emotion import analyze_emotion
-from chatbot.emotion_state import EmotionState
+from chatbot.emotion.state import EmotionState
 from chatbot.core.history import (
     RegenerationUpdateResult,
     append_ai_message,
@@ -25,7 +25,7 @@ from chatbot.memory_consolidation import (
     recent_consolidation_window,
 )
 from chatbot.memory_extractor import extract_memory_candidates
-from chatbot.safety import assess_safety
+from chatbot.emotion.safety import assess_safety
 
 
 @dataclass(frozen=True)

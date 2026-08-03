@@ -1,4 +1,4 @@
-from chatbot.emotion_state import (
+from chatbot.emotion.state import (
     EmotionState,
     emotion_state_from_output,
     format_emotion_state_context,

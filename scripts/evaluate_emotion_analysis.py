@@ -14,7 +14,7 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from chatbot.emotion import EMOTION_LABEL_SET
-from chatbot.emotion_labels import emotion_family
+from chatbot.emotion.labels import emotion_family
 
 DEFAULT_ANALYSIS_FILE = "data/records/emotion_analysis.json"
 

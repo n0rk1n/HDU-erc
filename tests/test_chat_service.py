@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from chatbot.chat_service import ChatService, ChatEvent
 from chatbot.core.config import ChatConfig, LlmConfig
 from chatbot.emotion import load_analysis_records
-from chatbot.emotion_state import EmotionState
+from chatbot.emotion.state import EmotionState
 from chatbot.core.history import RegenerationUpdateResult
 from chatbot.core.llm import get_session_history
 from chatbot.memory import Memory, MemoryCandidate
@@ -306,7 +306,7 @@ def test_generate_reply_triggers_emotion_analysis_on_interval(tmp_path, monkeypa
             "content": content,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -337,7 +337,7 @@ def test_generate_reply_does_not_trigger_before_interval(tmp_path, monkeypatch):
         "chatbot.chat_service.append_ai_message",
         lambda content: {"role": "ai", "content": content},
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -570,7 +570,7 @@ def test_stream_reply_emits_emotion_status_on_interval(tmp_path, monkeypatch):
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -658,7 +658,7 @@ def test_stream_reply_applies_supportive_safety_guidance(tmp_path, monkeypatch):
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -696,7 +696,7 @@ def test_generate_reply_preserves_model_safety_when_local_policy_is_normal(tmp_p
         "chatbot.chat_service.append_ai_message",
         lambda content: {"role": "ai", "content": content},
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 
@@ -725,7 +725,7 @@ def test_stream_reply_passes_recent_emotion_candidates_to_prompt(tmp_path, monke
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(
         chain,
@@ -761,7 +761,7 @@ def test_stream_reply_emits_emotion_error_and_continues(tmp_path, monkeypatch):
             "feedback": None,
         },
     )
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     service = ChatService(chain, config, emotion_llm, initial_records=[])
 

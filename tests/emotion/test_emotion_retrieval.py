@@ -1,5 +1,5 @@
-from chatbot.emotion_examples import EmotionExample
-from chatbot.emotion_retrieval import select_dynamic_examples
+from chatbot.emotion.examples import EmotionExample
+from chatbot.emotion.retrieval import select_dynamic_examples
 
 
 EXAMPLES = [

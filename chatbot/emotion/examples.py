@@ -4,7 +4,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from chatbot.emotion_labels import EMOTION_LABEL_SET
+from chatbot.core.paths import PROJECT_ROOT
+from chatbot.emotion.labels import EMOTION_LABEL_SET
 
 
 @dataclass(frozen=True)
@@ -51,7 +52,7 @@ FALLBACK_EMOTION_EXAMPLES = [
 ]
 
 DEFAULT_EXAMPLE_BANK_PATH = (
-    Path(__file__).resolve().parents[1]
+    PROJECT_ROOT
     / "data"
     / "benchmarks"
     / "empathetic_dialogues_v1"

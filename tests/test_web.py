@@ -1171,7 +1171,7 @@ def test_feedback_endpoint_returns_write_failure(monkeypatch):
 
 def test_emotion_feedback_endpoint_saves_feedback(tmp_path, monkeypatch):
     runtime_db = tmp_path / "runtime.sqlite3"
-    monkeypatch.setattr("chatbot.emotion_feedback.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.feedback.RUNTIME_DB_PATH", str(runtime_db))
 
     app = create_app(service_factory=lambda: FakeService())
     client = TestClient(app)

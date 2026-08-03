@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import chatbot.emotion as emotion
+import chatbot.emotion.analysis as emotion
 from chatbot.core.runtime_store import RuntimeStore
 from chatbot.emotion import (
     append_analysis_record,
@@ -12,7 +12,7 @@ from chatbot.emotion import (
 
 def _set_runtime_db(tmp_path, monkeypatch):
     runtime_db = tmp_path / "runtime.sqlite3"
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
     return runtime_db
 
 
@@ -186,7 +186,7 @@ def test_default_emotion_analysis_file_is_project_data_file():
     assert path.name == "runtime.sqlite3"
     assert path.parent.name == "records"
     assert path.parent.parent.name == "data"
-    assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[2]
 
 
 def test_load_analysis_records_ignores_legacy_data_file_when_database_missing(tmp_path, monkeypatch):
@@ -194,7 +194,7 @@ def test_load_analysis_records_ignores_legacy_data_file_when_database_missing(tm
     legacy_file = tmp_path / "data" / "emotion_analysis.json"
     legacy_file.parent.mkdir(parents=True)
     legacy_file.write_text('[{"emotion": "sad"}]')
-    monkeypatch.setattr("chatbot.emotion.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
 
     assert load_analysis_records() == []
 
@@ -347,8 +347,8 @@ def test_analyze_emotion_persists_structured_state(tmp_path, monkeypatch):
 
 
 def test_emotion_labels_are_shared_from_label_module():
-    from chatbot.emotion_labels import EMOTION_LABELS as SHARED_LABELS
-    from chatbot.emotion_labels import EMOTION_LABEL_SET as SHARED_LABEL_SET
+    from chatbot.emotion.labels import EMOTION_LABELS as SHARED_LABELS
+    from chatbot.emotion.labels import EMOTION_LABEL_SET as SHARED_LABEL_SET
 
     assert emotion.EMOTION_LABELS is SHARED_LABELS
     assert emotion.EMOTION_LABEL_SET is SHARED_LABEL_SET

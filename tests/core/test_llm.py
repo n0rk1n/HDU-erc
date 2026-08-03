@@ -3,7 +3,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
 from chatbot.core.config import ChatConfig, LlmConfig
-from chatbot.emotion_state import EmotionState
+from chatbot.emotion.state import EmotionState
 from chatbot.core.llm import build_chain, build_llm, build_system_message, format_emotion_context
 
 pytestmark = pytest.mark.filterwarnings("ignore:RunnableWithMessageHistory is deprecated.*")

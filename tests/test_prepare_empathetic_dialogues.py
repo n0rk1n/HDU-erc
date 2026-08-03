@@ -4,7 +4,7 @@ import io
 import json
 from pathlib import Path
 
-from chatbot.emotion_labels import EMOTION_LABEL_SET
+from chatbot.emotion.labels import EMOTION_LABEL_SET
 from scripts.benchmark.emotion_benchmark import load_jsonl, validate_records
 from scripts.benchmark.prepare_empathetic_dialogues import (
     build_benchmark_records,
