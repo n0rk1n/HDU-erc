@@ -1,5 +1,9 @@
 # Codex CLI 情绪识别 Prompt 多版本实验报告
 
+> **状态：探索性 pilot 已于 2026-08-03 冻结。** 本实验使用官方 test 的 64 条
+> 平衡 seed 进行 Prompt 筛选，不属于未触碰的最终测试。保留本报告和原始记录只为
+> 追溯；不再基于这 64 条调参，也不据此直接启动完整 2,542 条 test。
+
 ## 实验元数据
 
 - branch: `codex/prompt-variant-ablation-20260803`
@@ -239,5 +243,5 @@ p < 0.05 才可视为拒绝“两配置准确率相同”的初步证据；Macro
 - 本实验评估的是 Codex CLI Agent 执行链路，不是裸模型 API 评测；结果包含 Codex 系统指令和 Agent 运行环境的影响。
 - 切片样本较少时，Accuracy 和 Macro F1 波动较大，不应单独解读。
 - 调用失败同时会拉低指标，需与分类错误分开观察。
-- 64 条结果只用于筛选；第二阶段需要在完整 2,542 条测试集上再次确认，调用量需用户再次确认。
+- 64 条结果只能作为探索性观察；下一步应先审计输入—标签对齐，并把 Prompt 选择迁移到 validation split。
 - 执行过程说明：Each run began with a one-case smoke snapshot; matching successful provenance was reused, then the remaining 63 cases completed without failures.

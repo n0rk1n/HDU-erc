@@ -1,5 +1,9 @@
 # Codex CLI 情绪识别 Prompt 多版本实验摘要
 
+> **状态：探索性 pilot 已于 2026-08-03 冻结。** 本实验使用官方 test 的 64 条
+> 平衡 seed 进行 Prompt 筛选，不属于未触碰的最终测试。保留以下指标只为追溯，
+> 不再基于这 64 条调参，也不据此直接启动完整 2,542 条 test。
+
 | Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy (95% CI) | Macro F1 | Family Accuracy* | Family Macro F1* | Δ Accuracy vs full (paired 95% CI) | Δ Macro F1 vs full (paired 95% CI) | McNemar exact p | Prompt identical/full | Treatment status | Provenance |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |
 | full | 64 | 64 | 0 | 36 | 56.25% (44.09%–67.71%) | 55.31% | 76.56% | 75.17% | +0.00% (+0.00%–+0.00%) | +0.00% (+0.00%–+0.00%) | 1.0000 | 64/64 | baseline | record_input_vs_full_by_case_id |
