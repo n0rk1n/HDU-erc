@@ -450,7 +450,53 @@ python -m scripts.ablation.report_codex_cli_emotion_ablation \
 
 运行器会逐样本比较 treatment 与 `full` 的 Prompt，整组相同时直接跳过；所以 EmpatheticDialogues 正式集不会执行无历史可删的 `no_emotion_history` 和无上下文可截的 `short_context`。报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并再次记录 treatment 有效性。
 
-### 5. 64 条公开 seed 正式结果
+### 5. Prompt 多版本消融实验（预注册，仅筛选）
+
+`full` 之外提供 4 个固定 Prompt 变体，用于研究指令措辞对 32 类情绪识别的
+影响。五个配置共享相同的动态示例、情绪历史与默认上下文窗口，只允许 Prompt
+模板不同，因此指标差异可归因于指令设计：
+
+| Run | Prompt 模板特征 |
+| --- | --- |
+| `full` | 应用默认模板（可用 `PROMPT_CONFIG_PATH` 覆盖） |
+| `prompt_no_label_guidance` | 去掉标签定义区块，仅保留标签清单 |
+| `prompt_concise_direct` | 直接选择最匹配的单一标签 |
+| `prompt_coarse_to_fine` | 先内部判断情绪大族，再选最精确标签 |
+| `prompt_contrastive_check` | 内部对比两个最可能标签后再选择 |
+
+运行命令（固定模型、Schema 与调用参数）：
+
+```bash
+python -m scripts.ablation.run_codex_cli_emotion_ablation \
+  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
+  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol \
+  --run full \
+  --run prompt_no_label_guidance \
+  --run prompt_concise_direct \
+  --run prompt_coarse_to_fine \
+  --run prompt_contrastive_check \
+  --model gpt-5.6-sol
+```
+
+生成 Prompt 专用中文报告与第二阶段候选结论：
+
+```bash
+python -m scripts.ablation.report_codex_cli_emotion_ablation \
+  --report-kind prompt_variants \
+  --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
+  --run full=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/full.json \
+  --run prompt_no_label_guidance=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_no_label_guidance.json \
+  --run prompt_concise_direct=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_concise_direct.json \
+  --run prompt_coarse_to_fine=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_coarse_to_fine.json \
+  --run prompt_contrastive_check=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_contrastive_check.json \
+  --output-dir data/benchmarks/empathetic_dialogues_v1/reports/prompt_variants_seed64_gpt56sol
+```
+
+第一阶段只运行 64 条平衡 seed，结果只用于筛选；候选排序依次比较 Accuracy、
+Macro F1、Family Accuracy。完整 2,542 条测试集与第二阶段调用量需要再次
+确认后才能执行；配对差值区间包含 0 时不得声称已证明提升。
+
+### 6. 64 条公开 seed 正式结果
 
 2026-08-03 已使用 `gpt-5.6-sol` 和 Codex CLI 0.146.0 完成三组有效配置，共
 192 次有效预测、0 失败。`full` 为 36/64（56.25%），两个对照均为
