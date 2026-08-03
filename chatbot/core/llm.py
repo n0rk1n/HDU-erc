@@ -10,10 +10,10 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 
 warnings.filterwarnings("ignore", message=".*RunnableWithMessageHistory is deprecated.*")
 
-from chatbot.config import ChatConfig, LlmConfig
+from chatbot.core.config import ChatConfig, LlmConfig
 from chatbot.emotion_state import EmotionState, format_emotion_state_context
-from chatbot.llm_adapter import ChatModelAdapter, build_chat_model
-from chatbot.prompt_config import load_prompt_config
+from chatbot.core.llm_adapter import ChatModelAdapter, build_chat_model
+from chatbot.core.prompt_config import load_prompt_config
 
 store: dict[str, InMemoryChatMessageHistory] = {}
 

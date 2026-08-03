@@ -12,10 +12,10 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from chatbot.config import load_config
+from chatbot.core.config import load_config
 from chatbot.emotion import build_emotion_prompt, parse_emotion_output
 from chatbot.emotion_state import EmotionState, emotion_state_from_output
-from chatbot.llm_adapter import build_chat_model
+from chatbot.core.llm_adapter import build_chat_model
 
 
 @dataclass(frozen=True)

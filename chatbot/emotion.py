@@ -11,7 +11,7 @@ from chatbot.emotion_labels import EMOTION_LABELS, EMOTION_LABEL_SET
 from chatbot.emotion_prompt import build_emotion_analysis_prompt
 from chatbot.emotion_retrieval import select_dynamic_examples
 from chatbot.emotion_state import EmotionState, emotion_state_from_output
-from chatbot.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
+from chatbot.core.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
 
 RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH
 EMOTION_ANALYSIS_NAMESPACE = "emotion_analysis"

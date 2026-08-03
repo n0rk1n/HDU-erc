@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 import chatbot.web as web
 from chatbot.chat_service import ChatEvent
-from chatbot.history import FeedbackUpdateResult, RegenerationUpdateResult
+from chatbot.core.history import FeedbackUpdateResult, RegenerationUpdateResult
 from chatbot.web import build_service, create_app, format_sse
 
 
@@ -43,7 +43,7 @@ class FakeService:
 
 
 def test_build_service_does_not_duplicate_session_history(monkeypatch):
-    from chatbot.llm import get_session_history, store
+    from chatbot.core.llm import get_session_history, store
 
     records = [
         {"role": "human", "content": "hello"},

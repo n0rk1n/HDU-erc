@@ -1,4 +1,4 @@
-from chatbot.runtime_store import RuntimeStore
+from chatbot.core.runtime_store import RuntimeStore
 
 
 def test_runtime_store_appends_and_replaces_json_records(tmp_path):

@@ -1,9 +1,9 @@
 import pytest
 from langchain_core.messages import AIMessage
 
-from chatbot.config import LlmConfig
-from chatbot.llm import build_chain
-from chatbot.llm_adapter import OpenAICompatibleChatAdapter, build_chat_model
+from chatbot.core.config import LlmConfig
+from chatbot.core.llm import build_chain
+from chatbot.core.llm_adapter import OpenAICompatibleChatAdapter, build_chat_model
 
 pytestmark = pytest.mark.filterwarnings("ignore:RunnableWithMessageHistory is deprecated.*")
 
@@ -20,7 +20,7 @@ class FakeChatOpenAI:
 
 
 def test_build_chat_model_supports_openai_compatible_provider(monkeypatch):
-    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", FakeChatOpenAI)
     config = LlmConfig(
         provider="deepseek",
         api_key="test-key",
@@ -41,7 +41,7 @@ def test_build_chat_model_supports_openai_compatible_provider(monkeypatch):
 
 
 def test_build_chat_model_omits_empty_base_url(monkeypatch):
-    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", FakeChatOpenAI)
     config = LlmConfig(
         provider="openai",
         api_key="test-key",
@@ -60,7 +60,7 @@ def test_build_chat_model_omits_empty_base_url(monkeypatch):
 
 
 def test_adapter_delegates_invoke_to_client(monkeypatch):
-    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", FakeChatOpenAI)
     config = LlmConfig(
         provider="openai",
         api_key="test-key",
@@ -80,7 +80,7 @@ def test_adapter_delegates_stream_to_client(monkeypatch):
             yield AIMessage(content="hello")
             yield AIMessage(content=" world")
 
-    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", StreamingFakeChatOpenAI)
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", StreamingFakeChatOpenAI)
     config = LlmConfig(
         provider="openai",
         api_key="test-key",
@@ -107,7 +107,7 @@ def test_build_chat_model_rejects_unknown_provider():
 
 
 def test_adapter_can_be_composed_in_langchain_chain(monkeypatch):
-    monkeypatch.setattr("chatbot.llm_adapter.ChatOpenAI", FakeChatOpenAI)
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", FakeChatOpenAI)
     config = LlmConfig(
         provider="openai",
         api_key="test-key",

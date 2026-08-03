@@ -4,7 +4,7 @@ from typing import Any
 
 from chatbot.emotion_examples import EmotionExample, select_emotion_examples
 from chatbot.emotion_labels import format_emotion_label_guidance
-from chatbot.prompt_config import DEFAULT_EMOTION_ANALYSIS_PROMPT, load_prompt_config
+from chatbot.core.prompt_config import DEFAULT_EMOTION_ANALYSIS_PROMPT, load_prompt_config
 
 
 def build_emotion_analysis_prompt(

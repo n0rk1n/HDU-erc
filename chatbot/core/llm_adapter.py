@@ -5,7 +5,7 @@ from typing import Any, Protocol
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 
-from chatbot.config import LlmConfig
+from chatbot.core.config import LlmConfig
 
 
 class ChatModelAdapter(Protocol):

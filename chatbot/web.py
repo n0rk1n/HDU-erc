@@ -12,17 +12,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from chatbot.chat_service import ChatEvent, ChatService
-from chatbot.config import load_config
+from chatbot.core.config import load_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.emotion_feedback import append_emotion_feedback
 from chatbot.emotion_state import EmotionState, timeline_from_records
-from chatbot.history import (
+from chatbot.core.history import (
     REGENERATION_REASONS,
     load_history,
     record_message_feedback,
 )
 from chatbot.local_memory import build_memory_provider
-from chatbot.llm import build_chain, init_session_history
+from chatbot.core.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
 from chatbot.memory import load_memory_config
 from chatbot.memory_consolidation import load_memory_consolidation_config

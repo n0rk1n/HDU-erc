@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import chatbot.emotion as emotion
-from chatbot.runtime_store import RuntimeStore
+from chatbot.core.runtime_store import RuntimeStore
 from chatbot.emotion import (
     append_analysis_record,
     build_emotion_prompt,

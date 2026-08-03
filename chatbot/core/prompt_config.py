@@ -5,7 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+from chatbot.core.paths import PROJECT_ROOT
+
 DEFAULT_PROMPT_CONFIG_PATH = str(PROJECT_ROOT / "data" / "config" / "prompts.json")
 
 DEFAULT_CHAT_SYSTEM_PROMPT = (

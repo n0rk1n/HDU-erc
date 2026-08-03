@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 import chatbot.profile as profile
-from chatbot.runtime_store import RuntimeStore
+from chatbot.core.runtime_store import RuntimeStore
 from chatbot.profile import load_profile, format_profile, save_profile
 from chatbot.profile_onboarding import MAX_PROFILE_VALUE_LENGTH
 

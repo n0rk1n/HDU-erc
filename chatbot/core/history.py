@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from chatbot.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
+from chatbot.core.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
 
 RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH
 HISTORY_NAMESPACE = "chat_history"

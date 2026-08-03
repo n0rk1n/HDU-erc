@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-import chatbot.history as history
-from chatbot.runtime_store import RuntimeStore
-from chatbot.history import (
+import chatbot.core.history as history
+from chatbot.core.runtime_store import RuntimeStore
+from chatbot.core.history import (
     REGENERATION_REASONS,
     append_ai_message,
     append_message,
@@ -19,7 +19,7 @@ from chatbot.history import (
 @pytest.fixture
 def history_file(tmp_path, monkeypatch):
     test_db = tmp_path / "runtime.sqlite3"
-    monkeypatch.setattr("chatbot.history.RUNTIME_DB_PATH", str(test_db))
+    monkeypatch.setattr("chatbot.core.history.RUNTIME_DB_PATH", str(test_db))
     return test_db
 
 
@@ -38,7 +38,7 @@ def test_default_history_file_is_project_data_file():
     assert path.name == "runtime.sqlite3"
     assert path.parent.name == "records"
     assert path.parent.parent.name == "data"
-    assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[2]
 
 
 def test_load_history_ignores_legacy_data_file_when_database_missing(tmp_path, monkeypatch):
@@ -46,7 +46,7 @@ def test_load_history_ignores_legacy_data_file_when_database_missing(tmp_path, m
     legacy_file = tmp_path / "data" / "chat_history.json"
     legacy_file.parent.mkdir(parents=True)
     legacy_file.write_text('[{"role": "human", "content": "hello"}]')
-    monkeypatch.setattr("chatbot.history.RUNTIME_DB_PATH", str(runtime_db))
+    monkeypatch.setattr("chatbot.core.history.RUNTIME_DB_PATH", str(runtime_db))
 
     assert load_history() == []
 
@@ -358,7 +358,7 @@ def test_regeneration_reasons_are_fixed():
 
 def test_append_message_write_failure_does_not_crash(monkeypatch):
     monkeypatch.setattr(
-        "chatbot.history.RuntimeStore.append_json_record",
+        "chatbot.core.history.RuntimeStore.append_json_record",
         lambda self, namespace, record: False,
     )
 

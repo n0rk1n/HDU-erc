@@ -1,4 +1,4 @@
-from chatbot.config import ChatConfig, LlmConfig
+from chatbot.core.config import ChatConfig, LlmConfig
 from chatbot.main import build_runtime_llms
 
 

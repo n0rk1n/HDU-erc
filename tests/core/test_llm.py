@@ -2,9 +2,9 @@ import pytest
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 
-from chatbot.config import ChatConfig, LlmConfig
+from chatbot.core.config import ChatConfig, LlmConfig
 from chatbot.emotion_state import EmotionState
-from chatbot.llm import build_chain, build_llm, build_system_message, format_emotion_context
+from chatbot.core.llm import build_chain, build_llm, build_system_message, format_emotion_context
 
 pytestmark = pytest.mark.filterwarnings("ignore:RunnableWithMessageHistory is deprecated.*")
 
@@ -156,7 +156,7 @@ def test_build_llm_accepts_chat_config_and_uses_chat_llm(monkeypatch):
         captured_configs.append(config)
         return "fake-model"
 
-    monkeypatch.setattr("chatbot.llm.build_chat_model", fake_build_chat_model)
+    monkeypatch.setattr("chatbot.core.llm.build_chat_model", fake_build_chat_model)
     chat_llm = LlmConfig(
         provider="deepseek",
         api_key="chat-key",

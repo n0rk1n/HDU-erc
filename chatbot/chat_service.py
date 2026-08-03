@@ -5,17 +5,17 @@ from dataclasses import dataclass
 from threading import RLock
 from typing import Any
 
-from chatbot.config import ChatConfig
+from chatbot.core.config import ChatConfig
 from chatbot.emotion import analyze_emotion
 from chatbot.emotion_state import EmotionState
-from chatbot.history import (
+from chatbot.core.history import (
     RegenerationUpdateResult,
     append_ai_message,
     append_message,
     prepare_message_regeneration,
     record_message_regeneration,
 )
-from chatbot.llm import format_emotion_context, get_session_history
+from chatbot.core.llm import format_emotion_context, get_session_history
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
 from chatbot.memory_consolidation import (
     MemoryConsolidationConfig,

@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 
 from chatbot.chat_service import ChatService, ChatEvent
-from chatbot.config import ChatConfig, LlmConfig
+from chatbot.core.config import ChatConfig, LlmConfig
 from chatbot.emotion import load_analysis_records
 from chatbot.emotion_state import EmotionState
-from chatbot.history import RegenerationUpdateResult
-from chatbot.llm import get_session_history
+from chatbot.core.history import RegenerationUpdateResult
+from chatbot.core.llm import get_session_history
 from chatbot.memory import Memory, MemoryCandidate
 from chatbot.memory_consolidation import MemoryConsolidationConfig
 

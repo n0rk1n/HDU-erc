@@ -1,7 +1,7 @@
 """Runtime helpers for the Web chatbot."""
 
-from chatbot.config import ChatConfig, ConfigError, load_config
-from chatbot.llm import build_llm
+from chatbot.core.config import ChatConfig, ConfigError, load_config
+from chatbot.core.llm import build_llm
 
 
 def build_runtime_llms(config: ChatConfig):

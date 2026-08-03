@@ -6,7 +6,7 @@ import threading
 from datetime import datetime
 from typing import Any
 
-from chatbot.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
+from chatbot.core.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
 
 RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH
 EMOTION_FEEDBACK_NAMESPACE = "emotion_feedback"

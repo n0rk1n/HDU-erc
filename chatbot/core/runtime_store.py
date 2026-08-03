@@ -5,7 +5,9 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+from chatbot.core.paths import PROJECT_ROOT
+
+DATA_DIR = PROJECT_ROOT / "data"
 DEFAULT_RUNTIME_DB_PATH = str(DATA_DIR / "records" / "runtime.sqlite3")
 
 

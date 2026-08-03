@@ -1,6 +1,6 @@
 import pytest
 
-from chatbot.config import ChatConfig, ConfigError, load_config
+from chatbot.core.config import ChatConfig, ConfigError, load_config
 
 
 CONFIG_ENV_KEYS = (

@@ -1,6 +1,16 @@
 import json
+from pathlib import Path
 
-from chatbot.prompt_config import load_prompt_config
+from chatbot.core.prompt_config import DEFAULT_PROMPT_CONFIG_PATH, load_prompt_config
+
+
+def test_default_prompt_config_is_in_project_data_directory():
+    path = Path(DEFAULT_PROMPT_CONFIG_PATH)
+
+    assert path.name == "prompts.json"
+    assert path.parent.name == "config"
+    assert path.parent.parent.name == "data"
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[2]
 
 
 def test_load_prompt_config_returns_defaults_when_file_missing(tmp_path, monkeypatch):
