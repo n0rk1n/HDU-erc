@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from scripts.report_codex_cli_emotion_ablation import (
+from scripts.ablation.report_codex_cli_emotion_ablation import (
     build_report_data,
     main,
     render_chinese_report,

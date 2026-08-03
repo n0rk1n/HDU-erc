@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from scripts.evaluate_emotion_analysis import evaluate_records, load_records
+from scripts.ablation.evaluate_emotion_analysis import evaluate_records, load_records
 
 
 LANGUAGES = ("zh", "en")

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from chatbot.emotion import EMOTION_LABEL_SET
 from chatbot.emotion.labels import emotion_family

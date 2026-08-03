@@ -2,8 +2,8 @@ import json
 import subprocess
 import sys
 
-from scripts.evaluate_emotion_ablation import compare_runs
-from scripts.evaluate_emotion_ablation import main
+from scripts.ablation.evaluate_emotion_ablation import compare_runs
+from scripts.ablation.evaluate_emotion_ablation import main
 
 
 def test_compare_runs_returns_metrics_per_run():
@@ -83,7 +83,12 @@ def test_main_returns_one_when_all_runs_have_zero_samples(tmp_path):
 
 def test_direct_cli_help_works():
     result = subprocess.run(
-        [sys.executable, "scripts/evaluate_emotion_ablation.py", "--help"],
+        [
+            sys.executable,
+            "-m",
+            "scripts.ablation.evaluate_emotion_ablation",
+            "--help",
+        ],
         check=False,
         capture_output=True,
         text=True,

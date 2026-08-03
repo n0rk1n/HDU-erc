@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts import run_codex_cli_emotion_ablation as runner
+from scripts.ablation import run_codex_cli_emotion_ablation as runner
 
 
 CASES = [
@@ -87,7 +87,7 @@ def test_invoke_codex_passes_instruction_to_subprocess(tmp_path):
     }
     invocation_cwd = Path(kwargs["cwd"])
     assert invocation_cwd.is_absolute()
-    repository_root = Path(runner.__file__).resolve().parents[1]
+    repository_root = Path(runner.__file__).resolve().parents[2]
     assert invocation_cwd != repository_root
     assert repository_root not in invocation_cwd.parents
     assert Path(command[command.index("--output-schema") + 1]).is_absolute()
@@ -354,7 +354,12 @@ def test_main_rejects_invalid_numeric_option_before_loading_dialogues(option, va
 
 def test_direct_cli_help_works():
     result = subprocess.run(
-        [sys.executable, "scripts/run_codex_cli_emotion_ablation.py", "--help"],
+        [
+            sys.executable,
+            "-m",
+            "scripts.ablation.run_codex_cli_emotion_ablation",
+            "--help",
+        ],
         check=False,
         capture_output=True,
         text=True,

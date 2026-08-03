@@ -2,7 +2,7 @@ import json
 import subprocess
 import sys
 
-from scripts import run_emotion_ablation
+from scripts.ablation import run_emotion_ablation
 
 
 class FakeResponse:
@@ -181,7 +181,12 @@ def test_main_validates_dialogues_before_model_setup(tmp_path, monkeypatch):
 
 def test_direct_cli_help_works():
     result = subprocess.run(
-        [sys.executable, "scripts/run_emotion_ablation.py", "--help"],
+        [
+            sys.executable,
+            "-m",
+            "scripts.ablation.run_emotion_ablation",
+            "--help",
+        ],
         check=False,
         capture_output=True,
         text=True,

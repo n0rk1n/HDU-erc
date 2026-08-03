@@ -1276,7 +1276,7 @@ def test_chat_stream_create_rejects_blank_message():
 
 
 def test_static_assets_exist():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
 
     assert (root / "chatbot" / "static" / "index.html").exists()
     assert (root / "chatbot" / "static" / "style.css").exists()
@@ -1284,7 +1284,7 @@ def test_static_assets_exist():
 
 
 def test_static_app_js_loads_session_snapshot():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
 
     assert 'fetch("/api/session?limit=10")' in app_js
@@ -1296,7 +1296,7 @@ def test_static_app_js_loads_session_snapshot():
 
 
 def test_static_app_js_clears_safety_status_during_analysis_transitions():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
 
     assert "function clearSafetyStatus()" in app_js
@@ -1319,7 +1319,7 @@ def test_static_app_js_clears_safety_status_during_analysis_transitions():
 
 
 def test_static_app_js_initializes_from_session_snapshot():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior test")
@@ -1444,7 +1444,7 @@ setImmediate(() => {
 
 
 def test_static_app_js_renders_and_submits_feedback_controls():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior test")
@@ -1669,7 +1669,7 @@ setImmediate(async () => {
 
 
 def test_static_app_js_regenerates_reply_with_reason_and_collapses_original():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior test")
@@ -1870,7 +1870,7 @@ setImmediate(async () => {
 
 
 def test_static_app_js_recovers_controls_when_regeneration_fails():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior test")
@@ -2068,7 +2068,7 @@ setImmediate(async () => {
 
 
 def test_static_app_js_disables_visible_reasons_during_pending_feedback():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior test")
@@ -2260,7 +2260,7 @@ setImmediate(async () => {
 
 
 def test_static_app_js_renders_regenerated_session_reply_after_original():
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is required for app.js behavior test")

@@ -1,7 +1,7 @@
 import subprocess
 import sys
 
-from scripts.evaluate_emotion_analysis import evaluate_records
+from scripts.ablation.evaluate_emotion_analysis import evaluate_records
 
 
 def test_evaluate_records_matches_by_turn_count():
@@ -87,7 +87,12 @@ def test_evaluate_records_matches_by_case_id_before_turn_count():
 
 def test_direct_cli_help_works():
     result = subprocess.run(
-        [sys.executable, "scripts/evaluate_emotion_analysis.py", "--help"],
+        [
+            sys.executable,
+            "-m",
+            "scripts.ablation.evaluate_emotion_analysis",
+            "--help",
+        ],
         check=False,
         capture_output=True,
         text=True,

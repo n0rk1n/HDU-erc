@@ -13,10 +13,10 @@ from pathlib import Path
 from typing import Any
 
 if __package__ in (None, ""):
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from chatbot.emotion import EMOTION_LABEL_SET, build_emotion_prompt
-from scripts.run_emotion_ablation import (
+from scripts.ablation.run_emotion_ablation import (
     RUN_CONFIGS,
     AblationRunConfig,
     _history_records,
@@ -81,7 +81,7 @@ def invoke_codex(
     )
     try:
         with tempfile.TemporaryDirectory(prefix="codex-emotion-") as isolated_cwd:
-            repository_root = Path(__file__).resolve().parents[1]
+            repository_root = Path(__file__).resolve().parents[2]
             isolated_path = Path(isolated_cwd).resolve()
             if isolated_path == repository_root or repository_root in isolated_path.parents:
                 raise RuntimeError("Temporary Codex working directory is inside the repository")
