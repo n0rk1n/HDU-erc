@@ -69,6 +69,18 @@ python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run zero_shot
 
 `no_emotion_history` 与 `short_context` 在该数据上都与 `full` 完全同构，不应调用、更不应把随机波动解释成组件贡献。历史相关消融需换用带**逐句人工标签**的数据集（例如 MELD/CPED）另做实验。
 
+## 64 条公开 seed 正式实验（已完成）
+
+2026-08-03 使用 `gpt-5.6-sol` 与 Codex CLI 0.146.0 完成三组有效配置，每组
+64/64 有效预测、0 失败。`full` 的 Accuracy/Macro F1 为 56.25%/54.91%；
+`no_dynamic_examples` 和 `zero_shot` 均为 57.81%/54.06%。两个 treatment
+相对 `full` 的 McNemar 精确检验均为 `p=1.000`，Accuracy 配对差值区间均为
+-4.69%～+9.38%，没有统计证据表明动态示例带来提升。
+
+完整指标、配对 bootstrap 区间、结论和运行元数据见
+`reports/seed64_gpt56sol/`；逐条预测保存在
+`data/records/codex_cli_ablation/empathetic_dialogues_seed64_gpt56sol/`。
+
 ## 原方法 pilot（已判定标签错位，仅保留追溯）
 
 仓库保留了 `reports/codex_pilot10/`：使用 Codex CLI 0.142.4、`gpt-5.6-sol`，对平衡 seed 前 10 条运行原有 5 组消融，共 50 次调用，调用失败为 0。

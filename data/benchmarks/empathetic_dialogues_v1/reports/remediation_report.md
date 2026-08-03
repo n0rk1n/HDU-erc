@@ -98,7 +98,7 @@ python scripts/run_codex_cli_emotion_ablation.py \
 
 - 不能把修复前 pilot10 与修复后 pilot32 直接做数值提升比较：两者输入目标和类别覆盖不同。
 - exact Accuracy/Macro F1 是正式结论；Family 指标只表示预测是否落在预先固定的相邻情绪族内。
-- 每类仅 1 条的 pilot32 仍是链路与方向性验证，不是最终统计结论；正式结论至少应运行完整 64 条 seed，并报告置信区间，理想情况下运行完整 2,542 条 test。
+- 每类仅 1 条的 pilot32 只能用于链路与方向性验证。2026-08-03 已补充完整 64 条 seed 及配对统计，结果见 `seed64_gpt56sol/`；理想情况下仍应运行完整 2,542 条 test。
 - EmpatheticDialogues 仍不适合验证历史截断和情绪历史组件。该问题需要引入带逐句人工标签的 MELD/CPED，并独立报告标签映射和许可边界。
 
 ## 防回归检查

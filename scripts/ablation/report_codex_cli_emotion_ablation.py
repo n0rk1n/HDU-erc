@@ -7,6 +7,7 @@ import csv
 import io
 import sys
 from collections import Counter
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable
 
@@ -14,6 +15,13 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.ablation.evaluate_emotion_analysis import evaluate_records, load_records
+from scripts.ablation.paired_statistics import (
+    BOOTSTRAP_SAMPLES,
+    BOOTSTRAP_SEED,
+    InvalidPairedComparisonError,
+    PairedObservation,
+    compare_paired_predictions,
+)
 
 
 LANGUAGES = ("zh", "en")
@@ -31,7 +39,14 @@ METRIC_FIELDS = (
     "family_accuracy",
     "family_macro_f1",
     "accuracy_delta_vs_full",
+    "accuracy_delta_ci95_low",
+    "accuracy_delta_ci95_high",
     "macro_f1_delta_vs_full",
+    "macro_f1_delta_ci95_low",
+    "macro_f1_delta_ci95_high",
+    "mcnemar_full_only_correct",
+    "mcnemar_treatment_only_correct",
+    "mcnemar_exact_p_value",
     "prompt_identical_to_full",
     "prompt_compared_to_full",
     "treatment_status",
@@ -116,6 +131,36 @@ def _slice(
     return evaluate_records(predictions, selected)
 
 
+def _prediction(record: dict[str, Any]) -> str:
+    value = record.get("emotion")
+    if record.get("success") is not True or not isinstance(value, str):
+        return ""
+    return value.strip().lower()
+
+
+def _paired_observations(
+    full_records: list[dict[str, Any]],
+    treatment_records: list[dict[str, Any]],
+    annotations: list[dict[str, Any]],
+) -> list[PairedObservation]:
+    full_by_id = {_identifier(record): record for record in full_records}
+    treatment_by_id = {_identifier(record): record for record in treatment_records}
+    observations = []
+    for annotation in annotations:
+        case_id = _identifier(annotation)
+        expected = _expected(annotation)
+        if not isinstance(expected, str):
+            continue
+        observations.append(
+            PairedObservation(
+                expected=expected.lower(),
+                baseline_prediction=_prediction(full_by_id[case_id]),
+                treatment_prediction=_prediction(treatment_by_id[case_id]),
+            )
+        )
+    return observations
+
+
 def build_report_data(
     runs: dict[str, list[dict[str, Any]]],
     annotations: list[dict[str, Any]],
@@ -129,6 +174,11 @@ def build_report_data(
         for record in runs.get("full", [])
         if _identifier(record)
     }
+    full_records = runs.get("full")
+    if full_records is None:
+        raise InvalidPairedComparisonError(
+            reason="A full run is required for paired inference."
+        )
     for name in sorted(runs):
         records = runs[name]
         identical = 0
@@ -180,6 +230,11 @@ def build_report_data(
                 "status": treatment_status,
                 "provenance": TREATMENT_PROVENANCE,
             },
+            "paired_vs_full": asdict(
+                compare_paired_predictions(
+                    _paired_observations(full_records, records, normalized)
+                )
+            ),
         }
     return output
 
@@ -193,6 +248,7 @@ def _metric_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
     for name in sorted(runs):
         run = runs[name]
         overall = run["overall"]
+        paired = run["paired_vs_full"]
         rows.append({
             "run": name,
             "samples": overall["total"],
@@ -205,8 +261,15 @@ def _metric_rows(report: dict[str, Any]) -> list[dict[str, Any]]:
             "macro_f1": overall["macro_f1"],
             "family_accuracy": overall["family_accuracy"],
             "family_macro_f1": overall["family_macro_f1"],
-            "accuracy_delta_vs_full": overall["accuracy"] - full["accuracy"],
-            "macro_f1_delta_vs_full": overall["macro_f1"] - full["macro_f1"],
+            "accuracy_delta_vs_full": paired["accuracy_delta"],
+            "accuracy_delta_ci95_low": paired["accuracy_delta_ci95_low"],
+            "accuracy_delta_ci95_high": paired["accuracy_delta_ci95_high"],
+            "macro_f1_delta_vs_full": paired["macro_f1_delta"],
+            "macro_f1_delta_ci95_low": paired["macro_f1_delta_ci95_low"],
+            "macro_f1_delta_ci95_high": paired["macro_f1_delta_ci95_high"],
+            "mcnemar_full_only_correct": paired["full_only_correct"],
+            "mcnemar_treatment_only_correct": paired["treatment_only_correct"],
+            "mcnemar_exact_p_value": paired["mcnemar_exact_p_value"],
             "prompt_identical_to_full": run["treatment"]["prompt_identical_to_full"],
             "prompt_compared_to_full": run["treatment"]["prompt_compared_to_full"],
             "treatment_status": run["treatment"]["status"],
@@ -230,7 +293,12 @@ def render_metrics_csv(report: dict[str, Any]) -> str:
             "family_accuracy",
             "family_macro_f1",
             "accuracy_delta_vs_full",
+            "accuracy_delta_ci95_low",
+            "accuracy_delta_ci95_high",
             "macro_f1_delta_vs_full",
+            "macro_f1_delta_ci95_low",
+            "macro_f1_delta_ci95_high",
+            "mcnemar_exact_p_value",
         ):
             row[field] = f"{row[field]:.6f}"
         writer.writerow(row)
@@ -268,8 +336,8 @@ def _noop_warning_lines(report: dict[str, Any]) -> list[str]:
 
 def _summary_table_lines(report: dict[str, Any]) -> list[str]:
     lines = [
-        "| Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy (95% CI) | Macro F1 | Family Accuracy* | Family Macro F1* | Δ Accuracy vs full | Δ Macro F1 vs full | Prompt identical/full | Treatment status | Provenance |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        "| Run | Samples | Valid predictions | 调用失败 | Correct | Accuracy (95% CI) | Macro F1 | Family Accuracy* | Family Macro F1* | Δ Accuracy vs full (paired 95% CI) | Δ Macro F1 vs full (paired 95% CI) | McNemar exact p | Prompt identical/full | Treatment status | Provenance |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
     ]
     for row in _metric_rows(report):
         lines.append(
@@ -277,10 +345,29 @@ def _summary_table_lines(report: dict[str, Any]) -> list[str]:
             f"{row['failures']} | {row['correct']} | {row['accuracy']:.2%} "
             f"({row['accuracy_ci95_low']:.2%}–{row['accuracy_ci95_high']:.2%}) | "
             f"{row['macro_f1']:.2%} | {row['family_accuracy']:.2%} | "
-            f"{row['family_macro_f1']:.2%} | {row['accuracy_delta_vs_full']:+.2%} | "
-            f"{row['macro_f1_delta_vs_full']:+.2%} | "
+            f"{row['family_macro_f1']:.2%} | {row['accuracy_delta_vs_full']:+.2%} "
+            f"({row['accuracy_delta_ci95_low']:+.2%}–{row['accuracy_delta_ci95_high']:+.2%}) | "
+            f"{row['macro_f1_delta_vs_full']:+.2%} "
+            f"({row['macro_f1_delta_ci95_low']:+.2%}–{row['macro_f1_delta_ci95_high']:+.2%}) | "
+            f"{row['mcnemar_exact_p_value']:.4f} | "
             f"{row['prompt_identical_to_full']}/{row['prompt_compared_to_full']} | "
             f"{row['treatment_status']} | {row['treatment_provenance']} |"
+        )
+    return lines
+
+
+def _paired_inference_lines(report: dict[str, Any]) -> list[str]:
+    lines = [
+        "| Run | full only correct | treatment only correct | McNemar exact p | Δ Accuracy paired 95% CI | Δ Macro F1 paired 95% CI |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in _metric_rows(report):
+        lines.append(
+            f"| {row['run']} | {row['mcnemar_full_only_correct']} | "
+            f"{row['mcnemar_treatment_only_correct']} | "
+            f"{row['mcnemar_exact_p_value']:.4f} | "
+            f"{row['accuracy_delta_ci95_low']:+.2%}–{row['accuracy_delta_ci95_high']:+.2%} | "
+            f"{row['macro_f1_delta_ci95_low']:+.2%}–{row['macro_f1_delta_ci95_high']:+.2%} |"
         )
     return lines
 
@@ -409,6 +496,17 @@ def render_chinese_report(
         "不能替代 32 类 exact Accuracy 与 Macro F1。",
         "",
     ])
+    lines.extend([
+        "## 配对统计推断",
+        "",
+        *_paired_inference_lines(report),
+        "",
+        f"Accuracy 采用精确 McNemar 检验；差值区间使用按 case_id 配对的 "
+        f"percentile bootstrap（{BOOTSTRAP_SAMPLES} 次，固定种子 {BOOTSTRAP_SEED}）。",
+        "p < 0.05 才可视为拒绝“两配置准确率相同”的初步证据；"
+        "Macro F1 差值仅根据配对 bootstrap 区间解读。",
+        "",
+    ])
     lines.extend(["## 语言切片", "", *_slice_table(report, "languages", LANGUAGES), ""])
     lines.extend([
         "## 上下文依赖切片",
@@ -422,6 +520,8 @@ def render_chinese_report(
         "## 方法",
         "",
         "- 使用现有 `evaluate_records` 进行 case_id 匹配、Accuracy 和 Macro F1 计算。",
+        f"- 配对统计按同一 case_id 重采样：精确 McNemar 检验 Accuracy，"
+        f"{BOOTSTRAP_SAMPLES} 次固定种子 percentile bootstrap 估计 Accuracy 和 Macro F1 差值区间。",
         "- treatment 有效性来自逐条记录的 `input` Prompt 与同 `case_id` 的 `full` Prompt 比对；"
         "全部相同时标记为 `no_op_identical_to_full`。",
         "- 按 `language` 和 `context_dependency` 的预定义枚举值切片，空切片显式记为 0。",

@@ -106,6 +106,7 @@ def test_render_chinese_report_contains_metrics_failures_and_limitations():
         "其相对 `full` 的指标差值不能单独归因于任一组件。"
     ) in text
     assert "## 整体结果" in text
+    assert "## 配对统计推断" in text
     assert "## 语言切片" in text
     assert "## 上下文依赖切片" in text
     assert "## 标签混淆" in text
@@ -134,7 +135,14 @@ def test_render_metrics_csv_has_required_columns_and_full_deltas():
             "family_accuracy",
             "family_macro_f1",
             "accuracy_delta_vs_full",
-        "macro_f1_delta_vs_full",
+            "accuracy_delta_ci95_low",
+            "accuracy_delta_ci95_high",
+            "macro_f1_delta_vs_full",
+            "macro_f1_delta_ci95_low",
+            "macro_f1_delta_ci95_high",
+            "mcnemar_full_only_correct",
+            "mcnemar_treatment_only_correct",
+            "mcnemar_exact_p_value",
         "prompt_identical_to_full",
         "prompt_compared_to_full",
         "treatment_status",
@@ -143,6 +151,7 @@ def test_render_metrics_csv_has_required_columns_and_full_deltas():
     assert rows[0]["run"] == "full"
     assert rows[0]["accuracy_delta_vs_full"] == "0.000000"
     assert rows[0]["macro_f1_delta_vs_full"] == "0.000000"
+    assert rows[0]["mcnemar_exact_p_value"] == "1.000000"
 
 
 def test_build_report_data_detects_noop_from_case_matched_prompt_identity():

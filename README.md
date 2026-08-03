@@ -450,6 +450,14 @@ python -m scripts.ablation.report_codex_cli_emotion_ablation \
 
 运行器会逐样本比较 treatment 与 `full` 的 Prompt，整组相同时直接跳过；所以 EmpatheticDialogues 正式集不会执行无历史可删的 `no_emotion_history` 和无上下文可截的 `short_context`。报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并再次记录 treatment 有效性。
 
+### 5. 64 条公开 seed 正式结果
+
+2026-08-03 已使用 `gpt-5.6-sol` 和 Codex CLI 0.146.0 完成三组有效配置，共
+192 次有效预测、0 失败。`full` 为 36/64（56.25%），两个对照均为
+37/64（57.81%）。配对 Accuracy 差值的 95% 区间为 -4.69%～+9.38%，精确
+McNemar `p=1.000`；本次没有证据表明动态示例优于两个对照。完整结论见
+`data/benchmarks/empathetic_dialogues_v1/reports/seed64_gpt56sol/`。
+
 ## 项目完成情况
 
 当前仓库已经形成从系统原型到实验分析的完整闭环：
@@ -458,7 +466,7 @@ python -m scripts.ablation.report_codex_cli_emotion_ablation \
 - 完成聊天、情绪、画像、记忆、安全和反馈模块的解耦实现；
 - 完成本地 SQLite 数据持久化和历史恢复；
 - 完成固定标签、结构化输出和动态示例驱动的情绪识别链路；
-- 完成 5 组消融配置、EmpatheticDialogues 公开数据基准、数据校验和指标报告工具；
+- 完成 5 组消融配置、EmpatheticDialogues 公开数据基准、64 条正式 seed 实验、配对统计和指标报告工具；
 - 建立覆盖后端服务、数据存储、Prompt、前端交互和实验脚本的自动化测试。
 
 仓库不预设某个模型一定优于其他模型。具体实验结论应在固定代码提交、模型版本、运行参数和数据版本后，根据公开基准上的原始结果与报告得出。

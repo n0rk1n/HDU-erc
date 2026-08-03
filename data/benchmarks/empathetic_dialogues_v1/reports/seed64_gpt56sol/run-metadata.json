@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "experiment": "empathetic_dialogues_seed64_gpt56sol",
+  "dataset": "EmpatheticDialogues balanced_seed.jsonl",
+  "dataset_sha256": "4835ca5a25cae5e239580cef7682210b41837b693645398acb4bf408fde74cb4",
+  "model": "gpt-5.6-sol",
+  "codex_cli_version": "codex-cli 0.146.0",
+  "branch": "codex/public-seed64-ablation-20260803",
+  "base_commit": "0706ebcbd6235c10b837907fc515db251691f84e",
+  "ended_at": "2026-08-03T15:58:55+08:00",
+  "runs": {
+    "full": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "sha256": "cdf479473a25f7d96305dbd85d0bcd7797d609325792b4c623b68cdc8a05276e"
+    },
+    "no_dynamic_examples": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "sha256": "071cf04570f39f937694f1217da2090d77ff2adf83bcf0ebcf110cf1eb096653"
+    },
+    "zero_shot": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "sha256": "87f2d623a40dd01c06da3c57faf7e8a72e69f7c0bfeb9afa4dadbe3dc7f64571"
+    }
+  },
+  "statistics": {
+    "accuracy_test": "two-sided exact McNemar",
+    "difference_interval": "case-paired percentile bootstrap",
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 20260803
+  },
+  "execution_note": "CLI 0.142.4 was rejected before valid inference. After upgrading to 0.146.0, a one-case smoke run succeeded and all three formal runs completed without failures. Invalid pre-upgrade snapshots are excluded."
+}
