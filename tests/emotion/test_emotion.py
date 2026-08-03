@@ -116,6 +116,16 @@ def test_build_emotion_prompt_supports_static_examples_mode():
     assert "True emotion label: grateful" in prompt
 
 
+def test_build_emotion_prompt_passes_prompt_variant_through():
+    prompt = build_emotion_prompt(
+        [],
+        "thank you",
+        prompt_variant="prompt_coarse_to_fine",
+    )
+
+    assert "First identify the broad emotion family internally" in prompt
+
+
 def test_parse_emotion_output_accepts_known_label():
     assert parse_emotion_output("Emotion: anxious") == "anxious"
 

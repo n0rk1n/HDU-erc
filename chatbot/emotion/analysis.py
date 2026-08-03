@@ -59,6 +59,7 @@ def build_emotion_prompt(
     max_turns: int = 5,
     example_mode: str = "dynamic",
     include_emotion_history: bool = True,
+    prompt_variant: str = "full",
 ) -> str:
     dialogue_context = _dialogue_context(records, current_input, max_turns)
 
@@ -91,6 +92,7 @@ def build_emotion_prompt(
         likely_emotions=prompt_likely_emotions,
         examples=selected_examples,
         include_static_examples=example_mode in {"dynamic", "static"},
+        prompt_variant=prompt_variant,
     )
 
 

@@ -11,6 +11,11 @@ from chatbot.emotion.analysis import (
     successful_emotion_snapshot,
 )
 from chatbot.emotion.labels import EMOTION_LABELS, EMOTION_LABEL_SET
+from chatbot.emotion.prompt_variants import (
+    DEFAULT_PROMPT_VARIANT,
+    PROMPT_VARIANT_NAMES,
+    resolve_emotion_prompt_template,
+)
 
 __all__ = [
     "EMOTION_LABELS",
@@ -23,4 +28,7 @@ __all__ = [
     "load_latest_successful_emotion",
     "parse_emotion_output",
     "successful_emotion_snapshot",
+    "DEFAULT_PROMPT_VARIANT",
+    "PROMPT_VARIANT_NAMES",
+    "resolve_emotion_prompt_template",
 ]

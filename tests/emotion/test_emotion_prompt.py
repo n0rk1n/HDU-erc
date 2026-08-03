@@ -1,4 +1,65 @@
+import pytest
+
 from chatbot.emotion.prompt import build_emotion_analysis_prompt
+
+
+def test_full_prompt_variant_preserves_existing_default_prompt():
+    kwargs = {
+        "emotion_labels": ["anxious", "lonely"],
+        "emotion_label_set": {"anxious", "lonely"},
+        "dialogue_context": "I feel alone tonight",
+        "current_input": "I feel alone tonight",
+    }
+    assert build_emotion_analysis_prompt(**kwargs) == build_emotion_analysis_prompt(
+        **kwargs,
+        prompt_variant="full",
+    )
+
+
+@pytest.mark.parametrize(
+    ("variant", "required_text"),
+    [
+        ("prompt_concise_direct", "Select exactly one emotion label"),
+        ("prompt_coarse_to_fine", "First identify the broad emotion family internally"),
+        ("prompt_contrastive_check", "Compare the two most plausible labels internally"),
+    ],
+)
+def test_prompt_variant_renders_distinct_instruction(variant, required_text):
+    prompt = build_emotion_analysis_prompt(
+        emotion_labels=["anxious", "lonely"],
+        emotion_label_set={"anxious", "lonely"},
+        dialogue_context="I feel alone tonight",
+        current_input="I feel alone tonight",
+        prompt_variant=variant,
+    )
+    assert required_text in prompt
+    assert "Emotion labels: anxious, lonely" in prompt
+    assert "Dialogue context: I feel alone tonight" in prompt
+    assert "Return exactly one JSON object" in prompt
+
+
+def test_no_label_guidance_variant_removes_definition_block_only():
+    prompt = build_emotion_analysis_prompt(
+        emotion_labels=["anxious", "lonely"],
+        emotion_label_set={"anxious", "lonely"},
+        dialogue_context="I feel alone tonight",
+        current_input="I feel alone tonight",
+        prompt_variant="prompt_no_label_guidance",
+    )
+    assert "Emotion labels: anxious, lonely" in prompt
+    assert "Label definitions" not in prompt
+    assert "Labeled examples:" in prompt
+    assert "Dialogue context: I feel alone tonight" in prompt
+
+
+def test_unknown_prompt_variant_is_rejected_before_rendering():
+    with pytest.raises(ValueError, match="Unknown emotion prompt variant"):
+        build_emotion_analysis_prompt(
+            emotion_labels=["anxious"],
+            emotion_label_set={"anxious"},
+            dialogue_context="test",
+            prompt_variant="unknown",
+        )
 
 
 def test_build_emotion_analysis_prompt_renders_examples_and_candidates():

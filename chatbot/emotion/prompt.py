@@ -4,6 +4,11 @@ from typing import Any
 
 from chatbot.emotion.examples import EmotionExample, select_emotion_examples
 from chatbot.emotion.labels import format_emotion_label_guidance
+from chatbot.emotion.prompt_variants import (
+    COMMON_RESPONSE_BLOCK,
+    DEFAULT_PROMPT_VARIANT,
+    resolve_emotion_prompt_template,
+)
 from chatbot.core.prompt_config import DEFAULT_EMOTION_ANALYSIS_PROMPT, load_prompt_config
 
 
@@ -17,6 +22,7 @@ def build_emotion_analysis_prompt(
     likely_emotions: list[str] | None = None,
     examples: list[dict[str, Any]] | None = None,
     include_static_examples: bool = True,
+    prompt_variant: str = DEFAULT_PROMPT_VARIANT,
 ) -> str:
     """Build a few-shot emotion-recognition prompt."""
     normalized_likely = normalize_likely_emotions(
@@ -44,12 +50,21 @@ def build_emotion_analysis_prompt(
         "example_block": example_block,
         "likely_line": likely_line,
         "dialogue_context": dialogue_context,
+        "response_block": COMMON_RESPONSE_BLOCK,
     }
-    template = load_prompt_config().emotion_analysis
+    if prompt_variant == DEFAULT_PROMPT_VARIANT:
+        template = load_prompt_config().emotion_analysis
+        try:
+            return template.format(**values).strip()
+        except (KeyError, IndexError, ValueError):
+            return DEFAULT_EMOTION_ANALYSIS_PROMPT.format(**values).strip()
+    template = resolve_emotion_prompt_template(prompt_variant)
     try:
         return template.format(**values).strip()
-    except (KeyError, IndexError, ValueError):
-        return DEFAULT_EMOTION_ANALYSIS_PROMPT.format(**values).strip()
+    except (KeyError, IndexError, ValueError) as exc:
+        raise ValueError(
+            f"Failed to render emotion prompt variant {prompt_variant!r}: {exc}"
+        ) from exc
 
 
 def normalize_likely_emotions(
