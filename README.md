@@ -450,7 +450,7 @@ python -m scripts.ablation.report_codex_cli_emotion_ablation \
 
 运行器会逐样本比较 treatment 与 `full` 的 Prompt，整组相同时直接跳过；所以 EmpatheticDialogues 正式集不会执行无历史可删的 `no_emotion_history` 和无上下文可截的 `short_context`。报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并再次记录 treatment 有效性。
 
-### 5. Prompt 多版本消融实验（预注册，仅筛选）
+### 5. Prompt 多版本消融实验（第一阶段已完成）
 
 `full` 之外提供 4 个固定 Prompt 变体，用于研究指令措辞对 32 类情绪识别的
 影响。五个配置共享相同的动态示例、情绪历史与默认上下文窗口，只允许 Prompt
@@ -496,6 +496,14 @@ python -m scripts.ablation.report_codex_cli_emotion_ablation \
 Macro F1、Family Accuracy。完整 2,542 条测试集与第二阶段调用量需要再次
 确认后才能执行；配对差值区间包含 0 时不得声称已证明提升。
 
+2026-08-03 已使用 `gpt-5.6-sol` 和 Codex CLI 0.146.0 完成五组实验，共
+320 次有效预测、0 失败。`prompt_no_label_guidance` 和
+`prompt_coarse_to_fine` 均为 38/64（59.38%），高于 `full` 的 36/64
+（56.25%），因此按预注册规则进入第二阶段候选；但两组相对 `full` 的 Accuracy
+配对差值 95% 区间均为 -3.12%～+9.38%，McNemar 精确检验均为 `p=0.625`，
+尚不能声称已经证明提升。完整报告见
+`data/benchmarks/empathetic_dialogues_v1/reports/prompt_variants_seed64_gpt56sol/`。
+
 ### 6. 64 条公开 seed 正式结果
 
 2026-08-03 已使用 `gpt-5.6-sol` 和 Codex CLI 0.146.0 完成三组有效配置，共
@@ -512,7 +520,7 @@ McNemar `p=1.000`；本次没有证据表明动态示例优于两个对照。完
 - 完成聊天、情绪、画像、记忆、安全和反馈模块的解耦实现；
 - 完成本地 SQLite 数据持久化和历史恢复；
 - 完成固定标签、结构化输出和动态示例驱动的情绪识别链路；
-- 完成 5 组消融配置、EmpatheticDialogues 公开数据基准、64 条正式 seed 实验、配对统计和指标报告工具；
+- 完成组件消融与 5 组 Prompt 变体配置、EmpatheticDialogues 公开数据基准、两轮 64 条正式 seed 实验、配对统计和指标报告工具；
 - 建立覆盖后端服务、数据存储、Prompt、前端交互和实验脚本的自动化测试。
 
 仓库不预设某个模型一定优于其他模型。具体实验结论应在固定代码提交、模型版本、运行参数和数据版本后，根据公开基准上的原始结果与报告得出。

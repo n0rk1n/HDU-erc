@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "experiment": "empathetic_dialogues_prompt_variants_seed64_gpt56sol",
+  "dataset": "EmpatheticDialogues balanced_seed.jsonl",
+  "dataset_sha256": "4835ca5a25cae5e239580cef7682210b41837b693645398acb4bf408fde74cb4",
+  "schema_sha256": "ee27cf553044b01cd92e663639f4256b4c0fbb8e5275e07c6b24b1cc6a82c210",
+  "model": "gpt-5.6-sol",
+  "codex_cli_version": "codex-cli 0.146.0",
+  "runtime_provenance": "codex_exec_ephemeral_read_only_isolated_cwd_v1",
+  "branch": "codex/prompt-variant-ablation-20260803",
+  "execution_commit": "c69e2287767cec78922444f63a84515f85fc8a3b",
+  "started_at": "2026-08-03T18:19:28+08:00",
+  "ended_at": "2026-08-03T18:54:26+08:00",
+  "runs": {
+    "full": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "distinct_prompt_sha256": 64,
+      "prompt_identical_to_full": 64,
+      "sha256": "73031d5e788148e9f95521c2b0068761a763318455998a70250950838a5fb995"
+    },
+    "prompt_no_label_guidance": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "distinct_prompt_sha256": 64,
+      "prompt_identical_to_full": 0,
+      "sha256": "4b944f84ee55956e67186d99e2a02a9d04f59cd1a1be08602a31edc3a9bd5945"
+    },
+    "prompt_concise_direct": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "distinct_prompt_sha256": 64,
+      "prompt_identical_to_full": 0,
+      "sha256": "d070dd1564c958cb5f343beb350b3a3a45bfd462ac6c521cc2e5e8a3e8b67bd7"
+    },
+    "prompt_coarse_to_fine": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "distinct_prompt_sha256": 64,
+      "prompt_identical_to_full": 0,
+      "sha256": "91c5499d197ab5e9514d84f809278e51c9c6148adc48923cddcfb0a98194d489"
+    },
+    "prompt_contrastive_check": {
+      "records": 64,
+      "successful": 64,
+      "failed": 0,
+      "distinct_prompt_sha256": 64,
+      "prompt_identical_to_full": 0,
+      "sha256": "9ddf55890a4424da4b189dd3d63e8bf42d3397dff453df000a72554991f07f64"
+    }
+  },
+  "statistics": {
+    "candidate_ranking": [
+      "accuracy",
+      "macro_f1",
+      "family_accuracy"
+    ],
+    "accuracy_test": "two-sided exact McNemar",
+    "difference_interval": "case-paired percentile bootstrap",
+    "bootstrap_samples": 10000,
+    "bootstrap_seed": 20260803
+  },
+  "execution_note": "Each run began with a one-case smoke snapshot; matching successful provenance was reused, then the remaining 63 cases completed without failures."
+}

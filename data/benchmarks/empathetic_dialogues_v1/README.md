@@ -69,13 +69,20 @@ python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run zero_shot
 
 `no_emotion_history` 与 `short_context` 在该数据上都与 `full` 完全同构，不应调用、更不应把随机波动解释成组件贡献。历史相关消融需换用带**逐句人工标签**的数据集（例如 MELD/CPED）另做实验。
 
-## Prompt 多版本实验（第一阶段，仅筛选）
+## Prompt 多版本实验（第一阶段已完成，仅用于筛选）
 
 `full` 之外提供 4 个固定 Prompt 变体（`prompt_no_label_guidance`、
 `prompt_concise_direct`、`prompt_coarse_to_fine`、`prompt_contrastive_check`），
 共享动态示例、情绪历史与默认上下文窗口，仅模板不同。第一阶段在 64 条平衡
-seed 上运行，结果只用于筛选候选；运行与报告命令见仓库 README。完整
-2,542 条测试集尚未运行，第二阶段结论需要在完整集上再次确认后才能表述。
+seed 上运行，结果只用于筛选候选；运行与报告命令见仓库 README。
+
+2026-08-03 使用 `gpt-5.6-sol` 与 Codex CLI 0.146.0 完成五组配置，每组
+64/64 有效预测、0 失败。`full` 为 56.25% Accuracy / 55.31% Macro F1；
+`prompt_no_label_guidance` 为 59.38% / 57.92%，
+`prompt_coarse_to_fine` 为 59.38% / 56.56%，按预注册排序成为两个第二阶段候选。
+两组 Accuracy 配对差值的 95% 区间均为 -3.12%～+9.38%，且 McNemar
+`p=0.625`，所以只能视为候选趋势，不能视为已证明提升。完整 2,542 条测试集尚未
+运行；正式报告和运行元数据见 `reports/prompt_variants_seed64_gpt56sol/`。
 
 ## 64 条公开 seed 正式实验（已完成）
 
