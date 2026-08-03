@@ -6,6 +6,7 @@ import pytest
 from scripts.ablation.report_codex_cli_emotion_ablation import (
     build_report_data,
     main,
+    rank_prompt_candidates,
     render_chinese_report,
     render_metrics_csv,
     render_summary,
@@ -38,6 +39,43 @@ RUNS = {
         {"case_id": "case-001", "run": "no_emotion_history", "emotion": "", "success": False},
         {"case_id": "case-002", "run": "no_emotion_history", "emotion": "grateful", "success": True},
     ],
+    "zero_shot": [
+        {"case_id": "case-001", "run": "zero_shot", "emotion": "sad", "success": True},
+        {"case_id": "case-002", "run": "zero_shot", "emotion": "grateful", "success": True},
+    ],
+}
+
+
+def _prompt_run(name, predictions):
+    return [
+        {
+            "case_id": seed["case_id"],
+            "run": name,
+            "input": f"{name} prompt {index}",
+            "emotion": prediction,
+            "success": True,
+        }
+        for index, (seed, prediction) in enumerate(
+            zip(SEED_RECORDS, predictions),
+            start=1,
+        )
+    ]
+
+
+PROMPT_RUNS = {
+    "full": _prompt_run("full", ["anxious", "sad"]),
+    "prompt_no_label_guidance": _prompt_run(
+        "prompt_no_label_guidance", ["sad", "grateful"]
+    ),
+    "prompt_concise_direct": _prompt_run(
+        "prompt_concise_direct", ["anxious", "grateful"]
+    ),
+    "prompt_coarse_to_fine": _prompt_run(
+        "prompt_coarse_to_fine", ["anxious", "grateful"]
+    ),
+    "prompt_contrastive_check": _prompt_run(
+        "prompt_contrastive_check", ["sad", "grateful"]
+    ),
 }
 
 
@@ -383,3 +421,69 @@ def test_seed_case_id_takes_precedence_over_legacy_id():
     report = build_report_data({"full": records}, seed)
 
     assert report["runs"]["full"]["overall"]["correct"] == 1
+
+
+def test_prompt_variant_report_uses_specific_title_and_limitations():
+    report = build_report_data(PROMPT_RUNS, SEED_RECORDS)
+    text = render_chinese_report(report, report_kind="prompt_variants")
+    assert text.startswith("# Codex CLI 情绪识别 Prompt 多版本实验报告")
+    assert "64 条结果只用于筛选" in text
+    assert "zero_shot` 同时禁用" not in text
+
+
+def test_rank_prompt_candidates_uses_preregistered_metric_order():
+    report = {
+        "runs": {
+            "full": {
+                "overall": {"accuracy": 0.50, "macro_f1": 0.50, "family_accuracy": 0.50},
+                "treatment": {"status": "baseline"},
+            },
+            "prompt_coarse_to_fine": {
+                "overall": {"accuracy": 0.75, "macro_f1": 0.60, "family_accuracy": 0.80},
+                "treatment": {"status": "effective_prompt_change"},
+            },
+            "prompt_concise_direct": {
+                "overall": {"accuracy": 0.50, "macro_f1": 0.80, "family_accuracy": 0.90},
+                "treatment": {"status": "effective_prompt_change"},
+            },
+            "prompt_contrastive_check": {
+                "overall": {"accuracy": 0.50, "macro_f1": 0.80, "family_accuracy": 0.70},
+                "treatment": {"status": "effective_prompt_change"},
+            },
+            "prompt_no_label_guidance": {
+                "overall": {"accuracy": 1.00, "macro_f1": 1.00, "family_accuracy": 1.00},
+                "treatment": {"status": "no_op_identical_to_full"},
+            },
+        }
+    }
+    assert rank_prompt_candidates(report, limit=2) == [
+        "prompt_coarse_to_fine",
+        "prompt_concise_direct",
+    ]
+
+
+def test_prompt_variant_main_writes_conclusion(tmp_path):
+    seed_file = tmp_path / "seed.jsonl"
+    seed_file.write_text(
+        "".join(json.dumps(item) + "\n" for item in SEED_RECORDS),
+        encoding="utf-8",
+    )
+    full_file = tmp_path / "full.json"
+    full_file.write_text(json.dumps(PROMPT_RUNS["full"]), encoding="utf-8")
+    concise_file = tmp_path / "prompt_concise_direct.json"
+    concise_file.write_text(
+        json.dumps(PROMPT_RUNS["prompt_concise_direct"]),
+        encoding="utf-8",
+    )
+    output_dir = tmp_path / "report"
+    result = main([
+        "--report-kind", "prompt_variants",
+        "--seed-file", str(seed_file),
+        "--run", f"full={full_file}",
+        "--run", f"prompt_concise_direct={concise_file}",
+        "--output-dir", str(output_dir),
+    ])
+    assert result == 0
+    conclusion = (output_dir / "conclusion-zh.md").read_text(encoding="utf-8")
+    assert "候选 Prompt" in conclusion
+    assert "不能表述为已经证明提升" in conclusion

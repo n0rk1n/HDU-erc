@@ -26,6 +26,7 @@ from scripts.ablation.paired_statistics import (
 
 LANGUAGES = ("zh", "en")
 CONTEXT_LEVELS = ("none", "low", "medium", "high")
+REPORT_KINDS = ("emotion_ablation", "prompt_variants")
 METRIC_FIELDS = (
     "run",
     "samples",
@@ -372,8 +373,69 @@ def _paired_inference_lines(report: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_summary(report: dict[str, Any]) -> str:
-    lines = ["# Codex CLI 情绪识别消融摘要", ""]
+def rank_prompt_candidates(report: dict[str, Any], limit: int = 2) -> list[str]:
+    """Rank effective prompt treatments by preregistered metric order.
+
+    Excludes ``full``, no-op treatments and runs with incomplete prompt
+    evidence, then sorts by Accuracy, Macro F1, Family Accuracy descending,
+    with the run name as a stable ascending tiebreaker.
+    """
+    candidates = []
+    for name, run in report["runs"].items():
+        if name == "full" or run["treatment"]["status"] != "effective_prompt_change":
+            continue
+        metric = run["overall"]
+        candidates.append((
+            -metric["accuracy"],
+            -metric["macro_f1"],
+            -metric["family_accuracy"],
+            name,
+        ))
+    return [item[-1] for item in sorted(candidates)[:limit]]
+
+
+def render_prompt_variant_conclusion(report: dict[str, Any]) -> str:
+    """Render the fixed conclusion for a prompt-variant seed experiment."""
+    candidates = rank_prompt_candidates(report, limit=2)
+    lines = [
+        "# Prompt 变体实验结论",
+        "",
+        "## 第二阶段候选 Prompt",
+        "",
+    ]
+    if not candidates:
+        lines.append(
+            "本轮 64 条 seed 结果中，没有任何 Prompt 变体相对 `full` "
+            "表现出稳定的指标优势，不进入第二阶段。"
+        )
+    else:
+        for name in candidates:
+            overall = report["runs"][name]["overall"]
+            paired = report["runs"][name]["paired_vs_full"]
+            lines.append(
+                f"- 候选 Prompt：`{name}`，Accuracy {overall['accuracy']:.2%}，"
+                f"相对 `full` 点估计 {paired['accuracy_delta']:+.2%}，"
+                f"配对 95% 区间 {paired['accuracy_delta_ci95_low']:+.2%}–"
+                f"{paired['accuracy_delta_ci95_high']:+.2%}。"
+            )
+    lines.extend([
+        "",
+        "## 边界声明",
+        "",
+        "- 64 条 seed 结果只用于筛选，不能作为最终结论。",
+        "- 当配对差值区间包含 0 时，不能表述为已经证明提升。",
+        "- 完整 2,542 条测试集尚未运行；第二阶段调用量需要用户再次确认。",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def render_summary(report: dict[str, Any], report_kind: str = "emotion_ablation") -> str:
+    title = (
+        "# Codex CLI 情绪识别 Prompt 多版本实验摘要"
+        if report_kind == "prompt_variants"
+        else "# Codex CLI 情绪识别消融摘要"
+    )
+    lines = [title, ""]
     warning_lines = _noop_warning_lines(report)
     if warning_lines:
         lines.extend([*warning_lines, ""])
@@ -456,10 +518,15 @@ def _label_provenance_summary(report: dict[str, Any]) -> str:
 def render_chinese_report(
     report: dict[str, Any],
     metadata: dict[str, Any] | None = None,
+    report_kind: str = "emotion_ablation",
 ) -> str:
     """Render a deterministic Chinese Markdown report without environment reads."""
     metadata = metadata or {}
-    lines = ["# Codex CLI 情绪识别消融实验报告", ""]
+    if report_kind == "prompt_variants":
+        title = "# Codex CLI 情绪识别 Prompt 多版本实验报告"
+    else:
+        title = "# Codex CLI 情绪识别消融实验报告"
+    lines = [title, ""]
     if metadata:
         lines.extend(["## 实验元数据", ""])
         for key in sorted(metadata):
@@ -536,9 +603,17 @@ def render_chinese_report(
         "结果包含 Codex 系统指令和 Agent 运行环境的影响。",
         "- 切片样本较少时，Accuracy 和 Macro F1 波动较大，不应单独解读。",
         "- 调用失败同时会拉低指标，需与分类错误分开观察。",
-        "- `zero_shot` 同时禁用 few-shot 示例和情绪历史先验，因此属于组合消融；"
-        "其相对 `full` 的指标差值不能单独归因于任一组件。",
     ])
+    if report_kind == "prompt_variants":
+        lines.append(
+            "- 64 条结果只用于筛选；第二阶段需要在完整 2,542 条测试集上再次确认，"
+            "调用量需用户再次确认。"
+        )
+    if "zero_shot" in report["runs"]:
+        lines.append(
+            "- `zero_shot` 同时禁用 few-shot 示例和情绪历史先验，因此属于组合消融；"
+            "其相对 `full` 的指标差值不能单独归因于任一组件。"
+        )
     execution_note = metadata.get("execution_note")
     if execution_note:
         lines.append(f"- 执行过程说明：{_escape_cell(execution_note)}")
@@ -557,6 +632,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--run", action="append", required=True, help="NAME=path/to/analysis.json")
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--report-kind",
+        choices=REPORT_KINDS,
+        default="emotion_ablation",
+        help="Report kind; prompt_variants adds a fixed candidate conclusion file.",
+    )
     parser.add_argument("--commit")
     parser.add_argument("--codex-version")
     parser.add_argument("--branch")
@@ -604,11 +685,23 @@ def main(argv: list[str] | None = None) -> int:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "metrics.csv").write_text(render_metrics_csv(report), encoding="utf-8")
-    (output_dir / "summary.md").write_text(render_summary(report), encoding="utf-8")
-    (output_dir / "report-zh.md").write_text(
-        render_chinese_report(report, metadata=metadata),
+    (output_dir / "summary.md").write_text(
+        render_summary(report, report_kind=args.report_kind),
         encoding="utf-8",
     )
+    (output_dir / "report-zh.md").write_text(
+        render_chinese_report(
+            report,
+            metadata=metadata,
+            report_kind=args.report_kind,
+        ),
+        encoding="utf-8",
+    )
+    if args.report_kind == "prompt_variants":
+        (output_dir / "conclusion-zh.md").write_text(
+            render_prompt_variant_conclusion(report),
+            encoding="utf-8",
+        )
     return 0
 
 
