@@ -62,9 +62,9 @@ python scripts/benchmark/export_emotion_benchmark.py \
 正式集没有历史，因此只运行三组实际会改变 Prompt 的对照：
 
 ```bash
-python scripts/run_codex_cli_emotion_ablation.py ... --run full
-python scripts/run_codex_cli_emotion_ablation.py ... --run no_dynamic_examples
-python scripts/run_codex_cli_emotion_ablation.py ... --run zero_shot
+python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run full
+python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run no_dynamic_examples
+python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run zero_shot
 ```
 
 `no_emotion_history` 与 `short_context` 在该数据上都与 `full` 完全同构，不应调用、更不应把随机波动解释成组件贡献。历史相关消融需换用带**逐句人工标签**的数据集（例如 MELD/CPED）另做实验。

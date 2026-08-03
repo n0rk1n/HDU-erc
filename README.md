@@ -305,7 +305,7 @@ SSE 事件：
 ### 1. 评估一份 JSON/JSONL 结果
 
 ```bash
-python scripts/evaluate_emotion_analysis.py \
+python -m scripts.ablation.evaluate_emotion_analysis \
   --analysis-file data/examples/dynamic_eicl_sample.json \
   --labels-file data/examples/emotion_labels_sample.json
 ```
@@ -322,7 +322,7 @@ python scripts/evaluate_emotion_analysis.py \
 
 ### 2. 运行 5 组 OpenAI-compatible LLM 消融
 
-`scripts/run_emotion_ablation.py` 复用应用的情绪 LLM 配置并运行：
+`scripts.ablation.run_emotion_ablation` 复用应用的情绪 LLM 配置并运行：
 
 | Run | 示例策略 | 情绪历史先验 | 上下文 |
 | --- | --- | --- | --- |
@@ -343,7 +343,7 @@ python scripts/benchmark/export_emotion_benchmark.py \
 生成结果：
 
 ```bash
-python scripts/run_emotion_ablation.py \
+python -m scripts.ablation.run_emotion_ablation \
   --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
   --output-dir data/records/ablation
 ```
@@ -351,7 +351,7 @@ python scripts/run_emotion_ablation.py \
 汇总指标：
 
 ```bash
-python scripts/evaluate_emotion_ablation.py \
+python -m scripts.ablation.evaluate_emotion_ablation \
   --labels-file data/records/empathetic_dialogues_seed_export/labels.jsonl \
   --run full=data/records/ablation/full.json \
   --run no_dynamic_examples=data/records/ablation/no_dynamic_examples.json \
@@ -405,7 +405,7 @@ python scripts/benchmark/export_emotion_benchmark.py \
 执行覆盖全部标签的 32 条 pilot。`--model` 必填，请替换为当前 Codex CLI 支持的模型，并只选择会实际改变 Prompt 的三组：
 
 ```bash
-python scripts/run_codex_cli_emotion_ablation.py \
+python -m scripts.ablation.run_codex_cli_emotion_ablation \
   --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot \
   --limit 32 \
@@ -416,7 +416,7 @@ python scripts/run_codex_cli_emotion_ablation.py \
 pilot 报告必须使用相同的 `--limit 32`，确保标注范围与运行结果一致：
 
 ```bash
-python scripts/report_codex_cli_emotion_ablation.py \
+python -m scripts.ablation.report_codex_cli_emotion_ablation \
   --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --limit 32 \
   --run full=data/records/codex_cli_ablation/empathetic_dialogues_pilot/full.json \
@@ -428,7 +428,7 @@ python scripts/report_codex_cli_emotion_ablation.py \
 去掉 `--limit 32` 并更换输出目录即可运行全部 64 条 seed：
 
 ```bash
-python scripts/run_codex_cli_emotion_ablation.py \
+python -m scripts.ablation.run_codex_cli_emotion_ablation \
   --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
   --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64 \
   --run full --run no_dynamic_examples --run zero_shot \
@@ -440,7 +440,7 @@ python scripts/run_codex_cli_emotion_ablation.py \
 生成中文报告：
 
 ```bash
-python scripts/report_codex_cli_emotion_ablation.py \
+python -m scripts.ablation.report_codex_cli_emotion_ablation \
   --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --run full=data/records/codex_cli_ablation/empathetic_dialogues_seed64/full.json \
   --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_seed64/no_dynamic_examples.json \
@@ -467,46 +467,39 @@ python scripts/report_codex_cli_emotion_ablation.py \
 
 ```text
 chatbot/
-  web.py                  FastAPI 应用、HTTP 路由和 SSE
+  web.py                  FastAPI 稳定入口、HTTP 路由和 SSE
   chat_service.py         聊天、情绪、安全、记忆和持久化编排
-  config.py               聊天与情绪 LLM 配置
-  llm.py                  LangChain Prompt、chain 和会话历史
-  llm_adapter.py          OpenAI-compatible LLM 适配器
-
-  emotion.py              情绪 Prompt 调用和分析记录
-  emotion_state.py        结构化情绪状态解析与时间线
-  emotion_prompt.py       情绪识别 Prompt 组装
-  emotion_retrieval.py    动态 EICL 示例选择
-  emotion_feedback.py     情绪正确性反馈
-  safety.py               本地安全级别与回复提示
-
-  runtime_store.py        通用 SQLite 运行时存储
-  history.py              消息、点赞点踩和重新生成记录
-  profile.py              用户画像持久化
-  profile_onboarding.py   画像问题、草稿和字段过滤
-
-  memory.py               长期记忆协议和配置
-  local_memory.py         SQLite 记忆、检索、去重与冲突处理
-  memory_extractor.py     单轮保守记忆抽取
-  memory_consolidation.py 周期性跨轮记忆提炼
-  prompt_config.py        可覆盖 Prompt 与内置回退
-  static/                 无构建前端
+  main.py                 Web 运行时模型装配
+  core/                   配置、LLM、Prompt、运行时存储和历史
+  emotion/                情绪分析、状态、示例、反馈和安全提示
+  memory/                 长期记忆协议、SQLite、抽取和周期性提炼
+  profile/                用户画像持久化与首次录入
+  static/                 无构建前端资源
 
 scripts/
-  evaluate_emotion_analysis.py         单组离线指标
-  run_emotion_ablation.py              OpenAI-compatible LLM 消融
-  evaluate_emotion_ablation.py         多组消融汇总
-  run_codex_cli_emotion_ablation.py    Codex CLI 隔离运行器
-  report_codex_cli_emotion_ablation.py Codex 消融报告
-  benchmark/                           公开数据集转换、校验与导出工具
+  ablation/               单组评估、消融运行、汇总和报告
+  benchmark/              公开数据集转换、校验、统计与导出
 
 data/
   config/                 Prompt 示例和 Codex 输出 Schema
   examples/               小型评估与消融样例
-  benchmarks/             EmpatheticDialogues 真实基准与 Emotion Ablation V2 合成诊断集
+  benchmarks/             EmpatheticDialogues 公开真实数据基准
   records/                本地运行时数据与实验输出，不提交到 Git
 
-tests/                    单元、Web、前端脚本和实验工具测试
+tests/
+  app/                    Web、聊天服务和运行时装配测试
+  core/                   配置、LLM、Prompt、存储和历史测试
+  emotion/                情绪分析、状态、反馈和安全测试
+  memory/                 长期记忆、SQLite、抽取和提炼测试
+  profile/                用户画像测试
+  scripts/                benchmark 与 ablation CLI 测试
+  project/                README 与仓库路径契约测试
+
+docs/
+  design/                 当前系统设计
+  archive/                已完成计划与历史研究材料
+
+deliverables/             最终导师汇报文件
 ```
 
 ## 系统测试
@@ -520,7 +513,7 @@ python -m pytest -q
 只检查 README 中的关键路径和样例文件：
 
 ```bash
-python -m pytest tests/test_readme.py -q
+python -m pytest tests/project/test_readme.py -q
 ```
 
 ## 项目边界与后续工作

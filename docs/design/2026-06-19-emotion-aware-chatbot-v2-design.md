@@ -58,8 +58,8 @@ Core boundaries:
 - `chatbot.emotion_state`: structured result models, timeline helpers, transition summaries, and serialization.
 - `chatbot.safety`: lightweight safety policy based on user text and emotion state.
 - `chatbot.web`: API routes for session, emotion timeline, feedback, and static UI.
-- `scripts/evaluate_emotion_analysis.py`: remains the single-run evaluator.
-- `scripts/evaluate_emotion_ablation.py`: compares multiple recognition variants.
+- `scripts/ablation/evaluate_emotion_analysis.py`: remains the single-run evaluator.
+- `scripts/ablation/evaluate_emotion_ablation.py`: compares multiple recognition variants.
 
 The existing local-first storage model should stay intact. JSON files and SQLite remain acceptable for v2.
 
@@ -229,7 +229,7 @@ The existing message feedback and regeneration code should remain intact. Emotio
 
 ## Ablation Evaluation
 
-Add `scripts/evaluate_emotion_ablation.py` to compare multiple recognition modes.
+Add `scripts/ablation/evaluate_emotion_ablation.py` to compare multiple recognition modes.
 
 Recommended modes:
 

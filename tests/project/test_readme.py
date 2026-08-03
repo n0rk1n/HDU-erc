@@ -10,6 +10,9 @@ def test_readme_documents_current_stream_and_emotion_config_rules():
     assert "data/examples/emotion_labels_sample.json" in readme
     assert "data/examples/dynamic_eicl_sample.json" in readme
     assert "data/records/emotion_labels.json" not in readme
+    assert "python -m scripts.ablation.run_emotion_ablation" in readme
+    assert "python scripts/run_emotion_ablation.py" not in readme
+    assert "Emotion Ablation V2 合成诊断集" not in readme
 
 
 def test_documented_example_files_exist():
