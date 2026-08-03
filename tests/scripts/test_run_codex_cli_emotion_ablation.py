@@ -252,6 +252,49 @@ def test_noop_runs_against_full_detects_history_ablations_without_history():
     assert noops == ["no_emotion_history", "short_context"]
 
 
+def test_prompt_variant_runs_are_not_noops_against_full():
+    run_names = [
+        "full",
+        "prompt_no_label_guidance",
+        "prompt_concise_direct",
+        "prompt_coarse_to_fine",
+        "prompt_contrastive_check",
+    ]
+    assert runner.noop_runs_against_full(
+        CASES,
+        run_names,
+        emotion_interval=5,
+    ) == []
+    prompts = {
+        name: runner.build_case_prompt(
+            runner.RUN_CONFIGS[name], CASES[0], 1, emotion_interval=5
+        )
+        for name in run_names
+    }
+    assert len(set(prompts.values())) == 5
+
+
+def test_resume_provenance_changes_with_prompt_variant(tmp_path):
+    full = runner.build_case_prompt(
+        runner.RUN_CONFIGS["full"], CASES[0], 1, emotion_interval=5
+    )
+    concise = runner.build_case_prompt(
+        runner.RUN_CONFIGS["prompt_concise_direct"],
+        CASES[0],
+        1,
+        emotion_interval=5,
+    )
+    full_provenance = runner.build_resume_provenance(
+        full, schema_file=tmp_path / "schema.json", model="gpt-test",
+        codex_cli_version="codex-cli test",
+    )
+    concise_provenance = runner.build_resume_provenance(
+        concise, schema_file=tmp_path / "schema.json", model="gpt-test",
+        codex_cli_version="codex-cli test",
+    )
+    assert full_provenance["prompt_sha256"] != concise_provenance["prompt_sha256"]
+
+
 @pytest.mark.parametrize(
     ("run_name", "included", "omitted"),
     [

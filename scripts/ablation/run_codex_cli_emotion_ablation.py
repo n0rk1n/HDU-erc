@@ -160,6 +160,7 @@ def build_case_prompt(
         max_turns=config.max_turns or emotion_interval,
         example_mode=config.example_mode,
         include_emotion_history=config.include_emotion_history,
+        prompt_variant=config.prompt_variant,
     )
 
 

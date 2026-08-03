@@ -24,6 +24,7 @@ class AblationRunConfig:
     example_mode: str
     include_emotion_history: bool
     max_turns: int | None = None
+    prompt_variant: str = "full"
 
 
 RUN_CONFIGS = {
@@ -32,6 +33,22 @@ RUN_CONFIGS = {
     "no_emotion_history": AblationRunConfig("no_emotion_history", "dynamic", False),
     "short_context": AblationRunConfig("short_context", "dynamic", True, max_turns=1),
     "zero_shot": AblationRunConfig("zero_shot", "none", False),
+    "prompt_no_label_guidance": AblationRunConfig(
+        "prompt_no_label_guidance", "dynamic", True,
+        prompt_variant="prompt_no_label_guidance",
+    ),
+    "prompt_concise_direct": AblationRunConfig(
+        "prompt_concise_direct", "dynamic", True,
+        prompt_variant="prompt_concise_direct",
+    ),
+    "prompt_coarse_to_fine": AblationRunConfig(
+        "prompt_coarse_to_fine", "dynamic", True,
+        prompt_variant="prompt_coarse_to_fine",
+    ),
+    "prompt_contrastive_check": AblationRunConfig(
+        "prompt_contrastive_check", "dynamic", True,
+        prompt_variant="prompt_contrastive_check",
+    ),
 }
 
 
@@ -163,6 +180,7 @@ def run_cases(
             max_turns=max_turns,
             example_mode=config.example_mode,
             include_emotion_history=config.include_emotion_history,
+            prompt_variant=config.prompt_variant,
         )
         try:
             output = _content(llm.invoke(prompt))

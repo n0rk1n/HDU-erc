@@ -2,6 +2,8 @@ import json
 import subprocess
 import sys
 
+import pytest
+
 from scripts.ablation import run_emotion_ablation
 
 
@@ -20,6 +22,23 @@ class FakeLlm:
         if isinstance(self.outputs[0], Exception):
             raise self.outputs.pop(0)
         return FakeResponse(self.outputs.pop(0))
+
+
+@pytest.mark.parametrize(
+    "run_name",
+    [
+        "prompt_no_label_guidance",
+        "prompt_concise_direct",
+        "prompt_coarse_to_fine",
+        "prompt_contrastive_check",
+    ],
+)
+def test_prompt_experiment_configs_change_only_prompt_variant(run_name):
+    config = run_emotion_ablation.RUN_CONFIGS[run_name]
+    assert config.example_mode == "dynamic"
+    assert config.include_emotion_history is True
+    assert config.max_turns is None
+    assert config.prompt_variant == run_name
 
 
 def test_run_config_writes_successful_records(tmp_path):
