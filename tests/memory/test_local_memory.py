@@ -1,6 +1,6 @@
 import sqlite3
 
-from chatbot.local_memory import SQLiteLocalMemoryProvider, build_memory_provider
+from chatbot.memory.sqlite import SQLiteLocalMemoryProvider, build_memory_provider
 from chatbot.memory import DisabledMemoryProvider, MemoryCandidate, MemoryRuntimeConfig
 
 

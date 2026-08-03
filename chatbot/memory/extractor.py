@@ -2,7 +2,7 @@
 
 import re
 
-from chatbot.memory import MemoryCandidate
+from chatbot.memory.models import MemoryCandidate
 
 
 MAX_CANDIDATES_PER_TURN = 3

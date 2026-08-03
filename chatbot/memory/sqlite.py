@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from chatbot.memory import (
+from chatbot.memory.models import (
     MEMORY_CATEGORIES,
     DisabledMemoryProvider,
     Memory,

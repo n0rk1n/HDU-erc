@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 
 from chatbot.emotion.state import EmotionState
-from chatbot.memory import MemoryCandidate, MemoryRuntimeConfig
+from chatbot.memory.models import MemoryCandidate, MemoryRuntimeConfig
 
 DEFAULT_CONSOLIDATION_INTERVAL = 5
 DEFAULT_CONSOLIDATION_WINDOW = 12

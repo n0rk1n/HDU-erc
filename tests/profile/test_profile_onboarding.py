@@ -1,6 +1,6 @@
 import json
 
-from chatbot.profile_onboarding import (
+from chatbot.profile.onboarding import (
     ALLOWED_PROFILE_FIELDS,
     MAX_PROFILE_VALUE_LENGTH,
     ONBOARDING_QUESTIONS,

@@ -21,13 +21,13 @@ from chatbot.core.history import (
     load_history,
     record_message_feedback,
 )
-from chatbot.local_memory import build_memory_provider
+from chatbot.memory.sqlite import build_memory_provider
 from chatbot.core.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
 from chatbot.memory import load_memory_config
-from chatbot.memory_consolidation import load_memory_consolidation_config
+from chatbot.memory.consolidation import load_memory_consolidation_config
 from chatbot.profile import format_profile, load_profile, save_profile
-from chatbot.profile_onboarding import (
+from chatbot.profile.onboarding import (
     ONBOARDING_QUESTIONS,
     draft_profile,
     fallback_profile_draft,

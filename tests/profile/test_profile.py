@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-import chatbot.profile as profile
+import chatbot.profile.repository as profile
 from chatbot.core.runtime_store import RuntimeStore
 from chatbot.profile import load_profile, format_profile, save_profile
-from chatbot.profile_onboarding import MAX_PROFILE_VALUE_LENGTH
+from chatbot.profile.onboarding import MAX_PROFILE_VALUE_LENGTH
 
 @pytest.fixture
 def profile_file(tmp_path, monkeypatch):
     test_db = tmp_path / "runtime.sqlite3"
-    monkeypatch.setattr("chatbot.profile.RUNTIME_DB_PATH", str(test_db))
+    monkeypatch.setattr("chatbot.profile.repository.RUNTIME_DB_PATH", str(test_db))
     return test_db
 
 
@@ -29,14 +29,14 @@ def test_default_profile_file_is_project_config_file():
     assert path.name == "runtime.sqlite3"
     assert path.parent.name == "records"
     assert path.parent.parent.name == "data"
-    assert path.parent.parent.parent == Path(__file__).resolve().parents[1]
+    assert path.parent.parent.parent == Path(__file__).resolve().parents[2]
 
 
 def test_load_profile_ignores_legacy_root_file_when_database_missing(tmp_path, monkeypatch):
     profile_db = tmp_path / "data" / "records" / "runtime.sqlite3"
     legacy_file = tmp_path / "user_profile.json"
     legacy_file.write_text('{"name": "Alice"}')
-    monkeypatch.setattr("chatbot.profile.RUNTIME_DB_PATH", str(profile_db))
+    monkeypatch.setattr("chatbot.profile.repository.RUNTIME_DB_PATH", str(profile_db))
 
     assert load_profile() == {}
 

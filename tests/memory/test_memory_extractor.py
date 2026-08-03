@@ -1,4 +1,4 @@
-from chatbot.memory_extractor import extract_memory_candidates
+from chatbot.memory.extractor import extract_memory_candidates
 
 
 def test_extracts_chinese_preference():

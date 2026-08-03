@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from chatbot.profile_onboarding import sanitize_profile
+from chatbot.profile.onboarding import sanitize_profile
 from chatbot.core.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
 
 RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH

@@ -7,7 +7,7 @@ from chatbot.emotion.state import EmotionState
 from chatbot.core.history import RegenerationUpdateResult
 from chatbot.core.llm import get_session_history
 from chatbot.memory import Memory, MemoryCandidate
-from chatbot.memory_consolidation import MemoryConsolidationConfig
+from chatbot.memory.consolidation import MemoryConsolidationConfig
 
 
 class FakeChain:

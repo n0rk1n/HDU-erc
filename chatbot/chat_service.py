@@ -17,14 +17,14 @@ from chatbot.core.history import (
 )
 from chatbot.core.llm import format_emotion_context, get_session_history
 from chatbot.memory import DisabledMemoryProvider, MemoryProvider, format_memory_context
-from chatbot.memory_consolidation import (
+from chatbot.memory.consolidation import (
     MemoryConsolidationConfig,
     build_memory_search_query,
     consolidation_due,
     extract_consolidated_memory_candidates,
     recent_consolidation_window,
 )
-from chatbot.memory_extractor import extract_memory_candidates
+from chatbot.memory.extractor import extract_memory_candidates
 from chatbot.emotion.safety import assess_safety
 
 
