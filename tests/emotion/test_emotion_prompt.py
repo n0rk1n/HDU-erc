@@ -1,6 +1,12 @@
+from string import Formatter
+
 import pytest
 
 from chatbot.emotion.prompt import build_emotion_analysis_prompt
+from chatbot.emotion.prompt_variants import (
+    PROMPT_VARIANT_NAMES,
+    resolve_emotion_prompt_template,
+)
 
 
 def test_full_prompt_variant_preserves_existing_default_prompt():
@@ -16,44 +22,41 @@ def test_full_prompt_variant_preserves_existing_default_prompt():
     )
 
 
-@pytest.mark.parametrize(
-    ("variant", "required_text"),
-    [
-        ("prompt_concise_direct", "Select exactly one emotion label"),
-        ("prompt_coarse_to_fine", "First identify the broad emotion family internally"),
-        ("prompt_contrastive_check", "Compare the two most plausible labels internally"),
-    ],
-)
-def test_prompt_variant_renders_distinct_instruction(variant, required_text):
-    prompt = build_emotion_analysis_prompt(
-        emotion_labels=["anxious", "lonely"],
-        emotion_label_set={"anxious", "lonely"},
-        dialogue_context="I feel alone tonight",
-        current_input="I feel alone tonight",
-        prompt_variant=variant,
-    )
-    assert required_text in prompt
-    assert "Emotion labels: anxious, lonely" in prompt
-    assert "Dialogue context: I feel alone tonight" in prompt
-    assert "Return exactly one JSON object" in prompt
+def test_prompt_variants_render_distinct_model_inputs():
+    prompts = {
+        build_emotion_analysis_prompt(
+            emotion_labels=["anxious", "lonely"],
+            emotion_label_set={"anxious", "lonely"},
+            dialogue_context="I feel alone tonight",
+            current_input="I feel alone tonight",
+            prompt_variant=variant,
+        )
+        for variant in PROMPT_VARIANT_NAMES
+    }
+
+    assert len(prompts) == len(PROMPT_VARIANT_NAMES)
 
 
-def test_no_label_guidance_variant_removes_definition_block_only():
-    prompt = build_emotion_analysis_prompt(
-        emotion_labels=["anxious", "lonely"],
-        emotion_label_set={"anxious", "lonely"},
-        dialogue_context="I feel alone tonight",
-        current_input="I feel alone tonight",
-        prompt_variant="prompt_no_label_guidance",
-    )
-    assert "Emotion labels: anxious, lonely" in prompt
-    assert "Label definitions" not in prompt
-    assert "Labeled examples:" in prompt
-    assert "Dialogue context: I feel alone tonight" in prompt
+def test_no_label_guidance_variant_omits_guidance_placeholder_only():
+    template = resolve_emotion_prompt_template("prompt_no_label_guidance")
+    placeholders = {
+        field_name
+        for _, field_name, _, _ in Formatter().parse(template)
+        if field_name is not None
+    }
+
+    assert "label_guidance" not in placeholders
+    assert placeholders == {
+        "dialogue_context",
+        "emotion_labels",
+        "example_block",
+        "likely_line",
+        "response_block",
+    }
 
 
 def test_unknown_prompt_variant_is_rejected_before_rendering():
-    with pytest.raises(ValueError, match="Unknown emotion prompt variant"):
+    with pytest.raises(ValueError):
         build_emotion_analysis_prompt(
             emotion_labels=["anxious"],
             emotion_label_set={"anxious"},

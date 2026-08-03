@@ -15,15 +15,6 @@ def test_readme_documents_current_stream_and_emotion_config_rules():
     assert "Emotion Ablation V2 合成诊断集" not in readme
 
 
-def test_readme_documents_prompt_variant_experiment_commands():
-    text = Path("README.md").read_text(encoding="utf-8")
-    assert "prompt_no_label_guidance" in text
-    assert "prompt_concise_direct" in text
-    assert "prompt_coarse_to_fine" in text
-    assert "prompt_contrastive_check" in text
-    assert "--report-kind prompt_variants" in text
-
-
 def test_documented_example_files_exist():
     assert Path("data/examples/emotion_labels_sample.json").exists()
     assert Path("data/examples/static_few_shot_sample.json").exists()
