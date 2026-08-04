@@ -8,7 +8,7 @@
 
 ## 问题证据
 
-原 `codex_pilot10/` 有以下可复核现象：
+原始 pilot 有以下可复核现象：
 
 - 10 条只覆盖 5 类，每类连续 2 条，不能代表 32 类总体表现；
 - 目标标签在 10 条 `current_input` 中逐字出现 0 次；
@@ -63,7 +63,7 @@
 
 修复前后不能做严格数值提升比较：旧 pilot10 使用错位的最后一句且只覆盖 5 类，新 pilot32 使用对齐后的首轮且覆盖 32 类。旧结果的作用是暴露评测问题，新结果的作用是验证修复后的链路。
 
-## 复现命令
+## 数据准备命令
 
 ```bash
 python scripts/benchmark/prepare_empathetic_dialogues.py \
@@ -73,17 +73,13 @@ python scripts/benchmark/export_emotion_benchmark.py \
   --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
   --output-dir data/records/empathetic_dialogues_aligned_seed_export
 
-python scripts/run_codex_cli_emotion_ablation.py \
-  --dialogues-file data/records/empathetic_dialogues_aligned_seed_export/dialogues.jsonl \
-  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_aligned_pilot32 \
-  --limit 32 --run full --model gpt-5.6-sol
 ```
 
-将 `--run` 分别替换为 `no_dynamic_examples` 和 `zero_shot`。原始模型输出在 `data/records/`（按项目规则不提交）；确定性报告在 `reports/aligned_pilot32/`（提交）。
+导出后的 `dialogues.jsonl` 与 `labels.jsonl` 可交给项目现有消融和评估脚本；历史 32 条对齐 pilot 的确定性报告保存在 `reports/aligned_pilot32/`。
 
 ## 执行过程与异常处理
 
-首次启动三组实验时，Codex CLI 因受限沙箱不能写入自身状态数据库，三组均产生 32 条失败快照，错误核心为 `attempt to write a readonly database` / `failed to initialize in-process app-server client`。这些记录没有进入模型，不能记为 0% 准确率。
+首次启动三组实验时，受限运行环境无法初始化本地状态，三组均产生 32 条失败快照。这些记录没有进入模型，不能记为 0% 准确率。
 
 处理步骤：
 
@@ -98,7 +94,7 @@ python scripts/run_codex_cli_emotion_ablation.py \
 
 - 不能把修复前 pilot10 与修复后 pilot32 直接做数值提升比较：两者输入目标和类别覆盖不同。
 - exact Accuracy/Macro F1 是正式结论；Family 指标只表示预测是否落在预先固定的相邻情绪族内。
-- 每类仅 1 条的 pilot32 只能用于链路与方向性验证。2026-08-03 已补充完整 64 条 seed 及配对统计，结果见 `seed64_gpt56sol/`；理想情况下仍应运行完整 2,542 条 test。
+- 每类仅 1 条的 pilot32 只能用于链路与方向性验证；理想情况下仍应运行完整 2,542 条 test。
 - EmpatheticDialogues 仍不适合验证历史截断和情绪历史组件。该问题需要引入带逐句人工标签的 MELD/CPED，并独立报告标签映射和许可边界。
 
 ## 防回归检查

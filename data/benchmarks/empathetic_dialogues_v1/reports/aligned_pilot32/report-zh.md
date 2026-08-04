@@ -1,12 +1,10 @@
-# Codex CLI 情绪识别消融实验报告
+# 情绪识别消融实验报告
 
 ## 实验元数据
 
-- branch: `codex/real-emotion-dataset-20260727`
-- codex_version: `codex-cli 0.142.4`
 - commit: `working-tree based on 95117d3`
 - ended_at: `2026-07-27`
-- execution_note: `首次受限沙箱导致 96/96 环境初始化失败；确认未进入模型后，以相同参数在允许 Codex CLI 状态初始化的环境重跑。只执行实际改变 Prompt 的 3 组；no_emotion_history 和 short_context 经预检均与 full 相同，故未调用。`
+- execution_note: `首次受限环境导致 96/96 初始化失败；确认未进入模型后，以相同参数在可正常初始化的环境重跑。只执行实际改变 Prompt 的 3 组；no_emotion_history 和 short_context 经预检均与 full 相同，故未调用。`
 - model: `gpt-5.6-sol`
 - started_at: `2026-07-27`
 
@@ -117,8 +115,8 @@
 ## 局限性
 
 - 本次基准包含 32 条记录，标签来源为人工撰写情绪情境标签；高上下文依赖样本为 0 条。
-- 本实验评估的是 Codex CLI Agent 执行链路，不是裸模型 API 评测；结果包含 Codex 系统指令和 Agent 运行环境的影响。
+- 本实验评估的是隔离 Agent 执行链路，不是裸模型 API 评测；结果包含 Agent 系统指令和运行环境的影响。
 - 切片样本较少时，Accuracy 和 Macro F1 波动较大，不应单独解读。
 - 调用失败同时会拉低指标，需与分类错误分开观察。
 - `zero_shot` 同时禁用 few-shot 示例和情绪历史先验，因此属于组合消融；其相对 `full` 的指标差值不能单独归因于任一组件。
-- 执行过程说明：首次受限沙箱导致 96/96 环境初始化失败；确认未进入模型后，以相同参数在允许 Codex CLI 状态初始化的环境重跑。只执行实际改变 Prompt 的 3 组；no_emotion_history 和 short_context 经预检均与 full 相同，故未调用。
+- 执行过程说明：首次受限环境导致 96/96 初始化失败；确认未进入模型后，以相同参数在可正常初始化的环境重跑。只执行实际改变 Prompt 的 3 组；no_emotion_history 和 short_context 经预检均与 full 相同，故未调用。

@@ -1,6 +1,0 @@
-run,samples,valid_predictions,failures,correct,accuracy,macro_f1,accuracy_delta_vs_full,macro_f1_delta_vs_full,prompt_identical_to_full,prompt_compared_to_full,treatment_status,treatment_provenance
-full,10,10,0,3,0.300000,0.146667,0.000000,0.000000,10,10,baseline,record_input_vs_full_by_case_id
-no_dynamic_examples,10,10,0,4,0.400000,0.216667,0.100000,0.070000,0,10,effective_prompt_change,record_input_vs_full_by_case_id
-no_emotion_history,10,10,0,3,0.300000,0.150000,0.000000,0.003333,10,10,no_op_identical_to_full,record_input_vs_full_by_case_id
-short_context,10,10,0,3,0.300000,0.150000,0.000000,0.003333,8,10,effective_prompt_change,record_input_vs_full_by_case_id
-zero_shot,10,10,0,2,0.200000,0.100000,-0.100000,-0.046667,0,10,effective_prompt_change,record_input_vs_full_by_case_id

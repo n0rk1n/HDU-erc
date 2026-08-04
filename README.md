@@ -65,7 +65,7 @@ flowchart LR
 
 ### 5. 可复现实验体系
 
-项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器、EmpatheticDialogues 公开数据基准和 Codex CLI 隔离运行器。实验输出以 exact Accuracy 与 Macro F1 为主，补充 95% 置信区间和情绪族诊断指标，并在调用前跳过对当前数据无效的 no-op 消融。
+项目提供 5 组情绪识别消融配置、JSON/JSONL 评估器和 EmpatheticDialogues 公开数据基准。实验输出以 exact Accuracy 与 Macro F1 为主，补充 95% 置信区间和情绪族诊断指标，并在调用前跳过对当前数据无效的 no-op 消融。
 
 ## 技术路线
 
@@ -88,7 +88,7 @@ flowchart LR
 - 提供可跳过的首次画像录入，以及后续画像查看和编辑。
 - 支持 AI 回复点赞、点踩、按原因重新生成，以及情绪识别正确性反馈。
 - 使用本地 SQLite 保存长期记忆，执行词法检索、去重、冲突处理和周期性规则提炼。
-- 提供 JSON/JSONL 离线评估、OpenAI-compatible LLM 消融和 Codex CLI 消融流程。
+- 提供 JSON/JSONL 离线评估和 OpenAI-compatible LLM 消融流程。
 
 ## 技术选型与运行要求
 
@@ -97,7 +97,6 @@ flowchart LR
 - LangChain、`langchain-openai`
 - Python 标准库 `sqlite3`
 - OpenAI-compatible API 凭据
-- 可选：已安装并登录的 Codex CLI，仅用于 `run_codex_cli_emotion_ablation.py`
 
 项目没有前端构建步骤，也不依赖 Mem0 Platform、云端向量数据库或第三方托管记忆服务。
 
@@ -392,65 +391,7 @@ python scripts/benchmark/export_emotion_benchmark.py \
 
 数据集选型对比、转换口径、来源、许可和研究限制详见 `data/benchmarks/empathetic_dialogues_v1/README.md`。
 
-### 4. 可选：使用 Codex CLI 运行隔离消融
-
-先把 seed 集导出为现有消融格式：
-
-```bash
-python scripts/benchmark/export_emotion_benchmark.py \
-  --input data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
-  --output-dir data/records/empathetic_dialogues_seed_export
-```
-
-执行覆盖全部标签的 32 条 pilot。`--model` 必填，请替换为当前 Codex CLI 支持的模型，并只选择会实际改变 Prompt 的三组：
-
-```bash
-python -m scripts.ablation.run_codex_cli_emotion_ablation \
-  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
-  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot \
-  --limit 32 \
-  --run full --run no_dynamic_examples --run zero_shot \
-  --model YOUR_CODEX_MODEL
-```
-
-pilot 报告必须使用相同的 `--limit 32`，确保标注范围与运行结果一致：
-
-```bash
-python -m scripts.ablation.report_codex_cli_emotion_ablation \
-  --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
-  --limit 32 \
-  --run full=data/records/codex_cli_ablation/empathetic_dialogues_pilot/full.json \
-  --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_pilot/no_dynamic_examples.json \
-  --run zero_shot=data/records/codex_cli_ablation/empathetic_dialogues_pilot/zero_shot.json \
-  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_pilot
-```
-
-去掉 `--limit 32` 并更换输出目录即可运行全部 64 条 seed：
-
-```bash
-python -m scripts.ablation.run_codex_cli_emotion_ablation \
-  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
-  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64 \
-  --run full --run no_dynamic_examples --run zero_shot \
-  --model YOUR_CODEX_MODEL
-```
-
-运行器为每个“样本 × 配置”启动独立的 `codex exec --ephemeral --sandbox read-only`，默认超时 180 秒、失败最多重试 1 次，并在每个任务后原子保存结果。只有 Prompt、模型、Schema、Codex CLI 版本和运行环境 provenance 全部一致时，已有成功结果才会被复用。
-
-生成中文报告：
-
-```bash
-python -m scripts.ablation.report_codex_cli_emotion_ablation \
-  --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
-  --run full=data/records/codex_cli_ablation/empathetic_dialogues_seed64/full.json \
-  --run no_dynamic_examples=data/records/codex_cli_ablation/empathetic_dialogues_seed64/no_dynamic_examples.json \
-  --run zero_shot=data/records/codex_cli_ablation/empathetic_dialogues_seed64/zero_shot.json \
-  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_seed64
-```
-
-运行器会逐样本比较 treatment 与 `full` 的 Prompt，整组相同时直接跳过；所以 EmpatheticDialogues 正式集不会执行无历史可删的 `no_emotion_history` 和无上下文可截的 `short_context`。报告器会生成 `metrics.csv`、`summary.md` 和 `report-zh.md`，把调用失败计入正式指标，并再次记录 treatment 有效性。
-
-### 5. Prompt 多版本消融实验（探索性 pilot 已冻结）
+### 4. Prompt 多版本消融实验
 
 `full` 之外提供 4 个固定 Prompt 变体，用于研究指令措辞对 32 类情绪识别的
 影响。五个配置共享相同的动态示例、情绪历史与默认上下文窗口，只允许 Prompt
@@ -464,54 +405,20 @@ python -m scripts.ablation.report_codex_cli_emotion_ablation \
 | `prompt_coarse_to_fine` | 先内部判断情绪大族，再选最精确标签 |
 | `prompt_contrastive_check` | 内部对比两个最可能标签后再选择 |
 
-运行命令（固定模型、Schema 与调用参数）：
+运行命令：
 
 ```bash
-python -m scripts.ablation.run_codex_cli_emotion_ablation \
+python -m scripts.ablation.run_emotion_ablation \
   --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
-  --output-dir data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol \
+  --output-dir data/records/prompt_variants \
   --run full \
   --run prompt_no_label_guidance \
   --run prompt_concise_direct \
   --run prompt_coarse_to_fine \
-  --run prompt_contrastive_check \
-  --model gpt-5.6-sol
+  --run prompt_contrastive_check
 ```
 
-生成 Prompt 专用中文报告：
-
-```bash
-python -m scripts.ablation.report_codex_cli_emotion_ablation \
-  --report-kind prompt_variants \
-  --seed-file data/benchmarks/empathetic_dialogues_v1/release/balanced_seed.jsonl \
-  --run full=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/full.json \
-  --run prompt_no_label_guidance=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_no_label_guidance.json \
-  --run prompt_concise_direct=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_concise_direct.json \
-  --run prompt_coarse_to_fine=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_coarse_to_fine.json \
-  --run prompt_contrastive_check=data/records/codex_cli_ablation/empathetic_dialogues_prompt_variants_seed64_gpt56sol/prompt_contrastive_check.json \
-  --output-dir data/benchmarks/empathetic_dialogues_v1/reports/prompt_variants_seed64_gpt56sol
-```
-
-本次只运行了官方 test 中的 64 条平衡 seed，并使用结果筛选 Prompt，因此这些
-样本已经承担开发集用途。实验已于 2026-08-03 冻结为探索性 pilot：保留原始预测、
-指标和排序供追溯，不再基于这 64 条继续调参，也不据此直接启动完整 2,542 条 test。
-后续必须先完成输入—标签对齐审计，再把 Prompt 选择迁移到 validation split。
-
-2026-08-03 已使用 `gpt-5.6-sol` 和 Codex CLI 0.146.0 完成五组实验，共
-320 次有效预测、0 失败。`prompt_no_label_guidance` 和
-`prompt_coarse_to_fine` 均为 38/64（59.38%），高于 `full` 的 36/64
-（56.25%），是本次 pilot 中的领先趋势；但两组相对 `full` 的 Accuracy 配对差值
-95% 区间均为 -3.12%～+9.38%，McNemar 精确检验均为 `p=0.625`，不能称为
-第二阶段候选或已经证明提升。冻结状态和完整报告见
-`data/benchmarks/empathetic_dialogues_v1/reports/prompt_variants_seed64_gpt56sol/`。
-
-### 6. 64 条公开 seed 正式结果
-
-2026-08-03 已使用 `gpt-5.6-sol` 和 Codex CLI 0.146.0 完成三组有效配置，共
-192 次有效预测、0 失败。`full` 为 36/64（56.25%），两个对照均为
-37/64（57.81%）。配对 Accuracy 差值的 95% 区间为 -4.69%～+9.38%，精确
-McNemar `p=1.000`；本次没有证据表明动态示例优于两个对照。完整结论见
-`data/benchmarks/empathetic_dialogues_v1/reports/seed64_gpt56sol/`。
+Prompt 变体应在独立 validation split 上完成选择，再使用 test split 做一次最终评测；不要在同一批 test 样本上反复调参并报告最终效果。
 
 ## 项目完成情况
 
@@ -521,7 +428,7 @@ McNemar `p=1.000`；本次没有证据表明动态示例优于两个对照。完
 - 完成聊天、情绪、画像、记忆、安全和反馈模块的解耦实现；
 - 完成本地 SQLite 数据持久化和历史恢复；
 - 完成固定标签、结构化输出和动态示例驱动的情绪识别链路；
-- 完成组件消融与 5 组 Prompt 变体配置、EmpatheticDialogues 公开数据基准、一轮 64 条正式组件实验和一轮已冻结的探索性 Prompt pilot、配对统计和指标报告工具；
+- 完成组件消融与 5 组 Prompt 变体配置、EmpatheticDialogues 公开数据基准、配对统计和指标报告工具；
 - 建立覆盖后端服务、数据存储、Prompt、前端交互和实验脚本的自动化测试。
 
 仓库不预设某个模型一定优于其他模型。具体实验结论应在固定代码提交、模型版本、运行参数和数据版本后，根据公开基准上的原始结果与报告得出。
@@ -544,7 +451,7 @@ scripts/
   benchmark/              公开数据集转换、校验、统计与导出
 
 data/
-  config/                 Prompt 示例和 Codex 输出 Schema
+  config/                 Prompt 配置示例
   examples/               小型评估与消融样例
   benchmarks/             EmpatheticDialogues 公开真实数据基准
   records/                本地运行时数据与实验输出，不提交到 Git

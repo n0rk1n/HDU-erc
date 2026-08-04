@@ -62,56 +62,23 @@ python scripts/benchmark/export_emotion_benchmark.py \
 正式集没有历史，因此只运行三组实际会改变 Prompt 的对照：
 
 ```bash
-python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run full
-python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run no_dynamic_examples
-python -m scripts.ablation.run_codex_cli_emotion_ablation ... --run zero_shot
+python -m scripts.ablation.run_emotion_ablation \
+  --dialogues-file data/records/empathetic_dialogues_seed_export/dialogues.jsonl \
+  --output-dir data/records/ablation \
+  --run full \
+  --run no_dynamic_examples \
+  --run zero_shot
 ```
 
 `no_emotion_history` 与 `short_context` 在该数据上都与 `full` 完全同构，不应调用、更不应把随机波动解释成组件贡献。历史相关消融需换用带**逐句人工标签**的数据集（例如 MELD/CPED）另做实验。
 
-## Prompt 多版本实验（探索性 pilot 已冻结）
+## 可用 Prompt 变体
 
 `full` 之外提供 4 个固定 Prompt 变体（`prompt_no_label_guidance`、
 `prompt_concise_direct`、`prompt_coarse_to_fine`、`prompt_contrastive_check`），
-共享动态示例、情绪历史与默认上下文窗口，仅模板不同。本次在官方 test 的 64 条
-平衡 seed 上运行，并使用结果筛选 Prompt，因此这些样本已经承担开发集用途。
-实验已于 2026-08-03 冻结为探索性 pilot，不再基于这 64 条继续调参，也不据此
-直接启动完整 2,542 条 test；运行与报告命令见仓库 README。
+共享动态示例、情绪历史与默认上下文窗口，仅模板不同。应在独立 validation split 上选择模板，再在 test split 上做一次最终评测，避免测试集反复调参造成结果偏乐观。
 
-2026-08-03 使用 `gpt-5.6-sol` 与 Codex CLI 0.146.0 完成五组配置，每组
-64/64 有效预测、0 失败。`full` 为 56.25% Accuracy / 55.31% Macro F1；
-`prompt_no_label_guidance` 为 59.38% / 57.92%，
-`prompt_coarse_to_fine` 为 59.38% / 56.56%，是本次 pilot 中的两个领先趋势。
-两组 Accuracy 配对差值的 95% 区间均为 -3.12%～+9.38%，且 McNemar
-`p=0.625`，不能视为第二阶段候选或已证明提升。后续必须先完成输入—标签对齐
-审计，再把 Prompt 选择迁移到 validation split。冻结状态、报告和运行元数据见
-`reports/prompt_variants_seed64_gpt56sol/`。
-
-## 64 条公开 seed 正式实验（已完成）
-
-2026-08-03 使用 `gpt-5.6-sol` 与 Codex CLI 0.146.0 完成三组有效配置，每组
-64/64 有效预测、0 失败。`full` 的 Accuracy/Macro F1 为 56.25%/54.91%；
-`no_dynamic_examples` 和 `zero_shot` 均为 57.81%/54.06%。两个 treatment
-相对 `full` 的 McNemar 精确检验均为 `p=1.000`，Accuracy 配对差值区间均为
--4.69%～+9.38%，没有统计证据表明动态示例带来提升。
-
-完整指标、配对 bootstrap 区间、结论和运行元数据见
-`reports/seed64_gpt56sol/`；逐条预测保存在
-`data/records/codex_cli_ablation/empathetic_dialogues_seed64_gpt56sol/`。
-
-## 原方法 pilot（已判定标签错位，仅保留追溯）
-
-仓库保留了 `reports/codex_pilot10/`：使用 Codex CLI 0.142.4、`gpt-5.6-sol`，对平衡 seed 前 10 条运行原有 5 组消融，共 50 次调用，调用失败为 0。
-
-| Run | Accuracy | Macro F1 | Prompt treatment |
-| --- | ---: | ---: | --- |
-| `full` | 30.00% | 14.67% | baseline |
-| `no_dynamic_examples` | 40.00% | 21.67% | effective |
-| `no_emotion_history` | 30.00% | 15.00% | **10/10 与 full 相同，no-op** |
-| `short_context` | 30.00% | 15.00% | 2/10 发生变化 |
-| `zero_shot` | 20.00% | 10.00% | effective |
-
-这批结果的输入使用目标用户最后一条发言，而标签仍是整段情境标签，存在 ground-truth 错位；加上 10 条只覆盖 5 类、两组无效消融，因此不得继续作为模型准确率结论。完整诊断和修复过程见 `reports/remediation_report.md`，修复后的实验见 `reports/aligned_pilot32/`。
+早期标签错位问题及 32 条对齐 pilot 的诊断过程保留在 `reports/remediation_report.md` 和 `reports/aligned_pilot32/`。
 
 ## 研究限制
 

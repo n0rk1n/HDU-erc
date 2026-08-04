@@ -16,8 +16,8 @@
   exported into the model dialogue input.
 - Formal context distribution: `none=2542`; history ablations are therefore
   declared no-op and are not run on this benchmark.
-- Original-method Codex pilot is retained under `codex_pilot10/` only as
-  evidence of the discovered label/input mismatch, not as a model conclusion.
+- The original label/input mismatch is documented in `remediation_report.md`;
+  the misaligned predictions are not retained as a model conclusion.
 
 No claim is made that later turns were independently re-annotated or adjudicated
 at utterance level. Exact 32-class metrics remain primary; family metrics are
