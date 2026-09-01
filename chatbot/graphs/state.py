@@ -49,3 +49,4 @@ class ConversationState(MessagesState, total=False):
     response_content: str
     response_message_id: str
     error_code: str
+    memory_warning: str
