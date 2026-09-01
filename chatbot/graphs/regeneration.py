@@ -99,7 +99,7 @@ def replay_completed_regeneration(
     event_data = completed.get("event_data")
     if not isinstance(event_data, dict):
         raise RegenerationError("completed_request_invalid")
-    writer({"event": "done", "data": dict(event_data)})
+    writer({"event": "done", "data": {**dict(event_data), "replayed": True}})
     return _regeneration_cleanup_delta()
 
 

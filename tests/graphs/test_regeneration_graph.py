@@ -465,8 +465,9 @@ async def test_completed_regeneration_request_replays_done_without_model_call():
     """Catches idempotent retry conflicting with its own completed regeneration."""
     store = InMemoryStore()
     model = RecordingModel()
+    memory = RecordingMemoryRepository()
     graph = build_regeneration_graph(
-        make_deps(model, RecordingMemoryRepository())
+        make_deps(model, memory)
     ).compile(checkpointer=InMemorySaver(), store=store)
     config = {"configurable": {"thread_id": "thread-regen-retry"}}
 
@@ -479,6 +480,11 @@ async def test_completed_regeneration_request_replays_done_without_model_call():
             stream_mode="custom",
         )
     ]
+    first_state = await graph.aget_state(config)
+    persisted_event_data = dict(
+        first_state.values["processed_requests"]["regen-1"]["event_data"]
+    )
+    memory_calls = list(memory.searches)
     replay_events = [
         event
         async for event in graph.astream(
@@ -493,9 +499,20 @@ async def test_completed_regeneration_request_replays_done_without_model_call():
             stream_mode="custom",
         )
     ]
+    replay_state = await graph.aget_state(config)
 
-    assert replay_events == first_events
+    assert replay_events == [
+        {
+            "event": "done",
+            "data": {**first_events[0]["data"], "replayed": True},
+        }
+    ]
     assert len(model.calls) == 1
+    assert memory.searches == memory_calls
+    assert replay_state.values["processed_requests"]["regen-1"][
+        "event_data"
+    ] == persisted_event_data
+    assert "replayed" not in persisted_event_data
 
 
 @pytest.mark.asyncio

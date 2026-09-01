@@ -490,6 +490,34 @@ async def test_cancelled_stream_releases_thread_lock():
 
 
 @pytest.mark.asyncio
+async def test_stream_close_failure_still_releases_thread_lock():
+    """Catches graph iterator cleanup errors bypassing the runtime lock release."""
+    runtime, _, _ = memory_runtime()
+    record = await runtime.acreate_thread("client-a")
+
+    class CloseFailingGraph:
+        def astream(self, *args, **kwargs):
+            async def parts():
+                try:
+                    yield {"type": "custom", "data": {"event": "emotion_start", "data": {}}}
+                finally:
+                    raise OSError("graph stream close failed")
+
+            return parts()
+
+    runtime.graph = CloseFailingGraph()
+    stream = await runtime.astream_turn(
+        "client-a", record.thread_id, "req-close", "你好"
+    )
+    await anext(stream)
+
+    with pytest.raises(OSError, match="graph stream close failed"):
+        await stream.aclose()
+
+    assert runtime.lock_for(record.thread_id).locked() is False
+
+
+@pytest.mark.asyncio
 async def test_runtime_rejects_unowned_thread_for_read_stream_and_profile_draft():
     """Catches any facade path bypassing client/thread ownership validation."""
     runtime, _, _ = memory_runtime()
@@ -617,7 +645,10 @@ async def test_runtime_regeneration_replays_retry_and_preserves_conflict_code():
 
     first_done = [part for part in first if part["type"] == "custom"][-1]
     replay_done = [part for part in replay if part["type"] == "custom"][-1]
-    assert replay_done["data"] == first_done["data"]
+    assert replay_done["data"] == {
+        "event": "done",
+        "data": {**first_done["data"]["data"], "replayed": True},
+    }
     assert chat_model.calls == calls_after_first
     assert exc_info.value.code == "already_regenerated"
 

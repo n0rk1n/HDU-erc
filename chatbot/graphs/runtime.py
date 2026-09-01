@@ -242,20 +242,28 @@ class ConversationRuntime:
     ) -> AsyncIterator[Any]:
         lock = self.lock_for(thread_id)
         await lock.acquire()
+        graph_stream = None
         try:
             await self._require_initialized_thread(client_id, thread_id)
-            async for part in self.graph.astream(
+            graph_stream = self.graph.astream(
                 graph_input,
                 self._config(thread_id),
                 context=self._context(client_id, request_id),
                 stream_mode=["messages", "custom"],
                 subgraphs=True,
                 version="v2",
-            ):
+            )
+            async for part in graph_stream:
                 yield part
             await self.thread_repository.touch(client_id, thread_id)
         finally:
-            lock.release()
+            try:
+                if graph_stream is not None:
+                    close = getattr(graph_stream, "aclose", None)
+                    if close is not None:
+                        await close()
+            finally:
+                lock.release()
 
     async def _require_thread(self, client_id: str, thread_id: str) -> None:
         if not await self.thread_repository.owns(client_id, thread_id):

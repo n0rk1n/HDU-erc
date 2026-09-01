@@ -12,10 +12,12 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
+from anyio import CancelScope
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, UUID4, field_validator
+from starlette.requests import ClientDisconnect
 
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.core.config import load_config, load_graph_config
@@ -98,9 +100,8 @@ def _request_payload(request: BaseModel) -> dict:
     return request.dict()
 
 
-PUBLIC_GRAPH_EVENTS = frozenset(
+GRAPH_CUSTOM_EVENTS = frozenset(
     {
-        "run_started",
         "user_message",
         "emotion_start",
         "emotion_done",
@@ -108,10 +109,23 @@ PUBLIC_GRAPH_EVENTS = frozenset(
         "safety",
         "token",
         "done",
-        "error",
     }
 )
 VISIBLE_GENERATION_NODES = frozenset({"generate_reply", "generate_variant"})
+REGENERATION_REASON_VALUES = frozenset(
+    {"不准确", "不完整", "没有理解我的问题", "语气不合适", "其他"}
+)
+STREAM_ERROR_POLICIES = {
+    "stream_failed": True,
+    "generation_failed": True,
+    "thread_not_found": False,
+    "message_not_found": False,
+    "missing_target": False,
+    "non_ai_target": False,
+    "already_regenerated": False,
+    "invalid_reason": False,
+    "completed_request_invalid": False,
+}
 
 
 def format_sse(event: ChatEvent | GraphEvent) -> str:
@@ -132,7 +146,9 @@ async def adapt_graph_stream(chunks: AsyncIterable[dict[str, Any]]) -> AsyncIter
         payload = chunk.get("data")
         if chunk_type == "custom":
             event = _stable_custom_event(payload)
-            if event is not None:
+            if event is not None and _custom_origin_allows(
+                chunk.get("ns"), event["event"]
+            ):
                 yield event
             continue
         if chunk_type != "messages" or not isinstance(payload, (tuple, list)):
@@ -142,7 +158,11 @@ async def adapt_graph_stream(chunks: AsyncIterable[dict[str, Any]]) -> AsyncIter
         message, metadata = payload
         if not isinstance(metadata, Mapping):
             continue
-        if metadata.get("langgraph_node") not in VISIBLE_GENERATION_NODES:
+        node_name = metadata.get("langgraph_node")
+        if (
+            not isinstance(node_name, str)
+            or node_name not in VISIBLE_GENERATION_NODES
+        ):
             continue
         content = _message_chunk_text(getattr(message, "content", ""))
         if content:
@@ -154,18 +174,130 @@ def _stable_custom_event(payload: Any) -> GraphEvent | None:
         return None
     event_name = payload.get("event")
     event_data = payload.get("data")
-    if event_name not in PUBLIC_GRAPH_EVENTS or not isinstance(event_data, Mapping):
+    if (
+        not isinstance(event_name, str)
+        or event_name not in GRAPH_CUSTOM_EVENTS
+        or not isinstance(event_data, Mapping)
+    ):
         return None
-    data = dict(event_data)
-    if event_name == "emotion_done":
-        data.pop("safety", None)
-        data.pop("safety_level", None)
-        state = data.get("state")
-        if isinstance(state, Mapping):
-            data["state"] = {
-                key: value for key, value in state.items() if key != "safety_level"
-            }
+    data = _validated_custom_data(event_name, event_data)
+    if data is None:
+        return None
     return GraphEvent(event=event_name, data=data)
+
+
+def _custom_origin_allows(namespace: Any, event_name: str) -> bool:
+    if namespace in (None, (), []):
+        return True
+    if not isinstance(namespace, (tuple, list)) or not namespace:
+        return False
+    child = namespace[0]
+    if not isinstance(child, str):
+        return False
+    if child.startswith("turn:"):
+        return event_name in GRAPH_CUSTOM_EVENTS
+    if child.startswith("regenerate:"):
+        return event_name == "done"
+    return False
+
+
+def _validated_custom_data(
+    event_name: str,
+    data: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    if event_name == "emotion_start":
+        return {}
+    if event_name == "user_message":
+        message_id = _nonempty_string(data.get("message_id"))
+        content = _nonempty_string(data.get("content"))
+        if message_id is None or content is None or data.get("role") != "human":
+            return None
+        return {"message_id": message_id, "role": "human", "content": content}
+    if event_name == "emotion_done":
+        return _validated_emotion_done(data)
+    if event_name == "emotion_error":
+        if data.get("error_code") != "emotion_analysis_failed":
+            return None
+        return {"error_code": "emotion_analysis_failed"}
+    if event_name == "safety":
+        level = data.get("level")
+        guidance = data.get("guidance")
+        if (
+            not isinstance(level, str)
+            or level not in {"normal", "supportive", "crisis"}
+            or not isinstance(guidance, str)
+        ):
+            return None
+        return {"level": level, "guidance": guidance}
+    if event_name == "token":
+        content = _nonempty_string(data.get("content"))
+        return {"content": content} if content is not None else None
+    if event_name == "done":
+        return _validated_done(data)
+    return None
+
+
+def _validated_emotion_done(data: Mapping[str, Any]) -> dict[str, Any] | None:
+    emotion = _nonempty_string(data.get("emotion"))
+    state = data.get("state")
+    if emotion is None or not isinstance(state, Mapping):
+        return None
+    primary = _nonempty_string(state.get("primary_emotion"))
+    if primary is None:
+        return None
+    output_state: dict[str, Any] = {"primary_emotion": primary}
+    field_types = {
+        "evidence": str,
+        "reply_strategy": str,
+        "trajectory_note": str,
+    }
+    for field, expected_type in field_types.items():
+        if field in state:
+            value = state[field]
+            if not isinstance(value, expected_type):
+                return None
+            output_state[field] = value
+    if "confidence" in state:
+        confidence = state["confidence"]
+        if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            return None
+        output_state["confidence"] = float(confidence)
+    if "secondary_emotions" in state:
+        secondary = state["secondary_emotions"]
+        if not isinstance(secondary, list) or not all(
+            isinstance(item, str) for item in secondary
+        ):
+            return None
+        output_state["secondary_emotions"] = list(secondary)
+    return {"emotion": emotion, "state": output_state}
+
+
+def _validated_done(data: Mapping[str, Any]) -> dict[str, Any] | None:
+    message_id = _nonempty_string(data.get("message_id"))
+    content = _nonempty_string(data.get("content"))
+    if message_id is None or content is None:
+        return None
+    output: dict[str, Any] = {"message_id": message_id, "content": content}
+    if "replayed" in data:
+        if not isinstance(data["replayed"], bool):
+            return None
+        output["replayed"] = data["replayed"]
+    if "reason" in data:
+        reason = data["reason"]
+        if not isinstance(reason, str) or reason not in REGENERATION_REASON_VALUES:
+            return None
+        output["reason"] = reason
+    if "regenerated" in data:
+        if not isinstance(data["regenerated"], bool):
+            return None
+        output["regenerated"] = data["regenerated"]
+    return output
+
+
+def _nonempty_string(value: Any) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    return value
 
 
 def _message_chunk_text(content: Any) -> str:
@@ -189,18 +321,24 @@ async def _sse_graph_events(
     *,
     request_id: UUID,
     operation: Literal["turn", "regenerate"],
+    thread_id: str,
     heartbeat_seconds: float = 15.0,
 ) -> AsyncIterator[str]:
     """Encode graph events, keep heartbeats private, and close the source on exit."""
     events = adapt_graph_stream(chunks)
     pending: asyncio.Task[GraphEvent] | None = None
-    yield format_sse(
-        GraphEvent(
-            event="run_started",
-            data={"request_id": str(request_id), "operation": operation},
-        )
-    )
+    done_event: GraphEvent | None = None
     try:
+        yield format_sse(
+            GraphEvent(
+                event="run_started",
+                data={
+                    "request_id": str(request_id),
+                    "operation": operation,
+                    "thread_id": thread_id,
+                },
+            )
+        )
         while True:
             pending = asyncio.create_task(anext(events))
             while True:
@@ -214,20 +352,54 @@ async def _sse_graph_events(
                 break
             finally:
                 pending = None
-            yield format_sse(event)
+            if event["event"] == "done":
+                done_event = event
+            elif done_event is None:
+                yield format_sse(event)
     except asyncio.CancelledError:
         raise
     except Exception as exc:
-        error_code = getattr(exc, "code", "stream_failed")
-        if not isinstance(error_code, str) or not error_code:
-            error_code = "stream_failed"
-        yield format_sse(GraphEvent(event="error", data={"error_code": error_code}))
+        yield format_sse(_public_stream_error(exc))
+    else:
+        if done_event is not None:
+            yield format_sse(done_event)
     finally:
-        if pending is not None and not pending.done():
-            pending.cancel()
-            await asyncio.gather(pending, return_exceptions=True)
-        await events.aclose()
-        await chunks.aclose()
+        with CancelScope(shield=True):
+            if pending is not None and not pending.done():
+                pending.cancel()
+                await asyncio.gather(pending, return_exceptions=True)
+            await events.aclose()
+            await chunks.aclose()
+
+
+def _public_stream_error(exc: Exception) -> GraphEvent:
+    candidate = getattr(exc, "code", "stream_failed")
+    error_code = (
+        candidate
+        if isinstance(candidate, str) and candidate in STREAM_ERROR_POLICIES
+        else "stream_failed"
+    )
+    return GraphEvent(
+        event="error",
+        data={
+            "error_code": error_code,
+            "retryable": STREAM_ERROR_POLICIES[error_code],
+        },
+    )
+
+
+class ClosingStreamingResponse(StreamingResponse):
+    """Always close the response body, including both ASGI disconnect paths."""
+
+    async def __call__(self, scope, receive, send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        except ClientDisconnect:
+            return
+        finally:
+            close = getattr(self.body_iterator, "aclose", None)
+            if close is not None:
+                await close()
 
 
 def build_service() -> ChatService:
@@ -665,11 +837,12 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
             str(stream_request.request_id),
             stream_request.message,
         )
-        return StreamingResponse(
+        return ClosingStreamingResponse(
             _sse_graph_events(
                 chunks,
                 request_id=stream_request.request_id,
                 operation="turn",
+                thread_id=thread_id,
             ),
             media_type="text/event-stream",
             headers={
@@ -695,11 +868,12 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
             message_id,
             stream_request.reason,
         )
-        return StreamingResponse(
+        return ClosingStreamingResponse(
             _sse_graph_events(
                 chunks,
                 request_id=stream_request.request_id,
                 operation="regenerate",
+                thread_id=thread_id,
             ),
             media_type="text/event-stream",
             headers={
