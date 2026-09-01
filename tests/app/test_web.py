@@ -1,1524 +1,210 @@
-import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
-import chatbot.web as web
 from chatbot.chat_service import ChatEvent
-from chatbot.core.history import FeedbackUpdateResult, RegenerationUpdateResult
-from chatbot.web import build_service, create_app, format_sse
+from chatbot.web import create_app, format_sse
 
 
-class FakeRuntimeChatLlm:
-    def invoke(self, prompt):
-        return "{}"
+ROOT = Path(__file__).resolve().parents[2]
 
 
-class FakeService:
-    def __init__(self):
-        self.messages = []
-        self.chain = "old-chain"
-        self.chat_llm = FakeRuntimeChatLlm()
-        self.config = type("Config", (), {"chat_llm": "config-chat-llm"})()
-
-    def stream_reply(self, message):
-        self.messages.append(message)
-        yield ChatEvent("user_message", {"role": "human", "content": message})
-        yield ChatEvent("token", {"content": "hi"})
-        yield ChatEvent("done", {"content": "hi", "message_id": "ai_1"})
-
-    def regenerate_reply(self, message_id, reason):
-        return RegenerationUpdateResult(
-            "updated",
-            original_message_id=message_id,
-            message_id="ai_regenerated",
-            content="regenerated reply",
-            reason=reason,
-            original_user_message="hello",
-        )
-
-
-def test_build_service_does_not_duplicate_session_history(monkeypatch):
-    from chatbot.core.llm import get_session_history, store
-
-    records = [
-        {"role": "human", "content": "hello"},
-        {"role": "ai", "content": "hi"},
-    ]
-
-    class FakeLlm:
-        pass
-
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr(
-        "chatbot.web.build_runtime_llms",
-        lambda config: (FakeLlm(), FakeLlm()),
+def _run_node(script: str) -> None:
+    node = shutil.which("node")
+    if node is None:
+        pytest.fail("node is required for browser behavior tests")
+    result = subprocess.run(
+        [node, "-e", script], cwd=ROOT, text=True, capture_output=True, check=False
     )
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr(
-        "chatbot.web.load_memory_config",
-        lambda: type(
-            "MemoryConfig",
-            (),
-            {"enabled": False, "db_path": "ignored", "max_results": 5},
-        )(),
-    )
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
-    store.clear()
-
-    build_service()
-    build_service()
-
-    history = get_session_history("default")
-    assert [message.content for message in history.messages] == ["hello", "hi"]
-
-
-def test_build_service_passes_memory_provider(monkeypatch):
-    captured = {}
-    chat_llm = object()
-
-    class FakeConfig:
-        emotion_interval = 5
-        chat_llm = "config-chat-llm"
-        emotion_llm = object()
-
-    class FakeService:
-        def __init__(self, chain, config, emotion_llm, **kwargs):
-            captured.update(kwargs)
-
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: FakeConfig())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: [])
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr("chatbot.web.build_runtime_llms", lambda config: (chat_llm, object()))
-    monkeypatch.setattr("chatbot.web.init_session_history", lambda session_id, records: None)
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr("chatbot.web._latest_emotion_for_records", lambda records: None)
-    monkeypatch.setattr("chatbot.web.load_memory_config", lambda: type(
-        "MemoryConfig",
-        (),
-        {"enabled": False, "db_path": "ignored", "max_results": 3},
-    )())
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: "memory-provider")
-    monkeypatch.setattr("chatbot.web.ChatService", FakeService)
-
-    service = web.build_service()
-
-    assert service.chat_llm is chat_llm
-    assert captured["memory_provider"] == "memory-provider"
-    assert captured["memory_max_results"] == 3
-
-
-def test_build_service_uses_latest_successful_emotion(monkeypatch):
-    records = [
-        {"role": "human", "content": f"q{i}"}
-        for i in range(5)
-    ]
-
-    class FakeLlm:
-        pass
-
-    captured = {}
-
-    def fake_chat_service(
-        chain,
-        config,
-        emotion_llm,
-        initial_records=None,
-        initial_emotion="",
-        session_id="default",
-        **kwargs,
-    ):
-        captured["initial_records"] = initial_records
-        captured["initial_emotion"] = initial_emotion
-        return SimpleNamespace()
-
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
-    monkeypatch.setattr(
-        "chatbot.web.load_analysis_records",
-        lambda: [{
-            "timestamp": "t1",
-            "turn_count": 5,
-            "emotion_interval": 5,
-            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
-            "emotion": "sad",
-            "success": True,
-        }],
-    )
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr(
-        "chatbot.web.build_runtime_llms",
-        lambda config: (FakeLlm(), FakeLlm()),
-    )
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr(
-        "chatbot.web.load_memory_config",
-        lambda: type(
-            "MemoryConfig",
-            (),
-            {"enabled": False, "db_path": "ignored", "max_results": 5},
-        )(),
-    )
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
-    monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
-
-    build_service()
-
-    assert captured["initial_records"] == records
-    assert captured["initial_emotion"] == "sad"
-
-
-def test_build_service_restores_latest_structured_emotion_state(monkeypatch):
-    records = [
-        {"role": "human", "content": f"q{i}"}
-        for i in range(5)
-    ]
-
-    class FakeLlm:
-        pass
-
-    captured = {}
-
-    def fake_chat_service(
-        chain,
-        config,
-        emotion_llm,
-        initial_records=None,
-        initial_emotion="",
-        initial_emotion_state=None,
-        session_id="default",
-        **kwargs,
-    ):
-        captured["initial_emotion"] = initial_emotion
-        captured["initial_emotion_state"] = initial_emotion_state
-        return SimpleNamespace()
-
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
-    monkeypatch.setattr(
-        "chatbot.web.load_analysis_records",
-        lambda: [{
-            "timestamp": "t1",
-            "turn_count": 5,
-            "emotion_interval": 5,
-            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
-            "emotion": "anxious",
-            "success": True,
-            "state": {
-                "primary_emotion": "anxious",
-                "confidence": 0.83,
-                "secondary_emotions": ["apprehensive"],
-                "evidence": "The user sounds worried.",
-                "reply_strategy": "Use a calm tone.",
-                "trajectory_note": "hopeful -> anxious",
-                "safety_level": "normal",
-            },
-        }],
-    )
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr(
-        "chatbot.web.build_runtime_llms",
-        lambda config: (FakeLlm(), FakeLlm()),
-    )
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr(
-        "chatbot.web.load_memory_config",
-        lambda: type(
-            "MemoryConfig",
-            (),
-            {"enabled": False, "db_path": "ignored", "max_results": 5},
-        )(),
-    )
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
-    monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
-
-    build_service()
-
-    assert captured["initial_emotion"] == "anxious"
-    assert captured["initial_emotion_state"].primary_emotion == "anxious"
-    assert captured["initial_emotion_state"].confidence == 0.83
-    assert captured["initial_emotion_state"].reply_strategy == "Use a calm tone."
-
-
-def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
-    records = [
-        {"role": "human", "content": "hello"},
-        {"role": "ai", "content": "hi"},
-    ]
-
-    class FakeLlm:
-        pass
-
-    captured = {}
-
-    def fake_chat_service(
-        chain,
-        config,
-        emotion_llm,
-        initial_records=None,
-        initial_emotion="",
-        session_id="default",
-        **kwargs,
-    ):
-        captured["initial_emotion"] = initial_emotion
-        return SimpleNamespace()
-
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
-    monkeypatch.setattr(
-        "chatbot.web.load_analysis_records",
-        lambda: [{
-            "timestamp": "t1",
-            "turn_count": 5,
-            "emotion_interval": 5,
-            "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4",
-            "emotion": "sad",
-            "success": True,
-        }],
-    )
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr(
-        "chatbot.web.build_runtime_llms",
-        lambda config: (FakeLlm(), FakeLlm()),
-    )
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr(
-        "chatbot.web.load_memory_config",
-        lambda: type(
-            "MemoryConfig",
-            (),
-            {"enabled": False, "db_path": "ignored", "max_results": 5},
-        )(),
-    )
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
-    monkeypatch.setattr("chatbot.web.ChatService", fake_chat_service)
-
-    build_service()
-
-    assert captured["initial_emotion"] == ""
-
-
-def test_profile_onboarding_questions_endpoint():
-    app = create_app(service_factory=lambda: FakeService())
-    client = TestClient(app)
-
-    response = client.get("/api/profile/onboarding/questions")
-
-    assert response.status_code == 200
-    assert response.json() == {"questions": web.ONBOARDING_QUESTIONS}
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_format_sse_encodes_event_and_json_data():
-    output = format_sse(ChatEvent("token", {"content": "hi"}))
+    assert format_sse(ChatEvent("token", {"content": "你好"})) == (
+        'event: token\ndata: {"content": "你好"}\n\n'
+    )
 
-    assert output == 'event: token\ndata: {"content": "hi"}\n\n'
+
+def test_static_assets_and_accessible_thread_controls_exist():
+    index = (ROOT / "chatbot/static/index.html").read_text(encoding="utf-8")
+    assert 'id="thread-list"' in index
+    assert 'id="new-thread-button"' in index
+    assert 'id="delete-thread-button"' in index
+    assert 'aria-label="对话列表"' in index
 
 
-def test_emotion_feedback_request_payload_supports_pydantic_v1_dict():
-    class LegacyRequest:
-        def dict(self):
-            return {"feedback": "accurate", "message_id": "ai_1"}
+NODE_DOM = r'''
+class Element {
+  constructor(name) {
+    this.name=name; this.children=[]; this.parent=null; this.listeners={}; this.attributes={};
+    this.textContent=""; this.className=""; this.value=""; this.disabled=false; this.hidden=false;
+    this.scrollTop=0; this.scrollHeight=0;
+  }
+  appendChild(c){c.parent=this;this.children.push(c);return c;}
+  insertBefore(c,n){c.parent=this;const i=this.children.indexOf(n);i<0?this.children.push(c):this.children.splice(i,0,c);return c;}
+  replaceChildren(...items){this.children=[];items.forEach(c=>this.appendChild(c));}
+  addEventListener(n,f){this.listeners[n]=f;} setAttribute(n,v){this.attributes[n]=v;}
+  remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
+  focus(){} requestSubmit(){} set innerHTML(v){this.children=[];this._html=v;} get innerHTML(){return this._html||"";}
+}
+const ids=["messages","chat-form","message-input","send-button","emotion-status","safety-status","emotion-timeline","thread-list","new-thread-button","delete-thread-button"];
+const elements=Object.fromEntries(ids.map(id=>[`#${id}`,new Element(id)]));
+function response(body,status=200){return {ok:status<400,status,json:async()=>body};}
+'''
 
-    assert web._request_payload(LegacyRequest()) == {
-        "feedback": "accurate",
-        "message_id": "ai_1",
+
+def test_static_app_bootstrap_reuses_identity_and_renders_thread_controls():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const store=new Map([["hdu_erc_client_id","c_signed"],["hdu_erc_thread_id","thread-1"]]);const calls=[];
+const fetch=async(url,options={})=>{calls.push({url,options});
+ if(url==="/api/clients/c_signed/threads")return response({threads:[{thread_id:"thread-1",title:"一"},{thread_id:"thread-2",title:"二"}]});
+ if(url==="/api/clients/c_signed/threads/thread-1")return response({messages:[],emotion:null});
+ if(url==="/api/clients/c_signed/threads/thread-1/emotion-timeline?limit=5")return response({timeline:[]});
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"00000000-0000-4000-8000-000000000001"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(()=>{try{assert.equal(store.get("hdu_erc_client_id"),"c_signed");assert.equal(store.get("hdu_erc_thread_id"),"thread-1");assert.equal(elements["#thread-list"].children.length,2);assert.equal(calls[0].url,"/api/clients/c_signed/threads");assert.ok(!calls.some(c=>c.url==="/api/clients/bootstrap"));}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_app_invalid_client_rebootstraps_and_thread_actions_are_server_backed():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const store=new Map([["hdu_erc_client_id","bad"],["hdu_erc_thread_id","old"]]);const calls=[];
+const fetch=async(url,options={})=>{calls.push({url,options});
+ if(url==="/api/clients/bad/threads")return response({},401);
+ if(url==="/api/clients/bootstrap")return response({client_id:"c_new",thread:{thread_id:"t1",title:"一"}},201);
+ if(url==="/api/clients/c_new/threads/t1")return response({messages:[],emotion:null});
+ if(url==="/api/clients/c_new/threads/t1/emotion-timeline?limit=5")return response({timeline:[]});
+ if(url==="/api/clients/c_new/threads"&&options.method==="POST")return response({thread:{thread_id:"t2",title:"二"}},201);
+ if(url==="/api/clients/c_new/threads/t2"&&options.method==="DELETE")return response({},204);
+ if(url==="/api/clients/c_new/threads/t2")return response({messages:[],emotion:null});
+ if(url==="/api/clients/c_new/threads/t2/emotion-timeline?limit=5")return response({timeline:[]});
+ if(url==="/api/clients/c_new/threads")return response({threads:[{thread_id:"t1",title:"一"}]});
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"00000000-0000-4000-8000-000000000001"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(async()=>{try{assert.equal(store.get("hdu_erc_client_id"),"c_new");assert.equal(store.get("hdu_erc_thread_id"),"t1");await context.__HDU_ERC_TEST__.createThread();assert.equal(store.get("hdu_erc_thread_id"),"t2");await context.__HDU_ERC_TEST__.deleteCurrentThread();assert.equal(store.get("hdu_erc_thread_id"),"t1");assert.ok(calls.some(c=>c.url==="/api/clients/c_new/threads/t2"&&c.options.method==="DELETE"));}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_app_first_launch_bootstraps_and_deleting_last_thread_creates_one():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const store=new Map();const calls=[];
+const fetch=async(url,options={})=>{calls.push({url,options});
+ if(url==="/api/clients/bootstrap")return response({client_id:"c_first",thread:{thread_id:"t1",title:"一"}},201);
+ if(url==="/api/clients/c_first/threads/t1"&&options.method==="DELETE")return response({},204);
+ if(url==="/api/clients/c_first/threads"){
+   if(options.method==="POST")return response({thread:{thread_id:"t2",title:"二"}},201);
+   return response({threads:[]});
+ }
+ if(url==="/api/clients/c_first/threads/t1"||url==="/api/clients/c_first/threads/t2")return response({messages:[],emotion:null});
+ if(url.endsWith("/emotion-timeline?limit=5"))return response({timeline:[]});
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(async()=>{try{assert.equal(store.get("hdu_erc_client_id"),"c_first");assert.equal(store.get("hdu_erc_thread_id"),"t1");await context.__HDU_ERC_TEST__.deleteCurrentThread();assert.equal(store.get("hdu_erc_client_id"),"c_first");assert.equal(store.get("hdu_erc_thread_id"),"t2");assert.ok(calls.some(c=>c.url==="/api/clients/c_first/threads"&&c.options.method==="POST"));}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_incremental_sse_parser_handles_utf8_json_crlf_multidata_and_tail():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const fetch=async()=>new Promise(()=>{});const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+(async()=>{try{const encoded=new TextEncoder().encode('event: token\r\ndata: {"content":"你好"}\r\n\r\nevent: token\ndata: {"content":"再见"}\n');const chunks=[encoded.slice(0,25),encoded.slice(25,38),encoded.slice(38,41),encoded.slice(41)];const frames=await context.__HDU_ERC_TEST__.collectSseFrames(chunks);assert.deepEqual(JSON.parse(JSON.stringify(frames)),[{event:"token",data:{content:"你好"}},{event:"token",data:{content:"再见"}}]);const multi=await context.__HDU_ERC_TEST__.collectSseFrames([new TextEncoder().encode('event: token\ndata: {"content":\ndata: "x"}\n\n')]);assert.equal(multi[0].data.content,"x");}catch(e){console.error(e);process.exit(1);}})();
+''')
+
+
+def test_static_snapshot_handles_complex_messages_and_preserves_regeneration_metadata():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const fetch=async()=>new Promise(()=>{});const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+try { context.__HDU_ERC_TEST__.renderSnapshot({emotion:null,messages:[
+  {role:"system",content:{kind:"notice"},id:"sys"},
+  {role:"tool",content:[{type:"image",url:"private"}],id:"tool"},
+  {role:"ai",content:[],id:"ai_1",regenerated:true,original_content:"旧答案",regeneration_reason:"不准确",feedback:"like",predicted_emotion:"sad"},
+]});
+  assert.equal(elements["#messages"].children.length,3);
+  const ai=elements["#messages"].children[2];
+  assert.equal(ai.attributes["data-message-id"],"ai_1");
+  assert.equal(ai.attributes["data-original-content"],"旧答案");
+  assert.equal(ai.attributes["data-regeneration-reason"],"不准确");
+  assert.equal(ai.attributes["data-predicted-emotion"],"sad");
+  assert.equal(ai.children[0].textContent,"[工具调用]");
+} catch(e) { console.error(e); process.exit(1); }
+''')
+
+
+def test_static_turn_stream_posts_uuid_uses_done_as_success_and_reloads_server_snapshot():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const store=new Map([["hdu_erc_client_id","c"],["hdu_erc_thread_id","t"]]);const calls=[];let snapshots=0;
+const encoder=new TextEncoder();
+function streamResponse(text){const bytes=encoder.encode(text);let offset=0;return {ok:true,status:200,body:{getReader(){return {async read(){if(offset>=bytes.length)return {done:true};const value=bytes.slice(offset,offset+7);offset+=7;return {done:false,value};},releaseLock(){}};}}};}
+const fetch=async(url,options={})=>{calls.push({url,options});
+ if(url==="/api/clients/c/threads")return response({threads:[{thread_id:"t",title:"一"}]});
+ if(url==="/api/clients/c/threads/t/emotion-timeline?limit=5")return response({timeline:[]});
+ if(url==="/api/clients/c/threads/t"){snapshots++;return response({emotion:null,messages:snapshots===1?[]:[{role:"human",content:"你好",id:"h1"},{role:"ai",content:"回复",id:"a1"}]});}
+ if(url==="/api/clients/c/threads/t/messages:stream")return streamResponse('event: user_message\ndata: {"message_id":"h1","role":"human","content":"你好"}\n\nevent: token\ndata: {"content":"回"}\n\nevent: token\ndata: {"content":"复"}\n\nevent: safety\ndata: {"level":"supportive","guidance":"陪伴"}\n\nevent: done\ndata: {"message_id":"a1","content":"回复"}\n\n');
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"00000000-0000-4000-8000-000000000009"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(async()=>{try{await context.__HDU_ERC_TEST__.streamMessage("你好");const request=calls.find(c=>c.url.endsWith("messages:stream"));assert.equal(request.options.method,"POST");assert.deepEqual(JSON.parse(request.options.body),{message:"你好",request_id:"00000000-0000-4000-8000-000000000009"});assert.deepEqual(elements["#messages"].children.map(x=>x.children[0].textContent),["你好","回复"]);assert.equal(elements["#safety-status"].textContent,"陪伴");assert.equal(elements["#send-button"].disabled,false);}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_regeneration_posts_reason_and_replaces_same_message_in_place():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const store=new Map([["hdu_erc_client_id","c"],["hdu_erc_thread_id","t"]]);const calls=[];let snapshots=0;const encoder=new TextEncoder();
+function streamResponse(text){const bytes=encoder.encode(text);let read=false;return {ok:true,status:200,body:{getReader(){return {async read(){if(read)return {done:true};read=true;return {done:false,value:bytes};},releaseLock(){}};}}};}
+const fetch=async(url,options={})=>{calls.push({url,options});
+ if(url==="/api/clients/c/threads")return response({threads:[{thread_id:"t",title:"一"}]});
+ if(url==="/api/clients/c/threads/t/emotion-timeline?limit=5")return response({timeline:[]});
+ if(url==="/api/clients/c/threads/t"){snapshots++;return response({emotion:null,messages:[{role:"ai",content:snapshots===1?"旧":"新",id:"a1",regenerated:snapshots>1,original_content:"旧",regeneration_reason:"不准确"}]});}
+ if(url==="/api/clients/c/threads/t/messages/a1/regenerate:stream")return streamResponse('event: token\ndata: {"content":"新"}\n\nevent: done\ndata: {"message_id":"a1","content":"新","reason":"不准确","regenerated":true}\n\n');
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"00000000-0000-4000-8000-000000000010"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(async()=>{try{const wrapper=elements["#messages"].children[0];const controls=wrapper.children[1];const status=controls.children[controls.children.length-1];await context.__HDU_ERC_TEST__.submitRegeneration(wrapper,"a1","不准确",controls,status);const request=calls.find(c=>c.url.includes("regenerate:stream"));assert.deepEqual(JSON.parse(request.options.body),{reason:"不准确",request_id:"00000000-0000-4000-8000-000000000010"});assert.equal(elements["#messages"].children.length,1);const updated=elements["#messages"].children[0];assert.equal(updated.attributes["data-message-id"],"a1");assert.equal(updated.children[0].textContent,"新");assert.equal(updated.attributes["data-original-content"],"旧");}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_app_uses_client_scoped_post_streams_and_server_only_state():
+    app_js = (ROOT / "chatbot/static/app.js").read_text(encoding="utf-8")
+    assert "messages:stream" in app_js and "regenerate:stream" in app_js
+    assert "getReader()" in app_js and "TextDecoder" in app_js and "request_id" in app_js
+    assert "new EventSource" not in app_js
+    assert "/api/session" not in app_js and "/api/chat/streams" not in app_js
+    assert set(re.findall(r'localStorage\.(?:getItem|setItem|removeItem)\("([^"]+)"', app_js)) <= {
+        "hdu_erc_client_id", "hdu_erc_thread_id"
     }
 
 
-def test_legacy_stream_endpoint_is_removed():
-    service = FakeService()
-    app = create_app(service_factory=lambda: service)
+def test_index_endpoint_and_static_js_are_served():
+    app = create_app()
     client = TestClient(app)
-
-    response = client.get("/api/chat/stream?message=hello")
-
-    assert response.status_code == 404
-    assert service.messages == []
-
-
-def test_static_assets_exist():
-    root = Path(__file__).resolve().parents[2]
-
-    assert (root / "chatbot" / "static" / "index.html").exists()
-    assert (root / "chatbot" / "static" / "style.css").exists()
-    assert (root / "chatbot" / "static" / "app.js").exists()
-
-
-def test_static_app_js_loads_session_snapshot():
-    root = Path(__file__).resolve().parents[2]
-    app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
-
-    assert 'fetch("/api/session?limit=10")' in app_js
-    assert 'fetch("/api/history?limit=10")' not in app_js
-    assert "payload.emotion" in app_js
-    assert "情感状态：暂无" in app_js
-    assert "renderEmotion(payload);" in app_js
-    assert "emotionStatusEl.textContent = `情感状态：${payload.emotion}`;" not in app_js
-
-
-def test_static_app_js_clears_safety_status_during_analysis_transitions():
-    root = Path(__file__).resolve().parents[2]
-    app_js = (root / "chatbot" / "static" / "app.js").read_text(encoding="utf-8")
-
-    assert "function clearSafetyStatus()" in app_js
-    assert app_js.count("clearSafetyStatus();") >= 5
-    assert (
-        'source.addEventListener("user_message", (event) => {\n'
-        "    const payload = JSON.parse(event.data);\n"
-        "    clearSafetyStatus();"
-    ) in app_js
-    assert (
-        'source.addEventListener("emotion_start", () => {\n'
-        '    emotionStatusEl.textContent = "情感状态：正在分析情绪…";\n'
-        "    clearSafetyStatus();"
-    ) in app_js
-    assert (
-        'source.addEventListener("emotion_error", () => {\n'
-        '    emotionStatusEl.textContent = "情感状态：情感分析失败，本轮继续回复";\n'
-        "    clearSafetyStatus();"
-    ) in app_js
-
-
-def test_static_app_js_initializes_from_session_snapshot():
-    root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required for app.js behavior test")
-
-    script = r"""
-const fs = require("fs");
-const vm = require("vm");
-
-class Element {
-  constructor(name) {
-    this.name = name;
-    this.children = [];
-    this.textContent = "";
-    this.className = "";
-    this.disabled = false;
-    this.value = "";
-    this.scrollTop = 0;
-    this.scrollHeight = 0;
-    this.listeners = {};
-  }
-
-  appendChild(child) {
-    this.children.push(child);
-    return child;
-  }
-
-  addEventListener(name, callback) {
-    this.listeners[name] = callback;
-  }
-
-  requestSubmit() {}
-
-  focus() {}
-
-  set innerHTML(value) {
-    this.children = [];
-    this._innerHTML = value;
-  }
-
-  get innerHTML() {
-    return this._innerHTML || "";
-  }
-}
-
-const messagesEl = new Element("messages");
-const formEl = new Element("form");
-const inputEl = new Element("input");
-const buttonEl = new Element("button");
-const emotionStatusEl = new Element("emotion");
-const fetchCalls = [];
-
-const elements = {
-  "#messages": messagesEl,
-  "#chat-form": formEl,
-  "#message-input": inputEl,
-  "#send-button": buttonEl,
-  "#emotion-status": emotionStatusEl,
-};
-
-const context = {
-  console,
-  encodeURIComponent,
-  EventSource: function EventSource() {},
-  fetch: async (url) => {
-    fetchCalls.push(url);
-    return {
-      ok: true,
-      json: async () => ({
-        messages: [
-          {role: "human", content: "hello"},
-          {role: "ai", content: "hi"},
-        ],
-        emotion: {emotion: "sad"},
-      }),
-    };
-  },
-  document: {
-    querySelector: (selector) => elements[selector],
-    createElement: (name) => new Element(name),
-  },
-};
-
-context.EventSource.prototype.addEventListener = function addEventListener() {};
-context.EventSource.prototype.close = function close() {};
-
-const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
-vm.runInNewContext(code, context);
-
-setImmediate(() => {
-  try {
-    if (fetchCalls.length !== 1 || fetchCalls[0] !== "/api/session?limit=10") {
-      throw new Error(`unexpected fetch calls: ${JSON.stringify(fetchCalls)}`);
-    }
-    if (messagesEl.children.length !== 2) {
-      throw new Error(`expected 2 rendered messages, got ${messagesEl.children.length}`);
-    }
-    const contents = messagesEl.children.map((message) => message.children[0].textContent);
-    if (JSON.stringify(contents) !== JSON.stringify(["hello", "hi"])) {
-      throw new Error(`unexpected rendered messages: ${JSON.stringify(contents)}`);
-    }
-    if (emotionStatusEl.textContent !== "情感状态：sad") {
-      throw new Error(`unexpected emotion status: ${emotionStatusEl.textContent}`);
-    }
-    if (inputEl.disabled !== false || buttonEl.disabled !== false) {
-      throw new Error("input and button should be unlocked after initialization");
-    }
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-});
-"""
-    result = subprocess.run(
-        [node, "-e", script],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-def test_static_app_js_renders_and_submits_feedback_controls():
-    root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required for app.js behavior test")
-
-    script = r"""
-const fs = require("fs");
-const vm = require("vm");
-
-class Element {
-  constructor(name) {
-    this.name = name;
-    this.children = [];
-    this.parent = null;
-    this.textContent = "";
-    this.className = "";
-    this.disabled = false;
-    this.value = "";
-    this.scrollTop = 0;
-    this.scrollHeight = 0;
-    this.listeners = {};
-    this.attributes = {};
-  }
-
-  appendChild(child) {
-    child.parent = this;
-    this.children.push(child);
-    return child;
-  }
-
-  insertBefore(child, nextSibling) {
-    child.parent = this;
-    const index = this.children.indexOf(nextSibling);
-    if (index === -1) {
-      this.children.push(child);
-    } else {
-      this.children.splice(index, 0, child);
-    }
-    return child;
-  }
-
-  addEventListener(name, callback) {
-    this.listeners[name] = callback;
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  remove() {
-    if (!this.parent) {
-      return;
-    }
-    this.parent.children = this.parent.children.filter((child) => child !== this);
-    this.parent = null;
-  }
-
-  requestSubmit() {}
-
-  focus() {}
-
-  set innerHTML(value) {
-    this.children = [];
-    this._innerHTML = value;
-  }
-
-  get innerHTML() {
-    return this._innerHTML || "";
-  }
-}
-
-const messagesEl = new Element("messages");
-const formEl = new Element("form");
-const inputEl = new Element("input");
-const buttonEl = new Element("button");
-const emotionStatusEl = new Element("emotion");
-const fetchCalls = [];
-
-const elements = {
-  "#messages": messagesEl,
-  "#chat-form": formEl,
-  "#message-input": inputEl,
-  "#send-button": buttonEl,
-  "#emotion-status": emotionStatusEl,
-};
-
-const context = {
-  console,
-  encodeURIComponent,
-  EventSource: function EventSource() {},
-  fetch: async (url, options) => {
-    fetchCalls.push({url, options});
-    if (url === "/api/session?limit=10") {
-      return {
-        ok: true,
-        json: async () => ({
-          messages: [
-            {role: "ai", content: "old"},
-            {role: "ai", content: "new", id: "ai_1", feedback: null},
-            {role: "ai", content: "rated", id: "ai_2", feedback: "like"},
-          ],
-          emotion: {emotion: "sad"},
-        }),
-      };
-    }
-    if (url === "/api/messages/ai_1/feedback") {
-      return {
-        ok: true,
-        json: async () => ({status: "updated", message_id: "ai_1", feedback: "like"}),
-      };
-    }
-    if (url === "/api/emotion/feedback") {
-      return {
-        ok: true,
-        json: async () => ({status: "saved"}),
-      };
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  },
-  document: {
-    querySelector: (selector) => elements[selector],
-    createElement: (name) => new Element(name),
-  },
-};
-
-context.EventSource.prototype.addEventListener = function addEventListener() {};
-context.EventSource.prototype.close = function close() {};
-
-const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
-vm.runInNewContext(code, context);
-
-setImmediate(async () => {
-  try {
-    if (messagesEl.children.length !== 3) {
-      throw new Error(`expected 3 messages, got ${messagesEl.children.length}`);
-    }
-    if (messagesEl.children[0].children.length !== 1) {
-      throw new Error("old AI message should not show feedback controls");
-    }
-    if (messagesEl.children[1].children.length !== 2) {
-      throw new Error("new AI message should show feedback controls");
-    }
-    if (messagesEl.children[2].children.length !== 1) {
-      throw new Error("rated AI message should not show feedback controls");
-    }
-
-    const controls = messagesEl.children[1].children[1];
-    const likeButton = controls.children[0];
-    const dislikeButton = controls.children[1];
-    const emotionButton = controls.children[3];
-    if (likeButton.textContent !== "Good") {
-      throw new Error(`unexpected like button text: ${likeButton.textContent}`);
-    }
-    if (likeButton.attributes["aria-label"] !== "Good") {
-      throw new Error(`unexpected like aria-label: ${likeButton.attributes["aria-label"]}`);
-    }
-    if (dislikeButton.textContent !== "Bad") {
-      throw new Error(`unexpected dislike button text: ${dislikeButton.textContent}`);
-    }
-    if (dislikeButton.attributes["aria-label"] !== "Bad") {
-      throw new Error(`unexpected dislike aria-label: ${dislikeButton.attributes["aria-label"]}`);
-    }
-    if (emotionButton.textContent !== "Emotion?") {
-      throw new Error(`unexpected emotion feedback text: ${emotionButton.textContent}`);
-    }
-    if (emotionButton.attributes["aria-label"] !== "Emotion correctness feedback") {
-      throw new Error(`unexpected emotion aria-label: ${emotionButton.attributes["aria-label"]}`);
-    }
-
-    emotionButton.listeners.click();
-
-    const emotionChoices = controls.children[4];
-    const choiceLabels = emotionChoices.children.map((button) => button.textContent);
-    if (JSON.stringify(choiceLabels) !== JSON.stringify(["Accurate", "Too positive", "Too negative", "Wrong"])) {
-      throw new Error(`unexpected emotion choices: ${JSON.stringify(choiceLabels)}`);
-    }
-
-    await emotionChoices.children[2].listeners.click();
-
-    if (fetchCalls[1].url !== "/api/emotion/feedback") {
-      throw new Error(`unexpected emotion feedback url: ${fetchCalls[1].url}`);
-    }
-    if (fetchCalls[1].options.method !== "POST") {
-      throw new Error(`unexpected emotion feedback method: ${fetchCalls[1].options.method}`);
-    }
-    if (fetchCalls[1].options.body !== JSON.stringify({
-      message_id: "ai_1",
-      feedback: "too_negative",
-      predicted_emotion: "sad",
-    })) {
-      throw new Error(`unexpected emotion feedback body: ${fetchCalls[1].options.body}`);
-    }
-
-    await likeButton.listeners.click();
-
-    if (fetchCalls[2].url !== "/api/messages/ai_1/feedback") {
-      throw new Error(`unexpected feedback url: ${fetchCalls[2].url}`);
-    }
-    if (fetchCalls[2].options.method !== "POST") {
-      throw new Error(`unexpected feedback method: ${fetchCalls[2].options.method}`);
-    }
-    if (fetchCalls[2].options.body !== JSON.stringify({feedback: "like"})) {
-      throw new Error(`unexpected feedback body: ${fetchCalls[2].options.body}`);
-    }
-    if (messagesEl.children[1].children.length !== 1) {
-      throw new Error("feedback controls should be removed after successful rating");
-    }
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-});
-"""
-    result = subprocess.run(
-        [node, "-e", script],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-def test_static_app_js_regenerates_reply_with_reason_and_collapses_original():
-    root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required for app.js behavior test")
-
-    script = r"""
-const fs = require("fs");
-const vm = require("vm");
-
-class Element {
-  constructor(name) {
-    this.name = name;
-    this.children = [];
-    this.parent = null;
-    this.textContent = "";
-    this.className = "";
-    this.disabled = false;
-    this.value = "";
-    this.scrollTop = 0;
-    this.scrollHeight = 0;
-    this.listeners = {};
-    this.attributes = {};
-  }
-
-  appendChild(child) {
-    child.parent = this;
-    this.children.push(child);
-    return child;
-  }
-
-  insertBefore(child, nextSibling) {
-    child.parent = this;
-    const index = this.children.indexOf(nextSibling);
-    if (index === -1) {
-      this.children.push(child);
-    } else {
-      this.children.splice(index, 0, child);
-    }
-    return child;
-  }
-
-  addEventListener(name, callback) {
-    this.listeners[name] = callback;
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  remove() {
-    if (!this.parent) {
-      return;
-    }
-    this.parent.children = this.parent.children.filter((child) => child !== this);
-    this.parent = null;
-  }
-
-  get nextSibling() {
-    if (!this.parent) {
-      return null;
-    }
-    const index = this.parent.children.indexOf(this);
-    return this.parent.children[index + 1] || null;
-  }
-
-  requestSubmit() {}
-  focus() {}
-
-  set innerHTML(value) {
-    this.children = [];
-    this._innerHTML = value;
-  }
-
-  get innerHTML() {
-    return this._innerHTML || "";
-  }
-}
-
-const messagesEl = new Element("messages");
-const formEl = new Element("form");
-const inputEl = new Element("input");
-const buttonEl = new Element("button");
-const emotionStatusEl = new Element("emotion");
-const fetchCalls = [];
-let resolveRegenerate;
-const regenerateResponse = new Promise((resolve) => {
-  resolveRegenerate = resolve;
-});
-
-const elements = {
-  "#messages": messagesEl,
-  "#chat-form": formEl,
-  "#message-input": inputEl,
-  "#send-button": buttonEl,
-  "#emotion-status": emotionStatusEl,
-};
-
-const context = {
-  console,
-  encodeURIComponent,
-  EventSource: function EventSource() {},
-  fetch: async (url, options) => {
-    fetchCalls.push({url, options});
-    if (url === "/api/session?limit=10") {
-      return {
-        ok: true,
-        json: async () => ({
-          messages: [
-            {role: "human", content: "q1"},
-            {role: "ai", content: "bad", id: "ai_1", feedback: null},
-          ],
-          emotion: null,
-        }),
-      };
-    }
-    if (url === "/api/messages/ai_1/regenerate") {
-      return regenerateResponse;
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  },
-  document: {
-    querySelector: (selector) => elements[selector],
-    createElement: (name) => new Element(name),
-  },
-};
-
-context.EventSource.prototype.addEventListener = function addEventListener() {};
-context.EventSource.prototype.close = function close() {};
-
-const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
-vm.runInNewContext(code, context);
-
-setImmediate(async () => {
-  try {
-    const original = messagesEl.children[1];
-    const controls = original.children[1];
-    const regenerateButton = controls.children[2];
-    if (regenerateButton.textContent !== "Regenerate") {
-      throw new Error(`unexpected regenerate text: ${regenerateButton.textContent}`);
-    }
-
-    regenerateButton.listeners.click();
-    const reasons = controls.children[4];
-    const firstReason = reasons.children[0];
-    const secondReason = reasons.children[1];
-    if (firstReason.textContent !== "不准确") {
-      throw new Error(`unexpected first reason: ${firstReason.textContent}`);
-    }
-
-    const pendingRegeneration = firstReason.listeners.click();
-    if (!firstReason.disabled) {
-      throw new Error("selected reason should be disabled while regenerate is pending");
-    }
-    if (!secondReason.disabled) {
-      throw new Error("other reasons should be disabled while regenerate is pending");
-    }
-    resolveRegenerate({
-      ok: true,
-      json: async () => ({
-        status: "regenerated",
-        original_message_id: "ai_1",
-        message_id: "ai_2",
-        content: "better",
-        reason: "不准确",
-      }),
-    });
-    await pendingRegeneration;
-
-    if (!original.className.includes("regenerated")) {
-      throw new Error(`original should be collapsed: ${original.className}`);
-    }
-    if (messagesEl.children.length !== 3) {
-      throw new Error(`expected regenerated message inserted, got ${messagesEl.children.length}`);
-    }
-    if (messagesEl.children[2].children[0].textContent !== "better") {
-      throw new Error("regenerated message content missing");
-    }
-    if (fetchCalls[1].url !== "/api/messages/ai_1/regenerate") {
-      throw new Error(`unexpected regenerate url: ${fetchCalls[1].url}`);
-    }
-    if (fetchCalls[1].options.body !== JSON.stringify({reason: "不准确"})) {
-      throw new Error(`unexpected regenerate body: ${fetchCalls[1].options.body}`);
-    }
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-});
-"""
-    result = subprocess.run(
-        [node, "-e", script],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-def test_static_app_js_recovers_controls_when_regeneration_fails():
-    root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required for app.js behavior test")
-
-    script = r"""
-const fs = require("fs");
-const vm = require("vm");
-
-class Element {
-  constructor(name) {
-    this.name = name;
-    this.children = [];
-    this.parent = null;
-    this.textContent = "";
-    this.className = "";
-    this.disabled = false;
-    this.value = "";
-    this.scrollTop = 0;
-    this.scrollHeight = 0;
-    this.listeners = {};
-    this.attributes = {};
-  }
-
-  appendChild(child) {
-    child.parent = this;
-    this.children.push(child);
-    return child;
-  }
-
-  insertBefore(child, nextSibling) {
-    child.parent = this;
-    const index = this.children.indexOf(nextSibling);
-    if (index === -1) {
-      this.children.push(child);
-    } else {
-      this.children.splice(index, 0, child);
-    }
-    return child;
-  }
-
-  addEventListener(name, callback) {
-    this.listeners[name] = callback;
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  remove() {
-    if (!this.parent) {
-      return;
-    }
-    this.parent.children = this.parent.children.filter((child) => child !== this);
-    this.parent = null;
-  }
-
-  get nextSibling() {
-    if (!this.parent) {
-      return null;
-    }
-    const index = this.parent.children.indexOf(this);
-    return this.parent.children[index + 1] || null;
-  }
-
-  requestSubmit() {}
-  focus() {}
-
-  set innerHTML(value) {
-    this.children = [];
-    this._innerHTML = value;
-  }
-
-  get innerHTML() {
-    return this._innerHTML || "";
-  }
-}
-
-const messagesEl = new Element("messages");
-const formEl = new Element("form");
-const inputEl = new Element("input");
-const buttonEl = new Element("button");
-const emotionStatusEl = new Element("emotion");
-const fetchCalls = [];
-let resolveRegenerate;
-const regenerateResponse = new Promise((resolve) => {
-  resolveRegenerate = resolve;
-});
-
-const elements = {
-  "#messages": messagesEl,
-  "#chat-form": formEl,
-  "#message-input": inputEl,
-  "#send-button": buttonEl,
-  "#emotion-status": emotionStatusEl,
-};
-
-const context = {
-  console,
-  encodeURIComponent,
-  EventSource: function EventSource() {},
-  fetch: async (url, options) => {
-    fetchCalls.push({url, options});
-    if (url === "/api/session?limit=10") {
-      return {
-        ok: true,
-        json: async () => ({
-          messages: [
-            {role: "human", content: "q1"},
-            {role: "ai", content: "bad", id: "ai_1", feedback: null},
-          ],
-          emotion: null,
-        }),
-      };
-    }
-    if (url === "/api/messages/ai_1/regenerate") {
-      return regenerateResponse;
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  },
-  document: {
-    querySelector: (selector) => elements[selector],
-    createElement: (name) => new Element(name),
-  },
-};
-
-context.EventSource.prototype.addEventListener = function addEventListener() {};
-context.EventSource.prototype.close = function close() {};
-
-const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
-vm.runInNewContext(code, context);
-
-setImmediate(async () => {
-  try {
-    const original = messagesEl.children[1];
-    const controls = original.children[1];
-    const likeButton = controls.children[0];
-    const dislikeButton = controls.children[1];
-    const regenerateButton = controls.children[2];
-
-    regenerateButton.listeners.click();
-    const reasons = controls.children[4];
-    const firstReason = reasons.children[0];
-    const secondReason = reasons.children[1];
-
-    const pendingRegeneration = firstReason.listeners.click();
-    const disabledButtons = [
-      likeButton,
-      dislikeButton,
-      regenerateButton,
-      firstReason,
-      secondReason,
-    ].filter((button) => button.disabled);
-    if (disabledButtons.length !== 5) {
-      throw new Error(`expected controls disabled while pending, got ${disabledButtons.length}`);
-    }
-
-    resolveRegenerate({ok: false, json: async () => ({})});
-    await pendingRegeneration;
-
-    const status = controls.children[5];
-    if (status.textContent !== "重新生成失败") {
-      throw new Error(`unexpected failure status: ${status.textContent}`);
-    }
-    const reenabledButtons = [
-      likeButton,
-      dislikeButton,
-      regenerateButton,
-      firstReason,
-      secondReason,
-    ].filter((button) => !button.disabled);
-    if (reenabledButtons.length !== 5) {
-      throw new Error(`expected controls re-enabled after failure, got ${reenabledButtons.length}`);
-    }
-    if (original.className.includes("regenerated")) {
-      throw new Error(`original should not be collapsed after failure: ${original.className}`);
-    }
-    if (messagesEl.children.length !== 2) {
-      throw new Error(`expected no regenerated message inserted, got ${messagesEl.children.length}`);
-    }
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-});
-"""
-    result = subprocess.run(
-        [node, "-e", script],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-def test_static_app_js_disables_visible_reasons_during_pending_feedback():
-    root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required for app.js behavior test")
-
-    script = r"""
-const fs = require("fs");
-const vm = require("vm");
-
-class Element {
-  constructor(name) {
-    this.name = name;
-    this.children = [];
-    this.parent = null;
-    this.textContent = "";
-    this.className = "";
-    this.disabled = false;
-    this.value = "";
-    this.scrollTop = 0;
-    this.scrollHeight = 0;
-    this.listeners = {};
-    this.attributes = {};
-  }
-
-  appendChild(child) {
-    child.parent = this;
-    this.children.push(child);
-    return child;
-  }
-
-  insertBefore(child, nextSibling) {
-    child.parent = this;
-    const index = this.children.indexOf(nextSibling);
-    if (index === -1) {
-      this.children.push(child);
-    } else {
-      this.children.splice(index, 0, child);
-    }
-    return child;
-  }
-
-  addEventListener(name, callback) {
-    this.listeners[name] = callback;
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  remove() {
-    if (!this.parent) {
-      return;
-    }
-    this.parent.children = this.parent.children.filter((child) => child !== this);
-    this.parent = null;
-  }
-
-  get nextSibling() {
-    if (!this.parent) {
-      return null;
-    }
-    const index = this.parent.children.indexOf(this);
-    return this.parent.children[index + 1] || null;
-  }
-
-  requestSubmit() {}
-  focus() {}
-
-  set innerHTML(value) {
-    this.children = [];
-    this._innerHTML = value;
-  }
-
-  get innerHTML() {
-    return this._innerHTML || "";
-  }
-}
-
-const messagesEl = new Element("messages");
-const formEl = new Element("form");
-const inputEl = new Element("input");
-const buttonEl = new Element("button");
-const emotionStatusEl = new Element("emotion");
-const fetchCalls = [];
-let resolveFeedback;
-const feedbackResponse = new Promise((resolve) => {
-  resolveFeedback = resolve;
-});
-
-const elements = {
-  "#messages": messagesEl,
-  "#chat-form": formEl,
-  "#message-input": inputEl,
-  "#send-button": buttonEl,
-  "#emotion-status": emotionStatusEl,
-};
-
-const context = {
-  console,
-  encodeURIComponent,
-  EventSource: function EventSource() {},
-  fetch: async (url, options) => {
-    fetchCalls.push({url, options});
-    if (url === "/api/session?limit=10") {
-      return {
-        ok: true,
-        json: async () => ({
-          messages: [
-            {role: "human", content: "q1"},
-            {role: "ai", content: "bad", id: "ai_1", feedback: null},
-          ],
-          emotion: null,
-        }),
-      };
-    }
-    if (url === "/api/messages/ai_1/feedback") {
-      return feedbackResponse;
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  },
-  document: {
-    querySelector: (selector) => elements[selector],
-    createElement: (name) => new Element(name),
-  },
-};
-
-context.EventSource.prototype.addEventListener = function addEventListener() {};
-context.EventSource.prototype.close = function close() {};
-
-const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
-vm.runInNewContext(code, context);
-
-setImmediate(async () => {
-  try {
-    const original = messagesEl.children[1];
-    const controls = original.children[1];
-    const likeButton = controls.children[0];
-    const dislikeButton = controls.children[1];
-    const regenerateButton = controls.children[2];
-
-    regenerateButton.listeners.click();
-    const reasons = controls.children[4];
-    const firstReason = reasons.children[0];
-    const secondReason = reasons.children[1];
-
-    const pendingFeedback = likeButton.listeners.click();
-    const disabledButtons = [
-      likeButton,
-      dislikeButton,
-      regenerateButton,
-      firstReason,
-      secondReason,
-    ].filter((button) => button.disabled);
-    if (disabledButtons.length !== 5) {
-      throw new Error(`expected visible controls disabled during feedback, got ${disabledButtons.length}`);
-    }
-
-    resolveFeedback({ok: false, json: async () => ({})});
-    await pendingFeedback;
-
-    const status = controls.children[5];
-    if (status.textContent !== "评价保存失败") {
-      throw new Error(`unexpected feedback failure status: ${status.textContent}`);
-    }
-    const reenabledButtons = [
-      likeButton,
-      dislikeButton,
-      regenerateButton,
-      firstReason,
-      secondReason,
-    ].filter((button) => !button.disabled);
-    if (reenabledButtons.length !== 5) {
-      throw new Error(`expected visible controls re-enabled after feedback failure, got ${reenabledButtons.length}`);
-    }
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-});
-"""
-    result = subprocess.run(
-        [node, "-e", script],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-def test_static_app_js_renders_regenerated_session_reply_after_original():
-    root = Path(__file__).resolve().parents[2]
-    node = shutil.which("node")
-    if node is None:
-        pytest.skip("node is required for app.js behavior test")
-
-    script = r"""
-const fs = require("fs");
-const vm = require("vm");
-
-class Element {
-  constructor(name) {
-    this.name = name;
-    this.children = [];
-    this.parent = null;
-    this.textContent = "";
-    this.className = "";
-    this.disabled = false;
-    this.value = "";
-    this.scrollTop = 0;
-    this.scrollHeight = 0;
-    this.listeners = {};
-    this.attributes = {};
-  }
-
-  appendChild(child) {
-    child.parent = this;
-    this.children.push(child);
-    return child;
-  }
-
-  insertBefore(child, nextSibling) {
-    child.parent = this;
-    const index = this.children.indexOf(nextSibling);
-    if (index === -1) {
-      this.children.push(child);
-    } else {
-      this.children.splice(index, 0, child);
-    }
-    return child;
-  }
-
-  addEventListener(name, callback) {
-    this.listeners[name] = callback;
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  requestSubmit() {}
-  focus() {}
-
-  set innerHTML(value) {
-    this.children = [];
-    this._innerHTML = value;
-  }
-
-  get innerHTML() {
-    return this._innerHTML || "";
-  }
-}
-
-const messagesEl = new Element("messages");
-const formEl = new Element("form");
-const inputEl = new Element("input");
-const buttonEl = new Element("button");
-const emotionStatusEl = new Element("emotion");
-
-const elements = {
-  "#messages": messagesEl,
-  "#chat-form": formEl,
-  "#message-input": inputEl,
-  "#send-button": buttonEl,
-  "#emotion-status": emotionStatusEl,
-};
-
-const context = {
-  console,
-  encodeURIComponent,
-  EventSource: function EventSource() {},
-  fetch: async (url) => {
-    if (url === "/api/session?limit=10") {
-      return {
-        ok: true,
-        json: async () => ({
-          messages: [
-            {role: "human", content: "q1"},
-            {
-              role: "ai",
-              content: "bad",
-              id: "ai_1",
-              feedback: null,
-              regeneration: {message_id: "ai_2", reason: "不准确"},
-            },
-            {role: "human", content: "q2"},
-            {role: "ai", content: "other", id: "ai_3", feedback: null},
-            {role: "ai", content: "better", id: "ai_2", feedback: null, regenerated_from: "ai_1"},
-          ],
-          emotion: null,
-        }),
-      };
-    }
-    throw new Error(`unexpected fetch: ${url}`);
-  },
-  document: {
-    querySelector: (selector) => elements[selector],
-    createElement: (name) => new Element(name),
-  },
-};
-
-context.EventSource.prototype.addEventListener = function addEventListener() {};
-context.EventSource.prototype.close = function close() {};
-
-const code = fs.readFileSync("chatbot/static/app.js", "utf-8");
-vm.runInNewContext(code, context);
-
-setImmediate(() => {
-  try {
-    const contents = messagesEl.children.map((message) => message.children[0].textContent);
-    const expected = ["q1", "bad", "better", "q2", "other"];
-    if (JSON.stringify(contents) !== JSON.stringify(expected)) {
-      throw new Error(`unexpected rendered order: ${JSON.stringify(contents)}`);
-    }
-    const original = messagesEl.children[1];
-    const regenerated = messagesEl.children[2];
-    if (!original.className.includes("regenerated")) {
-      throw new Error(`original should be collapsed: ${original.className}`);
-    }
-    if (regenerated.className.includes("regenerated")) {
-      throw new Error(`regenerated reply should render normally: ${regenerated.className}`);
-    }
-    if (regenerated.children[0].textContent !== "better") {
-      throw new Error(`unexpected regenerated content: ${regenerated.children[0].textContent}`);
-    }
-  } catch (error) {
-    console.error(error.message);
-    process.exit(1);
-  }
-});
-"""
-    result = subprocess.run(
-        [node, "-e", script],
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-
-    assert result.returncode == 0, result.stderr
-
-
-def test_index_endpoint_returns_html():
-    app = create_app(service_factory=lambda: FakeService())
-    client = TestClient(app)
-
-    response = client.get("/")
-
-    assert response.status_code == 200
-    assert "text/html" in response.headers["content-type"]
-
-
-def test_static_app_js_is_served():
-    app = create_app(service_factory=lambda: FakeService())
-    client = TestClient(app)
-
-    response = client.get("/static/app.js")
-
-    assert response.status_code == 200
-    assert "javascript" in response.headers["content-type"]
+    index, script = client.get("/"), client.get("/static/app.js")
+    assert index.status_code == 200 and "text/html" in index.headers["content-type"]
+    assert script.status_code == 200 and "javascript" in script.headers["content-type"]
 
 
 def test_superseded_global_routes_are_removed():
-    app = create_app(service_factory=lambda: FakeService())
+    app = create_app()
     client = TestClient(app)
-
-    requests = [
-        ("get", "/api/history", None),
-        ("get", "/api/session", None),
-        ("get", "/api/profile", None),
-        ("put", "/api/profile", {"profile": {}}),
-        ("post", "/api/profile/onboarding/draft", {"answers": []}),
-        ("get", "/api/emotion/timeline", None),
-        ("post", "/api/messages/ai_1/feedback", {"feedback": "like"}),
-        ("post", "/api/emotion/feedback", {"feedback": "accurate"}),
-        ("post", "/api/messages/ai_1/regenerate", {"reason": "其他"}),
-    ]
-
+    requests = [("get", "/api/history", None), ("get", "/api/session", None),
+                ("get", "/api/profile", None), ("put", "/api/profile", {"profile": {}}),
+                ("get", "/api/emotion/timeline", None),
+                ("post", "/api/messages/ai_1/feedback", {"feedback": "like"}),
+                ("post", "/api/chat/streams", {"message": "old"})]
     for method, path, payload in requests:
         response = getattr(client, method)(path, json=payload) if payload is not None else getattr(client, method)(path)
         assert response.status_code == 404, path

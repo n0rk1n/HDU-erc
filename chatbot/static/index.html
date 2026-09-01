@@ -8,6 +8,15 @@
   </head>
   <body>
     <main class="app-shell">
+      <nav class="thread-sidebar" aria-label="对话列表">
+        <div class="thread-sidebar-header">
+          <h2>对话</h2>
+          <button id="new-thread-button" type="button" aria-label="新建对话">新建</button>
+        </div>
+        <ol id="thread-list" class="thread-list"></ol>
+        <button id="delete-thread-button" class="secondary-button delete-thread-button" type="button">删除当前对话</button>
+      </nav>
+      <section class="conversation-shell">
       <header class="topbar">
         <div>
           <h1>Emotion Chatbot</h1>
@@ -36,6 +45,7 @@
         <textarea id="message-input" rows="2" placeholder="输入消息，按 Enter 发送"></textarea>
         <button id="send-button" type="submit">发送</button>
       </form>
+      </section>
     </main>
     <div id="profile-backdrop" class="profile-backdrop" hidden></div>
     <aside id="profile-panel" class="profile-panel" aria-label="我的画像" hidden>
