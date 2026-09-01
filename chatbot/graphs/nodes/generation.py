@@ -105,7 +105,10 @@ async def generate_crisis_reply(
         }
     )
     try:
-        result = await deps.chat_model.ainvoke(prompt_value, config=config)
+        result = await deps.chat_model.ainvoke(
+            prompt_value,
+            config=_isolated_crisis_model_config(config),
+        )
         content = _complete_content(result)
     except Exception:
         logger.warning(
@@ -179,3 +182,10 @@ def _thread_id(state: ConversationState, config: RunnableConfig) -> str:
         return thread_meta["thread_id"]
     configurable = config.get("configurable", {})
     return str(configurable.get("thread_id", ""))
+
+
+def _isolated_crisis_model_config(config: RunnableConfig) -> RunnableConfig:
+    """Preserve request config while preventing pre-validation model stream callbacks."""
+    if "callbacks" not in config:
+        return config
+    return {**config, "callbacks": []}

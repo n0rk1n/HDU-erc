@@ -12,6 +12,7 @@ from langgraph.store.memory import InMemoryStore
 
 from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
 from chatbot.graphs.dependencies import NodeDependencies
+from chatbot.graphs.nodes.generation import CRISIS_FALLBACK_ZH_CN
 from chatbot.graphs.turn import build_turn_graph
 from chatbot.memory import StoreMemoryRepository
 from chatbot.models.graph import GraphContext
@@ -281,6 +282,51 @@ async def test_explicit_crisis_uses_crisis_generation_and_one_validated_token():
     assert token_events == [{"event": "token", "data": {"content": reply}}]
     snapshot = await graph.aget_state(config)
     assert snapshot.values["messages"][-1].additional_kwargs["safety_level"] == "crisis"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("model_reply", "expected_token"),
+    [
+        ("危机完整回复", "危机完整回复"),
+        ("   ", CRISIS_FALLBACK_ZH_CN),
+    ],
+    ids=["validated-reply", "validated-fallback"],
+)
+async def test_crisis_stream_withholds_runnable_chunks_until_validation(
+    model_reply, expected_token
+):
+    """Catches callback-bearing crisis models leaking chunks before validation."""
+    store = InMemoryStore()
+    deps = make_deps(
+        store,
+        chat_model=FakeListChatModel(responses=[model_reply]),
+        emotion_model=SequenceModel(EMOTION_JSON),
+    )
+    graph = compile_graph(deps, store)
+
+    parts = await stream_parts(
+        graph,
+        turn_input("req-crisis-stream", "我现在想自杀"),
+        {"configurable": {"thread_id": "thread-crisis-stream"}},
+        context("req-crisis-stream"),
+    )
+
+    crisis_chunks = [
+        message
+        for part in parts
+        if part["type"] == "messages"
+        for message, metadata in [part["data"]]
+        if isinstance(message, AIMessageChunk)
+        and metadata["langgraph_node"] == "generate_crisis_reply"
+    ]
+    token_events = [
+        event for event in custom_events(parts) if event["event"] == "token"
+    ]
+    assert crisis_chunks == []
+    assert token_events == [
+        {"event": "token", "data": {"content": expected_token}}
+    ]
 
 
 @pytest.mark.asyncio
