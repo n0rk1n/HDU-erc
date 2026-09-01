@@ -1,9 +1,7 @@
-"""情感分析模块 —— 在聊天过程中按固定轮次间隔分析用户当前情绪，结果持久化到 SQLite。"""
+"""Pure prompt, parsing, and one-shot emotion analysis helpers."""
 
 import re
-import threading
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any
 
 from chatbot.emotion.examples import DEFAULT_EMOTION_EXAMPLES
@@ -11,11 +9,6 @@ from chatbot.emotion.labels import EMOTION_LABELS, EMOTION_LABEL_SET
 from chatbot.emotion.prompt import build_emotion_analysis_prompt
 from chatbot.emotion.retrieval import select_dynamic_examples
 from chatbot.emotion.state import EmotionState, emotion_state_from_output
-from chatbot.core.runtime_store import DEFAULT_RUNTIME_DB_PATH, RuntimeStore
-
-RUNTIME_DB_PATH = DEFAULT_RUNTIME_DB_PATH
-EMOTION_ANALYSIS_NAMESPACE = "emotion_analysis"
-_ANALYSIS_LOCK = threading.RLock()
 
 
 @dataclass(frozen=True)
@@ -26,10 +19,6 @@ class EmotionAnalysisResult:
     success: bool
     error: str = ""
     state: EmotionState | None = None
-
-
-def _now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def _recent_contents(records: list[dict], max_turns: int) -> list[str]:
@@ -107,49 +96,6 @@ def parse_emotion_output(output: str) -> str | None:
     return emotion
 
 
-def load_analysis_records() -> list[dict]:
-    return RuntimeStore(RUNTIME_DB_PATH).load_json_records(EMOTION_ANALYSIS_NAMESPACE)
-
-
-def successful_emotion_snapshot(record: dict) -> dict[str, Any] | None:
-    emotion = record.get("emotion")
-    if record.get("success") is not True or not isinstance(emotion, str):
-        return None
-    timestamp = record.get("timestamp")
-    turn_count = record.get("turn_count")
-    if not isinstance(timestamp, str) or type(turn_count) is not int:
-        return None
-    emotion = emotion.strip()
-    if not emotion:
-        return None
-    return {
-        "emotion": emotion,
-        "timestamp": timestamp,
-        "turn_count": turn_count,
-    }
-
-
-def load_latest_successful_emotion() -> dict[str, Any] | None:
-    records = load_analysis_records()
-    for record in reversed(records):
-        if not isinstance(record, dict):
-            continue
-        snapshot = successful_emotion_snapshot(record)
-        if snapshot is None:
-            continue
-        return snapshot
-    return None
-
-
-def append_analysis_record(record: dict[str, Any]) -> None:
-    with _ANALYSIS_LOCK:
-        output_record = {"timestamp": _now_iso(), **record}
-        RuntimeStore(RUNTIME_DB_PATH).append_json_record(
-            EMOTION_ANALYSIS_NAMESPACE,
-            output_record,
-        )
-
-
 def _response_output(response: Any) -> str:
     content = response.content if hasattr(response, "content") else str(response)
     return content if isinstance(content, str) else str(content)
@@ -171,55 +117,6 @@ def _result_from_output(prompt: str, output: str) -> EmotionAnalysisResult:
     return EmotionAnalysisResult(emotion, prompt, output, True, state=state)
 
 
-def analyze_emotion(
-    llm,
-    records: list[dict],
-    current_input: str,
-    *,
-    previous_emotion: str = "",
-    likely_emotions: list[str] | None = None,
-    turn_count: int,
-    emotion_interval: int,
-) -> EmotionAnalysisResult:
-    """执行单次情感分析：构建 prompt → 调用 LLM → 解析结果 → 持久化记录。"""
-    dialogue_context = _dialogue_context(records, current_input, emotion_interval)
-    prompt = build_emotion_prompt(
-        records,
-        current_input,
-        previous_emotion=previous_emotion,
-        likely_emotions=likely_emotions,
-        max_turns=emotion_interval,
-    )
-    try:
-        output = _response_output(llm.invoke(prompt))
-        result = _result_from_output(prompt, output)
-        append_analysis_record({
-            "turn_count": turn_count,
-            "emotion_interval": emotion_interval,
-            "input": prompt,
-            "dialogue_context": dialogue_context,
-            "output": output,
-            "emotion": result.emotion,
-            "state": result.state.to_dict() if result.state is not None else {},
-            "success": result.success,
-            "error": result.error,
-        })
-        return result
-    except Exception as exc:
-        append_analysis_record({
-            "turn_count": turn_count,
-            "emotion_interval": emotion_interval,
-            "input": prompt,
-            "dialogue_context": dialogue_context,
-            "output": "",
-            "emotion": "",
-            "state": {},
-            "success": False,
-            "error": str(exc),
-        })
-        return EmotionAnalysisResult("", prompt, "", False, str(exc))
-
-
 async def analyze_emotion_async(
     llm,
     records: list[dict],
@@ -230,7 +127,7 @@ async def analyze_emotion_async(
     turn_count: int,
     emotion_interval: int,
 ) -> EmotionAnalysisResult:
-    """Build and analyze one emotion prompt without persisting runtime state."""
+    """Build and analyze one emotion prompt without persistence side effects."""
     prompt = build_emotion_prompt(
         records,
         current_input,

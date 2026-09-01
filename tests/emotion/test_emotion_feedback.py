@@ -7,30 +7,6 @@ from chatbot.emotion.feedback import append_emotion_feedback, load_emotion_feedb
 from chatbot.persistence.runtime import open_persistence
 
 
-def test_append_emotion_feedback_creates_database_record(tmp_path, monkeypatch):
-    runtime_db = tmp_path / "runtime.sqlite3"
-    monkeypatch.setattr("chatbot.emotion.feedback.RUNTIME_DB_PATH", str(runtime_db))
-
-    record = append_emotion_feedback({
-        "message_id": "ai_1",
-        "turn_count": 2,
-        "feedback": "wrong_emotion",
-        "predicted_emotion": "sad",
-        "corrected_emotion": "anxious",
-    })
-
-    assert record["feedback"] == "wrong_emotion"
-    assert "timestamp" in record
-    data = load_emotion_feedback()
-    assert data[0]["corrected_emotion"] == "anxious"
-
-
-def test_load_emotion_feedback_returns_empty_for_missing_database(tmp_path, monkeypatch):
-    monkeypatch.setattr("chatbot.emotion.feedback.RUNTIME_DB_PATH", str(tmp_path / "missing.sqlite3"))
-
-    assert load_emotion_feedback() == []
-
-
 @pytest.mark.asyncio
 async def test_emotion_feedback_is_uuid_keyed_and_scoped_to_client_thread(tmp_path):
     config = GraphConfig(
@@ -62,3 +38,23 @@ async def test_emotion_feedback_is_uuid_keyed_and_scoped_to_client_thread(tmp_pa
     assert saved == [record]
     assert other_client_saved == []
     assert UUID(stored_item.key).version == 4
+
+
+@pytest.mark.asyncio
+async def test_emotion_feedback_rejects_unknown_value(tmp_path):
+    config = GraphConfig(
+        checkpoint_db_path=str(tmp_path / "checkpoints.sqlite3"),
+        store_db_path=str(tmp_path / "store.sqlite3"),
+        timeline_limit=50,
+        request_history_limit=64,
+        strict_msgpack=True,
+        client_id_signing_secret="a" * 32,
+    )
+    async with open_persistence(config) as handles:
+        with pytest.raises(ValueError, match="Invalid emotion feedback"):
+            await append_emotion_feedback(
+                handles.store,
+                "client-a",
+                "thread-1",
+                {"feedback": "unknown"},
+            )

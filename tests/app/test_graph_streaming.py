@@ -73,7 +73,7 @@ def _client(tmp_path, monkeypatch, chat_model: SequenceModel):
             now=lambda: datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc),
         ),
     )
-    with TestClient(web.create_app(service_factory=lambda: object())) as client:
+    with TestClient(web.create_app()) as client:
         yield client, emotion_model
 
 
@@ -597,8 +597,6 @@ def test_turn_stream_uses_post_body_and_has_no_stream_id_registry(tmp_path, monk
             "thread_id": thread_id,
         }
         assert events[-1]["event"] == "done"
-        assert client.post("/api/chat/streams", json={"message": "旧接口"}).status_code == 404
-        assert client.get("/api/chat/streams/expired").status_code == 404
 
 
 def test_completed_turn_request_replays_without_models_or_duplicate_human(

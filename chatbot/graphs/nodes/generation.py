@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnableConfig
 
@@ -69,7 +69,10 @@ async def generate_reply(
     )
     prompt_value = prompt.invoke(
         {
-            "messages": _history_messages(state),
+            "messages": _history_messages(
+                state,
+                limit=deps.graph_config.request_history_limit,
+            ),
             "input": state.get("input_message", ""),
         }
     )
@@ -100,7 +103,10 @@ async def generate_crisis_reply(
     )
     prompt_value = prompt.invoke(
         {
-            "messages": _history_messages(state),
+            "messages": _history_messages(
+                state,
+                limit=deps.graph_config.request_history_limit,
+            ),
             "input": state.get("input_message", ""),
         }
     )
@@ -168,12 +174,20 @@ def _emotion_context(value: dict[str, Any] | None) -> str:
     return format_emotion_state_context(emotion) if emotion is not None else ""
 
 
-def _history_messages(state: ConversationState) -> list[BaseMessage]:
-    messages = list(state.get("messages", []))
+def _history_messages(
+    state: ConversationState,
+    *,
+    limit: int,
+) -> list[BaseMessage]:
+    messages = [
+        message
+        for message in state.get("messages", [])
+        if isinstance(message, (HumanMessage, AIMessage))
+    ]
     current_id = f"human_{state['request_id']}"
     if messages and getattr(messages[-1], "id", None) == current_id:
-        return messages[:-1]
-    return messages
+        messages = messages[:-1]
+    return messages[-limit:]
 
 
 def _thread_id(state: ConversationState, config: RunnableConfig) -> str:

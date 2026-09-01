@@ -23,11 +23,11 @@ def test_build_runtime_llms_reuses_chat_llm_when_emotion_config_matches(monkeypa
     )
     built = []
 
-    def fake_build_llm(llm_config):
+    def fake_build_chat_model(llm_config):
         built.append(llm_config)
         return {"model": llm_config.model}
 
-    monkeypatch.setattr("chatbot.main.build_llm", fake_build_llm)
+    monkeypatch.setattr("chatbot.main.build_chat_model", fake_build_chat_model)
 
     chat_llm, emotion_llm = build_runtime_llms(config)
 
@@ -58,11 +58,11 @@ def test_build_runtime_llms_builds_separate_emotion_llm_when_config_differs(monk
     )
     built = []
 
-    def fake_build_llm(llm_config):
+    def fake_build_chat_model(llm_config):
         built.append(llm_config)
         return {"model": llm_config.model}
 
-    monkeypatch.setattr("chatbot.main.build_llm", fake_build_llm)
+    monkeypatch.setattr("chatbot.main.build_chat_model", fake_build_chat_model)
 
     chat_llm, emotion_llm = build_runtime_llms(config)
 

@@ -17,7 +17,7 @@ def test_load_memory_consolidation_config_defaults(monkeypatch):
     monkeypatch.delenv("MEMORY_CONSOLIDATION_MODE", raising=False)
 
     config = load_memory_consolidation_config(
-        MemoryRuntimeConfig(enabled=True, db_path="data/records/memory.sqlite3", max_results=5)
+        MemoryRuntimeConfig(enabled=True, max_results=5)
     )
 
     assert config == MemoryConsolidationConfig(
@@ -32,7 +32,7 @@ def test_load_memory_consolidation_config_disabled_when_memory_disabled(monkeypa
     monkeypatch.setenv("MEMORY_CONSOLIDATION_ENABLED", "true")
 
     config = load_memory_consolidation_config(
-        MemoryRuntimeConfig(enabled=False, db_path="data/records/memory.sqlite3", max_results=5)
+        MemoryRuntimeConfig(enabled=False, max_results=5)
     )
 
     assert config.enabled is False
@@ -45,7 +45,7 @@ def test_load_memory_consolidation_config_accepts_custom_values(monkeypatch):
     monkeypatch.setenv("MEMORY_CONSOLIDATION_MODE", "rules")
 
     config = load_memory_consolidation_config(
-        MemoryRuntimeConfig(enabled=True, db_path="data/records/memory.sqlite3", max_results=5)
+        MemoryRuntimeConfig(enabled=True, max_results=5)
     )
 
     assert config == MemoryConsolidationConfig(
@@ -62,7 +62,7 @@ def test_load_memory_consolidation_config_falls_back_for_invalid_values(monkeypa
     monkeypatch.setenv("MEMORY_CONSOLIDATION_MODE", "unknown")
 
     config = load_memory_consolidation_config(
-        MemoryRuntimeConfig(enabled=True, db_path="data/records/memory.sqlite3", max_results=5)
+        MemoryRuntimeConfig(enabled=True, max_results=5)
     )
 
     assert config.interval == 5

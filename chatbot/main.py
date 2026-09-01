@@ -1,15 +1,15 @@
 """Runtime helpers for the Web chatbot."""
 
 from chatbot.core.config import ChatConfig, ConfigError, load_config
-from chatbot.core.llm import build_llm
+from chatbot.core.llm_adapter import build_chat_model
 
 
 def build_runtime_llms(config: ChatConfig):
     """构建运行时 LLM 实例；若情感 LLM 复用聊天配置则共享同一实例避免重复初始化。"""
-    chat_llm = build_llm(config.chat_llm)
+    chat_llm = build_chat_model(config.chat_llm)
     if config.emotion_llm == config.chat_llm:
         return chat_llm, chat_llm
-    emotion_llm = build_llm(config.emotion_llm)
+    emotion_llm = build_chat_model(config.emotion_llm)
     return chat_llm, emotion_llm
 
 

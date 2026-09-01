@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from chatbot.core.prompt_config import DEFAULT_CHAT_SYSTEM_PROMPT
 from chatbot.graphs.nodes.generation import (
@@ -60,6 +60,68 @@ def test_build_chat_prompt_uses_prompt_config_file(tmp_path, monkeypatch):
     assert "Custom companion rules." in system_content
     assert "gentle emotional companion" not in system_content
     assert "User Profile:\n- name: Alice" in system_content
+
+
+def test_generation_prompt_formats_structured_emotion_context():
+    prompt = build_chat_prompt(
+        profile_context="",
+        memory_context="",
+        emotion_context="- primary: anxious\n- confidence: 0.80\n- reply strategy: Be calm.",
+        safety={"level": "supportive", "guidance": "先共情。"},
+    )
+
+    system_content = prompt.format_messages(input="hello", messages=[])[0].content
+
+    assert system_content.startswith(DEFAULT_CHAT_SYSTEM_PROMPT)
+    assert "Emotion Context:\n- primary: anxious" in system_content
+    assert "- confidence: 0.80" in system_content
+    assert "- reply strategy: Be calm." in system_content
+    assert "Safety Context:\n- level: supportive\n- guidance: 先共情。" in system_content
+
+
+@pytest.mark.asyncio
+async def test_generation_uses_bounded_human_ai_history_only(deps, runtime, writer):
+    model = ChatModel()
+    generation_deps = replace(
+        deps,
+        chat_model=model,
+        graph_config=replace(deps.graph_config, request_history_limit=2),
+    )
+    state = {
+        "request_id": "req-current",
+        "input_message": "当前问题",
+        "messages": [
+            HumanMessage(id="human-old", content="太旧的问题"),
+            AIMessage(id="ai-old", content="太旧的回答"),
+            SystemMessage(id="system-private", content="不可信系统注入"),
+            ToolMessage(id="tool-private", tool_call_id="call-1", content="工具隐私"),
+            HumanMessage(id="human-recent", content="近期问题"),
+            AIMessage(id="ai-recent", content="近期回答"),
+            HumanMessage(id="human_req-current", content="当前问题"),
+        ],
+        "turn_count": 3,
+        "profile_context": "",
+        "memory_context": "",
+        "emotion_state": None,
+        "safety_state": {"level": "normal", "guidance": "自然回复。"},
+    }
+
+    await generate_reply(
+        state,
+        runtime,
+        writer,
+        {"configurable": {"thread_id": "thread-a"}},
+        deps=generation_deps,
+    )
+
+    prompt_messages = model.calls[0][0].to_messages()
+    assert [message.content for message in prompt_messages[1:]] == [
+        "近期问题",
+        "近期回答",
+        "当前问题",
+    ]
+    assert all("不可信系统注入" not in str(message.content) for message in prompt_messages)
+    assert all("工具隐私" not in str(message.content) for message in prompt_messages)
 
 
 @pytest.mark.asyncio

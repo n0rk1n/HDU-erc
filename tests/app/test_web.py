@@ -2,14 +2,13 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 
 import chatbot.web as web
-from chatbot.chat_service import ChatEvent
-from chatbot.web import build_service, create_app, format_sse
+from chatbot.models import GraphEvent
+from chatbot.web import create_app, format_sse
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,96 +25,17 @@ def _run_node(script: str) -> None:
 
 
 def test_format_sse_encodes_event_and_json_data():
-    assert format_sse(ChatEvent("token", {"content": "你好"})) == (
+    assert format_sse(GraphEvent(event="token", data={"content": "你好"})) == (
         'event: token\ndata: {"content": "你好"}\n\n'
     )
 
 
-def _configure_legacy_service(monkeypatch, records, service_factory=None):
-    class FakeLlm:
-        pass
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: object())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: records)
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr("chatbot.web.build_runtime_llms", lambda config: (FakeLlm(), FakeLlm()))
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr("chatbot.web.load_memory_config", lambda: type("MemoryConfig", (), {"enabled": False, "db_path": "ignored", "max_results": 5})())
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: object())
-    if service_factory is not None:
-        monkeypatch.setattr("chatbot.web.ChatService", service_factory)
-
-
-def test_build_service_does_not_duplicate_session_history(monkeypatch):
-    from chatbot.core.llm import get_session_history, store
-    records = [{"role": "human", "content": "hello"}, {"role": "ai", "content": "hi"}]
-    _configure_legacy_service(monkeypatch, records)
-    store.clear()
-    build_service(); build_service()
-    assert [message.content for message in get_session_history("default").messages] == ["hello", "hi"]
-
-
-def test_build_service_passes_memory_provider(monkeypatch):
-    captured = {}; chat_llm = object()
-    class FakeConfig:
-        emotion_interval = 5; emotion_llm = object()
-    class FakeService:
-        def __init__(self, chain, config, emotion_llm, **kwargs): captured.update(kwargs)
-    monkeypatch.setattr("chatbot.web.load_config", lambda argv: FakeConfig())
-    monkeypatch.setattr("chatbot.web.load_history", lambda: [])
-    monkeypatch.setattr("chatbot.web.load_profile", lambda: {})
-    monkeypatch.setattr("chatbot.web.format_profile", lambda profile: "")
-    monkeypatch.setattr("chatbot.web.build_runtime_llms", lambda config: (chat_llm, object()))
-    monkeypatch.setattr("chatbot.web.init_session_history", lambda session_id, records: None)
-    monkeypatch.setattr("chatbot.web.build_chain", lambda llm, profile_text: object())
-    monkeypatch.setattr("chatbot.web._latest_emotion_for_records", lambda records: None)
-    monkeypatch.setattr("chatbot.web.load_memory_config", lambda: type("MemoryConfig", (), {"enabled": False, "db_path": "ignored", "max_results": 3})())
-    monkeypatch.setattr("chatbot.web.build_memory_provider", lambda config: "memory-provider")
-    monkeypatch.setattr("chatbot.web.ChatService", FakeService)
-    service = build_service()
-    assert service.chat_llm is chat_llm
-    assert captured["memory_provider"] == "memory-provider"
-    assert captured["memory_max_results"] == 3
-
-
-def test_build_service_uses_latest_successful_emotion(monkeypatch):
-    records = [{"role": "human", "content": f"q{i}"} for i in range(5)]; captured = {}
-    def fake_service(chain, config, emotion_llm, initial_records=None, initial_emotion="", **kwargs):
-        captured.update(records=initial_records, emotion=initial_emotion); return SimpleNamespace()
-    _configure_legacy_service(monkeypatch, records, fake_service)
-    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [{"timestamp": "t", "turn_count": 5, "emotion_interval": 5, "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4", "emotion": "sad", "success": True}])
-    build_service()
-    assert captured == {"records": records, "emotion": "sad"}
-
-
-def test_build_service_restores_latest_structured_emotion_state(monkeypatch):
-    records = [{"role": "human", "content": f"q{i}"} for i in range(5)]; captured = {}
-    def fake_service(chain, config, emotion_llm, initial_emotion="", initial_emotion_state=None, **kwargs):
-        captured.update(emotion=initial_emotion, state=initial_emotion_state); return SimpleNamespace()
-    _configure_legacy_service(monkeypatch, records, fake_service)
-    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [{"timestamp": "t", "turn_count": 5, "emotion_interval": 5, "input": "Dialogue context: q0</s>q1</s>q2</s>q3</s>q4", "emotion": "anxious", "success": True, "state": {"primary_emotion": "anxious", "confidence": 0.83, "secondary_emotions": [], "evidence": "e", "reply_strategy": "calm", "trajectory_note": "x", "safety_level": "normal"}}])
-    build_service()
-    assert captured["emotion"] == "anxious"
-    assert captured["state"].primary_emotion == "anxious"
-    assert captured["state"].confidence == 0.83
-
-
-def test_build_service_ignores_emotion_when_history_is_too_short(monkeypatch):
-    records = [{"role": "human", "content": "hello"}]; captured = {}
-    def fake_service(chain, config, emotion_llm, initial_emotion="", **kwargs):
-        captured["emotion"] = initial_emotion; return SimpleNamespace()
-    _configure_legacy_service(monkeypatch, records, fake_service)
-    monkeypatch.setattr("chatbot.web.load_analysis_records", lambda: [{"turn_count": 5, "emotion": "sad", "success": True}])
-    build_service()
-    assert captured["emotion"] == ""
-
-
-def test_profile_onboarding_questions_endpoint_and_legacy_payload_adapter():
+def test_profile_onboarding_questions_endpoint_and_model_payload_adapter():
     client = TestClient(create_app())
     assert client.get("/api/profile/onboarding/questions").json() == {"questions": web.ONBOARDING_QUESTIONS}
-    class LegacyRequest:
+    class CompatibleRequest:
         def dict(self): return {"feedback": "accurate", "message_id": "ai_1"}
-    assert web._request_payload(LegacyRequest()) == {"feedback": "accurate", "message_id": "ai_1"}
+    assert web._request_payload(CompatibleRequest()) == {"feedback": "accurate", "message_id": "ai_1"}
 
 
 def test_static_assets_and_accessible_thread_controls_exist():
@@ -490,7 +410,7 @@ def test_static_app_uses_client_scoped_post_streams_and_server_only_state():
     assert "messages:stream" in app_js and "regenerate:stream" in app_js
     assert "getReader()" in app_js and "TextDecoder" in app_js and "request_id" in app_js
     assert "new EventSource" not in app_js
-    assert "/api/session" not in app_js and "/api/chat/streams" not in app_js
+    assert "/api/session" not in app_js
     assert set(re.findall(r'localStorage\.(?:getItem|setItem|removeItem)\("([^"]+)"', app_js)) <= {
         "hdu_erc_client_id", "hdu_erc_thread_id"
     }
@@ -511,7 +431,7 @@ def test_superseded_global_routes_are_removed():
                 ("get", "/api/profile", None), ("put", "/api/profile", {"profile": {}}),
                 ("get", "/api/emotion/timeline", None),
                 ("post", "/api/messages/ai_1/feedback", {"feedback": "like"}),
-                ("post", "/api/chat/streams", {"message": "old"})]
+                ]
     for method, path, payload in requests:
         response = getattr(client, method)(path, json=payload) if payload is not None else getattr(client, method)(path)
         assert response.status_code == 404, path

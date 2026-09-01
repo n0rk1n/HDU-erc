@@ -6,7 +6,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
@@ -19,20 +19,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, UUID4, field_validator
 from starlette.requests import ClientDisconnect
 
-from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.core.config import load_config, load_graph_config
-from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.emotion.feedback import append_emotion_feedback
-from chatbot.emotion.state import EmotionState, timeline_from_records
-from chatbot.core.history import load_history
-from chatbot.memory.sqlite import build_memory_provider
-from chatbot.core.llm import build_chain, init_session_history
-from chatbot.main import build_runtime_llms
 from chatbot.graphs.runtime import ConversationRuntime, RuntimeOperationError, build_graph_runtime
-from chatbot.memory import load_memory_config
-from chatbot.memory.consolidation import load_memory_consolidation_config
 from chatbot.models import GraphEvent
-from chatbot.profile import format_profile, load_profile, save_profile
+from chatbot.profile import load_profile, save_profile
 from chatbot.profile.onboarding import (
     ONBOARDING_QUESTIONS,
     sanitize_profile,
@@ -128,7 +119,7 @@ STREAM_ERROR_POLICIES = {
 }
 
 
-def format_sse(event: ChatEvent | GraphEvent) -> str:
+def format_sse(event: GraphEvent) -> str:
     if isinstance(event, Mapping):
         event_name = event["event"]
         event_data = event["data"]
@@ -402,203 +393,6 @@ class ClosingStreamingResponse(StreamingResponse):
                 await close()
 
 
-def build_service() -> ChatService:
-    config = load_config([])
-    records = load_history()
-    profile_text = format_profile(load_profile())
-    chat_llm, emotion_llm = build_runtime_llms(config)
-    latest_emotion = _latest_emotion_for_records(records)
-    latest_emotion_state = _latest_emotion_state_for_records(records)
-    memory_config = load_memory_config()
-    memory_consolidation_config = load_memory_consolidation_config(memory_config)
-    memory_provider = build_memory_provider(memory_config)
-    init_session_history("default", records)
-    chain = build_chain(chat_llm, profile_text)
-    service = ChatService(
-        chain,
-        config,
-        emotion_llm,
-        initial_records=records,
-        initial_emotion=(latest_emotion or {}).get("emotion", ""),
-        initial_emotion_state=latest_emotion_state,
-        memory_provider=memory_provider,
-        memory_max_results=memory_config.max_results,
-        memory_consolidation_config=memory_consolidation_config,
-    )
-    service.chat_llm = chat_llm
-    return service
-
-
-def _service_chat_llm(service: ChatService):
-    chat_llm = getattr(service, "chat_llm", None)
-    if chat_llm is None or not callable(getattr(chat_llm, "invoke", None)):
-        return None
-    return chat_llm
-
-
-def _refresh_service_profile(service: ChatService) -> None:
-    runtime_chat_llm = _service_chat_llm(service)
-    if runtime_chat_llm is None:
-        return
-    service.chain = build_chain(runtime_chat_llm, format_profile(load_profile()))
-
-
-def _structured_messages(records: list[dict], limit: int) -> list[dict]:
-    messages = []
-    for record in records:
-        if record.get("role") not in {"human", "ai"}:
-            continue
-        message = {
-            "role": record.get("role", ""),
-            "content": record.get("content", ""),
-            "timestamp": record.get("timestamp", ""),
-        }
-        if "id" in record:
-            message["id"] = record["id"]
-        if "feedback" in record:
-            message["feedback"] = record["feedback"]
-        if "regeneration" in record:
-            message["regeneration"] = record["regeneration"]
-        if "regenerated_from" in record:
-            message["regenerated_from"] = record["regenerated_from"]
-        if "turn_count" in record:
-            message["turn_count"] = record["turn_count"]
-        if "emotion_state" in record:
-            message["emotion_state"] = record["emotion_state"]
-        if "predicted_emotion" in record:
-            message["predicted_emotion"] = record["predicted_emotion"]
-        messages.append(message)
-    return messages[-limit:]
-
-
-def _recent_messages(limit: int) -> list[dict]:
-    return _structured_messages(load_history(), limit)
-
-
-def _latest_emotion_for_records(records: list[dict]) -> dict | None:
-    for record in reversed(load_analysis_records()):
-        if not isinstance(record, dict):
-            continue
-        snapshot = successful_emotion_snapshot(record)
-        if snapshot is None:
-            continue
-        if _emotion_record_matches_history(record, records, snapshot["turn_count"]):
-            return snapshot
-        return None
-    return None
-
-
-def _latest_emotion_state_for_records(records: list[dict]) -> EmotionState | None:
-    for record in reversed(load_analysis_records()):
-        if not isinstance(record, dict):
-            continue
-        snapshot = successful_emotion_snapshot(record)
-        if snapshot is None:
-            continue
-        if not _emotion_record_matches_history(record, records, snapshot["turn_count"]):
-            return None
-        state_data = record.get("state")
-        if isinstance(state_data, dict):
-            state = EmotionState.from_mapping(state_data)
-            if state is not None:
-                return state
-        return EmotionState(primary_emotion=snapshot["emotion"])
-    return None
-
-
-def _emotion_timeline_for_records(records: list[dict], limit: int) -> list[dict]:
-    filtered = []
-    for record in load_analysis_records():
-        if not isinstance(record, dict):
-            continue
-        snapshot = successful_emotion_snapshot(record)
-        if snapshot is None:
-            continue
-        if _emotion_record_matches_history(record, records, snapshot["turn_count"]):
-            filtered.append(record)
-    return timeline_from_records(filtered, limit)
-
-
-def _emotion_record_matches_history(
-    emotion_record: dict,
-    records: list[dict],
-    turn_count: int,
-) -> bool:
-    if turn_count <= 0:
-        return False
-
-    stored_context = _dialogue_context_from_record(emotion_record)
-    if stored_context is None:
-        return False
-
-    expected_contents = [
-        content
-        for content in (part.strip() for part in stored_context.split("</s>"))
-        if content
-    ]
-    if not expected_contents:
-        return False
-
-    history_items = [
-        (record.get("role"), str(record.get("content", "")).strip())
-        for record in records
-        if record.get("role") in {"human", "ai"}
-    ]
-    history_items = [
-        (role, content)
-        for role, content in history_items
-        if content
-    ]
-    return _contains_context_window(history_items, expected_contents, turn_count)
-
-
-def _dialogue_context_from_record(emotion_record: dict) -> str | None:
-    dialogue_context = emotion_record.get("dialogue_context")
-    if isinstance(dialogue_context, str) and dialogue_context.strip():
-        return dialogue_context.strip()
-
-    input_text = emotion_record.get("input")
-    if not isinstance(input_text, str) or not input_text:
-        return None
-    return _dialogue_context_from_prompt(input_text)
-
-
-def _dialogue_context_from_prompt(input_text: str) -> str | None:
-    marker = "\nDialogue context: "
-    if marker in input_text:
-        return input_text.rsplit(marker, 1)[1].strip()
-
-    prefix = "Dialogue context: "
-    if input_text.startswith(prefix):
-        return input_text[len(prefix):].strip()
-
-    return None
-
-
-def _contains_context_window(
-    history_items: list[tuple[str, str]],
-    expected_contents: list[str],
-    min_human_turns: int,
-) -> bool:
-    if len(expected_contents) > len(history_items):
-        return False
-    for index in range(len(history_items) - len(expected_contents) + 1):
-        window = history_items[index:index + len(expected_contents)]
-        contents = [content for _, content in window]
-        human_turns = sum(1 for role, _ in window if role == "human")
-        if contents == expected_contents and human_turns >= min_human_turns:
-            return True
-    return False
-
-
-def _session_snapshot(limit: int) -> dict:
-    records = load_history()
-    return {
-        "messages": _structured_messages(records, limit),
-        "emotion": _latest_emotion_for_records(records),
-    }
-
-
 def _issue_client_id(secret: str) -> str:
     payload = secrets.token_bytes(32)
     signature = hmac.digest(secret.encode("utf-8"), payload, hashlib.sha256)
@@ -674,7 +468,7 @@ def _thread_snapshot(snapshot) -> dict[str, Any]:
     }
 
 
-def create_app(service_factory: Callable[[], ChatService] = build_service) -> FastAPI:
+def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         graph_config = load_graph_config()

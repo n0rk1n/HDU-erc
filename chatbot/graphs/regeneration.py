@@ -10,7 +10,6 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
-from chatbot.core.history import REGENERATION_REASONS
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.nodes.context import load_context
 from chatbot.graphs.nodes.generation import build_chat_prompt
@@ -26,6 +25,13 @@ APPLICATION_AUDIT_FIELDS = (
     "safety_level",
     "safety_note",
 )
+REGENERATION_REASONS = {
+    "不准确",
+    "不完整",
+    "没有理解我的问题",
+    "语气不合适",
+    "其他",
+}
 
 
 class RegenerationError(ValueError):

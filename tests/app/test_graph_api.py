@@ -57,7 +57,7 @@ def graph_setup(tmp_path, monkeypatch):
 
 @pytest.fixture
 def app_client(graph_setup):
-    with TestClient(web.create_app(service_factory=lambda: object())) as client:
+    with TestClient(web.create_app()) as client:
         yield client
 
 
@@ -227,7 +227,7 @@ def test_thread_read_serializes_messages_and_emotion_metadata(app_client):
 
 
 def test_threads_and_messages_survive_lifespan_restart(graph_setup):
-    app = web.create_app(service_factory=lambda: object())
+    app = web.create_app()
     with TestClient(app) as first_client:
         payload = bootstrap(first_client)
         client_id = payload["client_id"]
@@ -243,7 +243,7 @@ def test_threads_and_messages_survive_lifespan_restart(graph_setup):
 
         first_client.portal.call(seed_message)
 
-    with TestClient(web.create_app(service_factory=lambda: object())) as second_client:
+    with TestClient(web.create_app()) as second_client:
         response = second_client.get(f"/api/clients/{client_id}/threads/{thread_id}")
         assert response.status_code == 200
         assert response.json()["messages"][0]["content"] == "保留我"
@@ -383,7 +383,7 @@ def test_message_feedback_checkpoint_failure_has_stable_500(
     graph_setup, monkeypatch
 ):
     with TestClient(
-        web.create_app(service_factory=lambda: object()),
+        web.create_app(),
         raise_server_exceptions=False,
     ) as client:
         payload = bootstrap(client)
@@ -419,7 +419,7 @@ def test_emotion_feedback_store_failure_has_stable_500(graph_setup, monkeypatch)
 
     monkeypatch.setattr(web, "append_emotion_feedback", fail_append)
     with TestClient(
-        web.create_app(service_factory=lambda: object()),
+        web.create_app(),
         raise_server_exceptions=False,
     ) as client:
         payload = bootstrap(client)
@@ -440,7 +440,7 @@ def test_persistence_failure_has_stable_500_response(graph_setup, monkeypatch):
 
     monkeypatch.setattr(web, "save_profile", fail_save)
     with TestClient(
-        web.create_app(service_factory=lambda: object()),
+        web.create_app(),
         raise_server_exceptions=False,
     ) as client:
         payload = bootstrap(client)

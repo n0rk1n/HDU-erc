@@ -33,7 +33,7 @@
 flowchart LR
     U["用户"] --> W["Web 交互层<br/>HTML / CSS / JavaScript"]
     W --> A["接口层<br/>FastAPI / SSE"]
-    A --> S["服务编排层<br/>ChatService"]
+    A --> S["图编排层<br/>LangGraph ConversationGraph"]
     S --> E["情绪识别<br/>结构化状态 / 动态示例"]
     S --> M["长期记忆<br/>检索 / 去重 / 提炼"]
     S --> P["用户画像与安全提示"]
@@ -43,7 +43,7 @@ flowchart LR
     E --> X["实验评估层<br/>Benchmark / Ablation / Report"]
 ```
 
-一次完整交互由 `ChatService` 统一编排：先保存用户输入并检索相关记忆，在指定回合执行情绪分析和安全判断，再把画像、记忆、情绪状态注入聊天 Prompt，最后流式生成回复并保存本轮结果。
+一次完整交互由持久化 LangGraph 主图统一编排：先在 Checkpoint 中记录输入并检索 Store 记忆，在指定回合执行情绪分析和安全判断，再把画像、记忆、情绪状态注入聊天 Prompt，最后流式生成并保存本轮结果。
 
 ## 主要研究与工程工作
 
@@ -127,7 +127,6 @@ LLM_TEMPERATURE=0.7
 
 EMOTION_INTERVAL=5
 MEMORY_ENABLED=true
-MEMORY_DB_PATH=data/records/memory.sqlite3
 MEMORY_MAX_RESULTS=5
 PROMPT_CONFIG_PATH=data/config/prompts.json
 ```
@@ -190,14 +189,13 @@ EMOTION_INTERVAL=5
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `MEMORY_ENABLED` | `true` | `0`、`false`、`no`、`off` 会关闭记忆。 |
-| `MEMORY_DB_PATH` | `data/records/memory.sqlite3` | 长期记忆数据库路径。 |
 | `MEMORY_MAX_RESULTS` | `5` | 每轮最多注入的相关记忆数；非法值回退到默认值。 |
 | `MEMORY_CONSOLIDATION_ENABLED` | `true` | 是否启用周期性记忆提炼；长期记忆关闭时也会关闭。 |
 | `MEMORY_CONSOLIDATION_INTERVAL` | `5` | 两次提炼之间的用户回合数。 |
 | `MEMORY_CONSOLIDATION_WINDOW` | `12` | 每次最多检查的近期 human/AI 消息数。 |
 | `MEMORY_CONSOLIDATION_MODE` | `rules` | 当前仅支持本地规则模式，非法值回退为 `rules`。 |
 
-单轮抽取会保守识别用户明确表达的偏好、画像、目标和边界；周期性提炼用于识别重复压力源和跨轮稳定偏好。SQLite provider 会合并重复记忆、保留更强边界，并只检索仍处于 active 状态的记录。
+单轮抽取会保守识别用户明确表达的偏好、画像、目标和边界；周期性提炼用于识别重复压力源和跨轮稳定偏好。LangGraph Store 会合并重复记忆、保留更强边界，并只检索仍处于 active 状态的记录。
 
 ### Prompt 模板
 
@@ -220,9 +218,9 @@ cp data/config/prompts.example.json data/config/prompts.json
 
 ## 核心业务流程
 
-1. 前端 `POST /api/chat/streams` 提交消息并取得一次性 `stream_id`。
-2. 前端使用 `EventSource` 消费 `/api/chat/streams/{stream_id}`。
-3. `ChatService` 将用户消息写入 `runtime.sqlite3`。
+1. 前端携带已签名 `client_id` 和当前 `thread_id`，以 `POST` 提交消息与幂等 `request_id`。
+2. 前端通过 Fetch `ReadableStream` 消费同一个响应中的 SSE 事件。
+3. LangGraph 将用户消息、情绪状态和处理结果写入线程 Checkpoint。
 4. 服务使用当前输入、当前情绪和最近情绪检索本地长期记忆。
 5. 到达 `EMOTION_INTERVAL` 时，情绪 LLM 分析最近对话并保存结构化结果。
 6. `safety.py` 根据当前输入和情绪状态补充 `normal`、`supportive` 或 `crisis` 级别的回复提示。
@@ -263,18 +261,17 @@ LLM 应返回结构化 JSON：
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
 | `GET` | `/` | 返回聊天页面。 |
-| `GET` | `/api/history?limit=10` | 返回最近 human/AI 消息。 |
-| `GET` | `/api/session?limit=10` | 返回最近消息和与当前历史匹配的最新情绪。 |
-| `GET` | `/api/profile` | 返回用户画像及是否为空。 |
-| `PUT` | `/api/profile` | 保存经过字段过滤的用户画像并刷新聊天链。 |
+| `POST` | `/api/clients/bootstrap` | 签发客户端身份并创建首个线程。 |
+| `GET/POST` | `/api/clients/{client_id}/threads` | 列出或创建客户端线程。 |
+| `GET/DELETE` | `/api/clients/{client_id}/threads/{thread_id}` | 读取或删除线程。 |
+| `GET/PUT` | `/api/clients/{client_id}/profile` | 读取或保存 client-scoped 画像。 |
 | `GET` | `/api/profile/onboarding/questions` | 返回 5 个可跳过的画像问题。 |
-| `POST` | `/api/profile/onboarding/draft` | 用聊天 LLM 生成画像草稿；不可用时回退为规则草稿。 |
-| `GET` | `/api/emotion/timeline?limit=10` | 返回与当前历史匹配的近期结构化情绪状态。 |
-| `POST` | `/api/chat/streams` | 创建一次性聊天流 ID。 |
-| `GET` | `/api/chat/streams/{stream_id}` | 消费 SSE 流；同一 ID 只能使用一次。 |
-| `POST` | `/api/messages/{message_id}/feedback` | 保存 `like` 或 `dislike`。 |
-| `POST` | `/api/messages/{message_id}/regenerate` | 按固定原因重新生成一条 AI 回复。 |
-| `POST` | `/api/emotion/feedback` | 保存情绪识别正确性反馈。 |
+| `POST` | `/api/clients/{client_id}/profile/draft` | 用图生成画像草稿；不可用时回退为规则草稿。 |
+| `GET` | `/api/clients/{client_id}/threads/{thread_id}/emotion-timeline` | 返回线程近期结构化情绪状态。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages:stream` | 流式执行一个聊天回合。 |
+| `PATCH` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback` | 保存 `like` 或 `dislike`。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream` | 按固定原因重新生成同一条 AI 消息。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/emotion-feedback` | 保存情绪识别正确性反馈。 |
 
 SSE 事件：
 
@@ -290,12 +287,12 @@ SSE 事件：
 
 ## 数据持久化设计
 
-默认运行时文件均位于不会提交到 Git 的 `data/records/`：
+默认运行时文件均位于不会提交到 Git 的 `data/langgraph/`：
 
 | 文件 | 内容 |
 | --- | --- |
-| `data/records/runtime.sqlite3` | `chat_history`、`emotion_analysis`、`emotion_feedback` 等 JSON namespace，以及 `profile_entries` 用户画像表。 |
-| `data/records/memory.sqlite3` | 长期记忆、状态、替代关系、使用次数和记忆提炼 checkpoint。 |
+| `data/langgraph/checkpoints.sqlite3` | 线程消息、情绪轨迹、反馈和请求幂等结果。 |
+| `data/langgraph/store.sqlite3` | client-scoped 画像、情绪反馈、长期记忆和线程目录。 |
 
 聊天历史、情绪状态和用户画像不会再从旧 JSON 文件加载，也没有自动迁移逻辑。离线评估脚本也不会直接读取 SQLite；需要向它提供 JSON 或 JSONL 实验结果。
 
@@ -438,11 +435,12 @@ Prompt 变体应在独立 validation split 上完成选择，再使用 test spli
 ```text
 chatbot/
   web.py                  FastAPI 稳定入口、HTTP 路由和 SSE
-  chat_service.py         聊天、情绪、安全、记忆和持久化编排
   main.py                 Web 运行时模型装配
-  core/                   配置、LLM、Prompt、运行时存储和历史
+  core/                   配置、模型适配和 Prompt
+  graphs/                 主图、子图、节点、状态和运行时门面
+  persistence/            官方 LangGraph SQLite 生命周期与线程目录
   emotion/                情绪分析、状态、示例、反馈和安全提示
-  memory/                 长期记忆协议、SQLite、抽取和周期性提炼
+  memory/                 Store 长期记忆、抽取和周期性提炼
   profile/                用户画像持久化与首次录入
   static/                 无构建前端资源
 
@@ -454,13 +452,16 @@ data/
   config/                 Prompt 配置示例
   examples/               小型评估与消融样例
   benchmarks/             EmpatheticDialogues 公开真实数据基准
-  records/                本地运行时数据与实验输出，不提交到 Git
+  langgraph/              本地 Checkpoint 与 Store 数据，不提交到 Git
+  records/                实验输出，不提交到 Git
 
 tests/
-  app/                    Web、聊天服务和运行时装配测试
-  core/                   配置、LLM、Prompt、存储和历史测试
+  app/                    Web、图 API、SSE 和运行时装配测试
+  core/                   配置、模型适配和 Prompt 测试
+  graphs/                 图、节点、路由和运行时测试
+  persistence/            SQLite Saver/Store 集成测试
   emotion/                情绪分析、状态、反馈和安全测试
-  memory/                 长期记忆、SQLite、抽取和提炼测试
+  memory/                 长期记忆 Store、抽取和提炼测试
   profile/                用户画像测试
   scripts/                benchmark 与 ablation CLI 测试
   project/                README 与仓库路径契约测试
@@ -490,9 +491,9 @@ python -m pytest tests/project/test_readme.py -q
 
 ### 当前边界
 
-- 应用固定使用 `default` session，面向本地单用户场景，没有认证、多用户隔离或生产级权限控制。
-- 一次性 SSE stream id 保存在当前进程内存中；进程重启后失效，同一 id 只能消费一次。
-- `runtime.sqlite3` 路径由代码中的默认值确定；只有长期记忆数据库提供 `MEMORY_DB_PATH` 环境变量。
+- `client_id` 仅用于签名完整性和数据命名空间隔离，不等同于用户认证或生产级权限控制。
+- 流式接口以单次 `POST` 返回 SSE；同一 `request_id` 的已完成请求会从 Checkpoint 幂等重放。
+- Checkpoint 与 Store 必须使用不同的 SQLite 文件，并仅支持单 Uvicorn worker。
 - 关键词安全层只调整回复策略，不能替代专业心理健康服务或紧急援助。
 - EmpatheticDialogues 的标签是整段情绪情境锚点，不是每个 utterance 的独立复标结果。
 

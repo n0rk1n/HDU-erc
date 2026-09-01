@@ -4,7 +4,7 @@ from pathlib import Path
 def test_readme_documents_current_stream_and_emotion_config_rules():
     readme = Path("README.md").read_text(encoding="utf-8")
 
-    assert "/api/chat/streams" in readme
+    assert "/api/clients/{client_id}/threads/{thread_id}/messages:stream" in readme
     assert "/api/chat/stream`" not in readme
     assert "任一 `EMOTION_LLM_*`" in readme
     assert "data/examples/emotion_labels_sample.json" in readme

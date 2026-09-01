@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 
-DEFAULT_MEMORY_DB_PATH = "data/records/memory.sqlite3"
 DEFAULT_MEMORY_MAX_RESULTS = 5
 MEMORY_CATEGORIES = {"preference", "profile", "goal", "boundary"}
 
@@ -34,16 +33,7 @@ class MemoryCandidate:
 @dataclass(frozen=True)
 class MemoryRuntimeConfig:
     enabled: bool
-    db_path: str
     max_results: int
-
-
-class MemoryProvider(Protocol):
-    def search(self, query: str, *, limit: int) -> list[Memory]:
-        raise NotImplementedError
-
-    def remember(self, candidates: list[MemoryCandidate]) -> list[Memory]:
-        raise NotImplementedError
 
 
 class AsyncMemoryRepository(Protocol):
@@ -71,14 +61,6 @@ class AsyncMemoryRepository(Protocol):
         raise NotImplementedError
 
 
-class DisabledMemoryProvider:
-    def search(self, query: str, *, limit: int) -> list[Memory]:
-        return []
-
-    def remember(self, candidates: list[MemoryCandidate]) -> list[Memory]:
-        return []
-
-
 def format_memory_context(memories: list[Memory]) -> str:
     if not memories:
         return ""
@@ -94,14 +76,12 @@ def format_memory_context(memories: list[Memory]) -> str:
 
 def load_memory_config() -> MemoryRuntimeConfig:
     enabled = _parse_bool(os.getenv("MEMORY_ENABLED"), default=True)
-    db_path = _clean(os.getenv("MEMORY_DB_PATH")) or DEFAULT_MEMORY_DB_PATH
     max_results = _parse_positive_int(
         os.getenv("MEMORY_MAX_RESULTS"),
         default=DEFAULT_MEMORY_MAX_RESULTS,
     )
     return MemoryRuntimeConfig(
         enabled=enabled,
-        db_path=db_path,
         max_results=max_results,
     )
 

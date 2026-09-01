@@ -1,5 +1,4 @@
 from chatbot.memory import (
-    DisabledMemoryProvider,
     Memory,
     MemoryRuntimeConfig,
     format_memory_context,
@@ -32,37 +31,26 @@ def test_format_memory_context_renders_bullets():
     )
 
 
-def test_disabled_memory_provider_is_noop():
-    provider = DisabledMemoryProvider()
-
-    assert provider.search("anything", limit=5) == []
-    assert provider.remember([]) == []
-
-
 def test_load_memory_config_defaults(monkeypatch):
     monkeypatch.delenv("MEMORY_ENABLED", raising=False)
-    monkeypatch.delenv("MEMORY_DB_PATH", raising=False)
     monkeypatch.delenv("MEMORY_MAX_RESULTS", raising=False)
 
     config = load_memory_config()
 
     assert config == MemoryRuntimeConfig(
         enabled=True,
-        db_path="data/records/memory.sqlite3",
         max_results=5,
     )
 
 
 def test_load_memory_config_accepts_false_and_custom_values(monkeypatch):
     monkeypatch.setenv("MEMORY_ENABLED", "false")
-    monkeypatch.setenv("MEMORY_DB_PATH", "tmp/memory.sqlite3")
     monkeypatch.setenv("MEMORY_MAX_RESULTS", "3")
 
     config = load_memory_config()
 
     assert config == MemoryRuntimeConfig(
         enabled=False,
-        db_path="tmp/memory.sqlite3",
         max_results=3,
     )
 

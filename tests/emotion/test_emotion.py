@@ -1,28 +1,10 @@
-from pathlib import Path
-
 import chatbot.emotion.analysis as emotion
 import pytest
-from chatbot.core.runtime_store import RuntimeStore
 from chatbot.emotion import (
     analyze_emotion_async,
-    append_analysis_record,
     build_emotion_prompt,
-    load_analysis_records,
     parse_emotion_output,
 )
-
-
-def _set_runtime_db(tmp_path, monkeypatch):
-    runtime_db = tmp_path / "runtime.sqlite3"
-    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
-    return runtime_db
-
-
-def _replace_analysis_records(db_path, records):
-    RuntimeStore(str(db_path)).replace_json_records(
-        emotion.EMOTION_ANALYSIS_NAMESPACE,
-        records,
-    )
 
 
 def test_build_emotion_prompt_uses_recent_history_and_current_input():
@@ -145,220 +127,8 @@ def test_parse_emotion_output_rejects_missing_format():
     assert parse_emotion_output("The emotion is anxious.") is None
 
 
-def test_load_analysis_records_missing_file(tmp_path, monkeypatch):
-    _set_runtime_db(tmp_path, monkeypatch)
-
-    assert load_analysis_records() == []
-
-
-def test_load_analysis_records_corrupted_file(tmp_path, monkeypatch):
-    runtime_db = _set_runtime_db(tmp_path, monkeypatch)
-    runtime_db.write_text("not sqlite")
-
-    assert load_analysis_records() == []
-
-
-def test_append_analysis_record_creates_database_record(tmp_path, monkeypatch):
-    _set_runtime_db(tmp_path, monkeypatch)
-
-    append_analysis_record({
-        "turn_count": 5,
-        "input": "prompt",
-        "output": "Emotion: anxious",
-        "emotion": "anxious",
-        "success": True,
-        "error": "",
-    })
-
-    data = load_analysis_records()
-    assert len(data) == 1
-    assert data[0]["turn_count"] == 5
-    assert data[0]["input"] == "prompt"
-    assert data[0]["output"] == "Emotion: anxious"
-    assert data[0]["emotion"] == "anxious"
-    assert data[0]["success"] is True
-    assert "timestamp" in data[0]
-
-
-def test_append_analysis_record_appends(tmp_path, monkeypatch):
-    _set_runtime_db(tmp_path, monkeypatch)
-
-    append_analysis_record({"turn_count": 5})
-    append_analysis_record({"turn_count": 10})
-
-    data = load_analysis_records()
-    assert [record["turn_count"] for record in data] == [5, 10]
-
-
-def test_default_emotion_analysis_file_is_project_data_file():
-    path = Path(emotion.RUNTIME_DB_PATH)
-
-    assert path.is_absolute()
-    assert path.name == "runtime.sqlite3"
-    assert path.parent.name == "records"
-    assert path.parent.parent.name == "data"
-    assert path.parent.parent.parent == Path(__file__).resolve().parents[2]
-
-
-def test_load_analysis_records_ignores_legacy_data_file_when_database_missing(tmp_path, monkeypatch):
-    runtime_db = tmp_path / "data" / "records" / "runtime.sqlite3"
-    legacy_file = tmp_path / "data" / "emotion_analysis.json"
-    legacy_file.parent.mkdir(parents=True)
-    legacy_file.write_text('[{"emotion": "sad"}]')
-    monkeypatch.setattr("chatbot.emotion.analysis.RUNTIME_DB_PATH", str(runtime_db))
-
-    assert load_analysis_records() == []
-
-
-def test_load_latest_successful_emotion_returns_latest_success(tmp_path, monkeypatch):
-    runtime_db = _set_runtime_db(tmp_path, monkeypatch)
-    _replace_analysis_records(runtime_db, [
-        {
-            "timestamp": "2026-05-19T18:00:00+08:00",
-            "turn_count": 3,
-            "emotion": "anxious",
-            "success": True,
-        },
-        {
-            "timestamp": "2026-05-19T18:10:00+08:00",
-            "turn_count": 4,
-            "emotion": "",
-            "success": False,
-            "error": "Failed to parse a known emotion label.",
-        },
-        {
-            "timestamp": "2026-05-19T18:20:00+08:00",
-            "turn_count": 5,
-            "emotion": "sad",
-            "success": True,
-        },
-    ])
-
-    assert emotion.load_latest_successful_emotion() == {
-        "emotion": "sad",
-        "timestamp": "2026-05-19T18:20:00+08:00",
-        "turn_count": 5,
-    }
-
-
-def test_load_latest_successful_emotion_skips_trailing_failures(tmp_path, monkeypatch):
-    runtime_db = _set_runtime_db(tmp_path, monkeypatch)
-    _replace_analysis_records(runtime_db, [
-        {
-            "timestamp": "2026-05-19T18:00:00+08:00",
-            "turn_count": 3,
-            "emotion": "anxious",
-            "success": True,
-        },
-        {
-            "timestamp": "2026-05-19T18:10:00+08:00",
-            "turn_count": 4,
-            "emotion": "",
-            "success": False,
-        },
-    ])
-
-    assert emotion.load_latest_successful_emotion() == {
-        "emotion": "anxious",
-        "timestamp": "2026-05-19T18:00:00+08:00",
-        "turn_count": 3,
-    }
-
-
-def test_load_latest_successful_emotion_skips_malformed_trailing_records(tmp_path, monkeypatch):
-    runtime_db = _set_runtime_db(tmp_path, monkeypatch)
-    _replace_analysis_records(runtime_db, [
-        {
-            "timestamp": "2026-05-19T18:00:00+08:00",
-            "turn_count": 3,
-            "emotion": "anxious",
-            "success": True,
-        },
-        {
-            "timestamp": "2026-05-19T18:10:00+08:00",
-            "turn_count": 4,
-            "emotion": "sad",
-            "success": "false",
-        },
-        {
-            "timestamp": "2026-05-19T18:20:00+08:00",
-            "turn_count": 5,
-            "emotion": None,
-            "success": True,
-        },
-        {
-            "timestamp": ["2026-05-19T18:30:00+08:00"],
-            "turn_count": "6",
-            "emotion": "sad",
-            "success": True,
-        },
-        {
-            "timestamp": "2026-05-19T18:40:00+08:00",
-            "turn_count": True,
-            "emotion": "sad",
-            "success": True,
-        },
-    ])
-
-    assert emotion.load_latest_successful_emotion() == {
-        "emotion": "anxious",
-        "timestamp": "2026-05-19T18:00:00+08:00",
-        "turn_count": 3,
-    }
-
-
-def test_load_latest_successful_emotion_returns_none_without_success(tmp_path, monkeypatch):
-    runtime_db = _set_runtime_db(tmp_path, monkeypatch)
-    _replace_analysis_records(runtime_db, [
-        {
-            "timestamp": "2026-05-19T18:00:00+08:00",
-            "turn_count": 3,
-            "emotion": "",
-            "success": False,
-        }
-    ])
-
-    assert emotion.load_latest_successful_emotion() is None
-
-
-def test_load_latest_successful_emotion_returns_none_for_missing_file(tmp_path, monkeypatch):
-    _set_runtime_db(tmp_path, monkeypatch)
-
-    assert emotion.load_latest_successful_emotion() is None
-
-
-def test_analyze_emotion_persists_structured_state(tmp_path, monkeypatch):
-    _set_runtime_db(tmp_path, monkeypatch)
-
-    class FakeLlm:
-        def invoke(self, prompt):
-            return type("Response", (), {"content": (
-                '{"primary_emotion":"anxious","confidence":0.8,'
-                '"secondary_emotions":["apprehensive"],'
-                '"evidence":"The user is worried.",'
-                '"reply_strategy":"Be calm.",'
-                '"trajectory_note":"","safety_level":"normal"}'
-            )})()
-
-    result = emotion.analyze_emotion(
-        FakeLlm(),
-        [],
-        "I am worried about tomorrow.",
-        turn_count=2,
-        emotion_interval=2,
-    )
-
-    assert result.success is True
-    assert result.emotion == "anxious"
-    assert result.state.primary_emotion == "anxious"
-    data = load_analysis_records()
-    assert data[0]["emotion"] == "anxious"
-    assert data[0]["dialogue_context"] == "I am worried about tomorrow."
-    assert data[0]["state"]["confidence"] == 0.8
-
-
 @pytest.mark.asyncio
-async def test_analyze_emotion_async_has_no_runtime_store_side_effect(monkeypatch):
+async def test_analyze_emotion_async_returns_structured_state_without_persistence():
     class AsyncFakeLlm:
         async def ainvoke(self, prompt):
             return type("Response", (), {"content": (
@@ -368,11 +138,6 @@ async def test_analyze_emotion_async_has_no_runtime_store_side_effect(monkeypatc
                 '"reply_strategy":"Be calm.",'
                 '"trajectory_note":"","safety_level":"normal"}'
             )})()
-
-    monkeypatch.setattr(
-        "chatbot.emotion.analysis.append_analysis_record",
-        lambda record: pytest.fail("must not persist"),
-    )
 
     result = await analyze_emotion_async(
         AsyncFakeLlm(),
