@@ -1,42 +1,38 @@
 """FastAPI Web 入口 —— 提供聊天页面、历史接口和 SSE 流式聊天接口。"""
 
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
 import secrets
-from collections.abc import Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, UUID4, field_validator
 
 from chatbot.chat_service import ChatEvent, ChatService
 from chatbot.core.config import load_config, load_graph_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.emotion.feedback import append_emotion_feedback
 from chatbot.emotion.state import EmotionState, timeline_from_records
-from chatbot.core.history import (
-    REGENERATION_REASONS,
-    load_history,
-    record_message_feedback,
-)
+from chatbot.core.history import load_history
 from chatbot.memory.sqlite import build_memory_provider
 from chatbot.core.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
 from chatbot.graphs.runtime import ConversationRuntime, RuntimeOperationError, build_graph_runtime
 from chatbot.memory import load_memory_config
 from chatbot.memory.consolidation import load_memory_consolidation_config
+from chatbot.models import GraphEvent
 from chatbot.profile import format_profile, load_profile, save_profile
 from chatbot.profile.onboarding import (
     ONBOARDING_QUESTIONS,
-    draft_profile,
-    fallback_profile_draft,
     sanitize_profile,
 )
 from chatbot.persistence import open_persistence
@@ -60,8 +56,22 @@ class EmotionFeedbackRequest(BaseModel):
     corrected_emotion: str = ""
 
 
-class ChatStreamRequest(BaseModel):
+class TurnStreamRequest(BaseModel):
     message: str
+    request_id: UUID4
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        message = value.strip()
+        if not message:
+            raise ValueError("message must not be empty")
+        return message
+
+
+class RegenerationStreamRequest(BaseModel):
+    request_id: UUID4
+    reason: Literal["不准确", "不完整", "没有理解我的问题", "语气不合适", "其他"]
 
 
 class ProfileRequest(BaseModel):
@@ -88,9 +98,136 @@ def _request_payload(request: BaseModel) -> dict:
     return request.dict()
 
 
-def format_sse(event: ChatEvent) -> str:
-    data = json.dumps(event.data, ensure_ascii=False)
-    return f"event: {event.event}\ndata: {data}\n\n"
+PUBLIC_GRAPH_EVENTS = frozenset(
+    {
+        "run_started",
+        "user_message",
+        "emotion_start",
+        "emotion_done",
+        "emotion_error",
+        "safety",
+        "token",
+        "done",
+        "error",
+    }
+)
+VISIBLE_GENERATION_NODES = frozenset({"generate_reply", "generate_variant"})
+
+
+def format_sse(event: ChatEvent | GraphEvent) -> str:
+    if isinstance(event, Mapping):
+        event_name = event["event"]
+        event_data = event["data"]
+    else:
+        event_name = event.event
+        event_data = event.data
+    data = json.dumps(event_data, ensure_ascii=False)
+    return f"event: {event_name}\ndata: {data}\n\n"
+
+
+async def adapt_graph_stream(chunks: AsyncIterable[dict[str, Any]]) -> AsyncIterator[GraphEvent]:
+    """Expose only stable custom events and user-visible model chunks."""
+    async for chunk in chunks:
+        chunk_type = chunk.get("type")
+        payload = chunk.get("data")
+        if chunk_type == "custom":
+            event = _stable_custom_event(payload)
+            if event is not None:
+                yield event
+            continue
+        if chunk_type != "messages" or not isinstance(payload, (tuple, list)):
+            continue
+        if len(payload) != 2:
+            continue
+        message, metadata = payload
+        if not isinstance(metadata, Mapping):
+            continue
+        if metadata.get("langgraph_node") not in VISIBLE_GENERATION_NODES:
+            continue
+        content = _message_chunk_text(getattr(message, "content", ""))
+        if content:
+            yield GraphEvent(event="token", data={"content": content})
+
+
+def _stable_custom_event(payload: Any) -> GraphEvent | None:
+    if not isinstance(payload, Mapping):
+        return None
+    event_name = payload.get("event")
+    event_data = payload.get("data")
+    if event_name not in PUBLIC_GRAPH_EVENTS or not isinstance(event_data, Mapping):
+        return None
+    data = dict(event_data)
+    if event_name == "emotion_done":
+        data.pop("safety", None)
+        data.pop("safety_level", None)
+        state = data.get("state")
+        if isinstance(state, Mapping):
+            data["state"] = {
+                key: value for key, value in state.items() if key != "safety_level"
+            }
+    return GraphEvent(event=event_name, data=data)
+
+
+def _message_chunk_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, Mapping) and block.get("type") == "text":
+            text = block.get("text")
+            if isinstance(text, str):
+                parts.append(text)
+    return "".join(parts)
+
+
+async def _sse_graph_events(
+    chunks: AsyncIterator[dict[str, Any]],
+    *,
+    request_id: UUID,
+    operation: Literal["turn", "regenerate"],
+    heartbeat_seconds: float = 15.0,
+) -> AsyncIterator[str]:
+    """Encode graph events, keep heartbeats private, and close the source on exit."""
+    events = adapt_graph_stream(chunks)
+    pending: asyncio.Task[GraphEvent] | None = None
+    yield format_sse(
+        GraphEvent(
+            event="run_started",
+            data={"request_id": str(request_id), "operation": operation},
+        )
+    )
+    try:
+        while True:
+            pending = asyncio.create_task(anext(events))
+            while True:
+                done, _ = await asyncio.wait({pending}, timeout=heartbeat_seconds)
+                if done:
+                    break
+                yield ": heartbeat\n\n"
+            try:
+                event = pending.result()
+            except StopAsyncIteration:
+                break
+            finally:
+                pending = None
+            yield format_sse(event)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        error_code = getattr(exc, "code", "stream_failed")
+        if not isinstance(error_code, str) or not error_code:
+            error_code = "stream_failed"
+        yield format_sse(GraphEvent(event="error", data={"error_code": error_code}))
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
+            await asyncio.gather(pending, return_exceptions=True)
+        await events.aclose()
+        await chunks.aclose()
 
 
 def build_service() -> ChatService:
@@ -376,7 +513,6 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
             app.state.graph_runtime = build_graph_runtime(
                 handles, chat_config, graph_config
             )
-            app.state.chat_streams = {}
             yield
 
     app = FastAPI(title="Emotion Recognition Chatbot", lifespan=lifespan)
@@ -397,20 +533,6 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
     @app.exception_handler(Exception)
     async def internal_error_handler(request: Request, exc: Exception):
         return JSONResponse(status_code=500, content={"detail": "internal_error"})
-
-    def get_service() -> ChatService:
-        service = getattr(app.state, "chat_service", None)
-        if service is None:
-            service = service_factory()
-            app.state.chat_service = service
-        return service
-
-    def get_chat_streams() -> dict[str, str]:
-        streams = getattr(app.state, "chat_streams", None)
-        if streams is None:
-            streams = {}
-            app.state.chat_streams = streams
-        return streams
 
     def graph_runtime() -> ConversationRuntime:
         runtime = getattr(app.state, "graph_runtime", None)
@@ -530,30 +652,65 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
         snapshot = await graph_runtime().aget_state(client_id, thread_id)
         return {"timeline": snapshot.values.get("emotion_timeline", [])[-limit:]}
 
+    @app.post("/api/clients/{client_id}/threads/{thread_id}/messages:stream")
+    async def stream_turn(
+        client_id: str,
+        thread_id: str,
+        stream_request: TurnStreamRequest,
+    ):
+        authenticated_client(client_id)
+        chunks = await graph_runtime().astream_turn(
+            client_id,
+            thread_id,
+            str(stream_request.request_id),
+            stream_request.message,
+        )
+        return StreamingResponse(
+            _sse_graph_events(
+                chunks,
+                request_id=stream_request.request_id,
+                operation="turn",
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    @app.post(
+        "/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream"
+    )
+    async def stream_regeneration(
+        client_id: str,
+        thread_id: str,
+        message_id: str,
+        stream_request: RegenerationStreamRequest,
+    ):
+        authenticated_client(client_id)
+        chunks = await graph_runtime().astream_regeneration(
+            client_id,
+            thread_id,
+            str(stream_request.request_id),
+            message_id,
+            stream_request.reason,
+        )
+        return StreamingResponse(
+            _sse_graph_events(
+                chunks,
+                request_id=stream_request.request_id,
+                operation="regenerate",
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @app.get("/api/profile/onboarding/questions")
     def profile_onboarding_questions():
         return {"questions": ONBOARDING_QUESTIONS}
-
-    @app.post("/api/chat/streams")
-    def create_chat_stream(request: ChatStreamRequest):
-        message = request.message.strip()
-        if not message:
-            raise HTTPException(status_code=400, detail="Message must not be empty.")
-        stream_id = uuid4().hex
-        get_chat_streams()[stream_id] = message
-        return {"stream_id": stream_id}
-
-    @app.get("/api/chat/streams/{stream_id}")
-    def consume_chat_stream(stream_id: str, service: ChatService = Depends(get_service)):
-        message = get_chat_streams().pop(stream_id, None)
-        if message is None:
-            raise HTTPException(status_code=410, detail="Chat stream is expired or already consumed.")
-
-        def event_stream():
-            for event in service.stream_reply(message):
-                yield format_sse(event)
-
-        return StreamingResponse(event_stream(), media_type="text/event-stream")
 
     return app
 

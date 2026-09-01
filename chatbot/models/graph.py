@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Literal, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 
 GraphOperation = Literal["turn", "regenerate", "onboard"]
@@ -33,6 +33,16 @@ class RiskAssessment(TypedDict):
     explicit_crisis: bool
 
 
+class CompletionEventData(TypedDict):
+    """Strict-msgpack-safe payload persisted for an idempotent ``done`` replay."""
+
+    message_id: str
+    content: str
+    replayed: NotRequired[bool]
+    reason: NotRequired[str]
+    regenerated: NotRequired[bool]
+
+
 class ThreadMetadata(TypedDict, total=False):
     thread_id: str
     title: str
@@ -51,6 +61,7 @@ class RequestResult(TypedDict, total=False):
     content: str
     error_code: str
     completed_at: str
+    event_data: CompletionEventData
 
 
 class ConversationInput(TypedDict, total=False):

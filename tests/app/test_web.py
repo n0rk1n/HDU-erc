@@ -319,28 +319,6 @@ def test_profile_onboarding_questions_endpoint():
     assert response.json() == {"questions": web.ONBOARDING_QUESTIONS}
 
 
-def test_chat_stream_uses_one_time_posted_stream_id():
-    service = FakeService()
-    app = create_app(service_factory=lambda: service)
-    client = TestClient(app)
-
-    created = client.post("/api/chat/streams", json={"message": "hello"})
-
-    assert created.status_code == 200
-    stream_id = created.json()["stream_id"]
-
-    streamed = client.get(f"/api/chat/streams/{stream_id}")
-
-    assert streamed.status_code == 200
-    assert "event: done" in streamed.text
-    assert service.messages == ["hello"]
-
-    replay = client.get(f"/api/chat/streams/{stream_id}")
-
-    assert replay.status_code == 410
-    assert service.messages == ["hello"]
-
-
 def test_format_sse_encodes_event_and_json_data():
     output = format_sse(ChatEvent("token", {"content": "hi"}))
 
@@ -367,16 +345,6 @@ def test_legacy_stream_endpoint_is_removed():
 
     assert response.status_code == 404
     assert service.messages == []
-
-
-def test_chat_stream_create_rejects_blank_message():
-    app = create_app(service_factory=lambda: FakeService())
-    client = TestClient(app)
-
-    response = client.post("/api/chat/streams", json={"message": "  "})
-
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Message must not be empty."}
 
 
 def test_static_assets_exist():
