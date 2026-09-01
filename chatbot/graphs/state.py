@@ -38,6 +38,7 @@ class ConversationState(MessagesState, total=False):
     processed_requests: dict[str, RequestResult]
     operation: GraphOperation
     request_id: str
+    replay_request: bool
     input_message: str
     target_message_id: str
     regeneration_reason: str

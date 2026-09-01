@@ -1,7 +1,10 @@
 import pytest
 from langchain_core.messages import HumanMessage
+from langgraph.graph import END, START, StateGraph
 
 from chatbot.graphs.nodes.input import GraphInputError, accept_turn
+from chatbot.graphs.state import ConversationState
+from chatbot.models import GraphContext
 
 
 def test_accept_turn_adds_stable_human_message_and_increments_turn(writer, runtime):
@@ -50,6 +53,34 @@ def test_accept_turn_marks_completed_request_for_replay_without_duplicate_turn(w
 
     assert update == {"replay_request": True}
     assert writer.events == []
+
+
+def test_compiled_graph_retains_completed_request_replay_without_duplicate_human_message():
+    """Catches the state schema dropping replay routing after accept_turn returns its delta."""
+    builder = StateGraph(ConversationState, context_schema=GraphContext)
+    builder.add_node("accept_turn", accept_turn)
+    builder.add_edge(START, "accept_turn")
+    builder.add_edge("accept_turn", END)
+    graph = builder.compile()
+
+    result = graph.invoke(
+        {
+            "request_id": "req-1",
+            "input_message": "重试",
+            "turn_count": 4,
+            "messages": [],
+            "processed_requests": {
+                "req-1": {
+                    "status": "completed",
+                    "response_message_id": "ai_req-1",
+                }
+            },
+        },
+        context={"client_id": "client-a", "request_id": "req-1", "locale": "zh-CN"},
+    )
+
+    assert result["replay_request"] is True
+    assert result["messages"] == []
 
 
 def test_accept_turn_does_not_increment_when_stable_human_message_already_exists(writer, runtime):
