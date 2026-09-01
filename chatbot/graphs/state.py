@@ -43,6 +43,7 @@ class ConversationState(MessagesState, total=False):
     target_message_id: str
     regeneration_reason: str
     profile_answers: list[ProfileAnswer]
+    profile_draft: dict[str, str]
     risk: RiskAssessment
     profile_context: str
     memory_context: str
