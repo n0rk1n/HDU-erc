@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,10 @@ from chatbot.core.config import GraphConfig
 class PersistenceHandles:
     checkpointer: AsyncSqliteSaver
     store: AsyncSqliteStore
+
+
+class PersistenceOpenError(RuntimeError):
+    """A configured persistence file is not a readable SQLite database."""
 
 
 def _ensure_parent(database_path: str) -> None:
@@ -40,6 +45,16 @@ async def open_persistence(config: GraphConfig) -> AsyncIterator[PersistenceHand
             ),
         )
         store = await stack.enter_async_context(AsyncSqliteStore.from_conn_string(config.store_db_path))
-        await checkpointer.setup()
-        await store.setup()
+        try:
+            await checkpointer.setup()
+        except sqlite3.DatabaseError as exc:
+            raise PersistenceOpenError(
+                f"invalid checkpoint database: {config.checkpoint_db_path}"
+            ) from exc
+        try:
+            await store.setup()
+        except sqlite3.DatabaseError as exc:
+            raise PersistenceOpenError(
+                f"invalid store database: {config.store_db_path}"
+            ) from exc
         yield PersistenceHandles(checkpointer=checkpointer, store=store)

@@ -144,6 +144,7 @@ def test_node_dependencies_reuses_the_injected_memory_repository(deps):
         chat_config=deps.chat_config,
         graph_config=deps.graph_config,
         memory_repository=deps.memory_repository,
+        memory_config=deps.memory_config,
         now=deps.now,
     )
 

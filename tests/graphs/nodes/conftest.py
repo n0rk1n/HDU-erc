@@ -10,7 +10,7 @@ from langchain_core.messages import AIMessage
 from langgraph.store.memory import InMemoryStore
 
 from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
-from chatbot.memory import StoreMemoryRepository
+from chatbot.memory import MemoryRuntimeConfig, StoreMemoryRepository
 
 
 FIXED_NOW = datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc)
@@ -31,6 +31,7 @@ class FakeDependencies:
     chat_config: ChatConfig
     graph_config: GraphConfig
     memory_repository: StoreMemoryRepository
+    memory_config: MemoryRuntimeConfig
     now: Any = lambda: FIXED_NOW
 
 
@@ -110,6 +111,7 @@ def deps(chat_config, graph_config, store, emotion_model) -> FakeDependencies:
         chat_config=chat_config,
         graph_config=graph_config,
         memory_repository=StoreMemoryRepository(store, now=lambda: FIXED_NOW),
+        memory_config=MemoryRuntimeConfig(enabled=True, max_results=5),
     )
 
 
@@ -121,4 +123,5 @@ def deps_with_failing_emotion(chat_config, graph_config, store) -> FakeDependenc
         chat_config=chat_config,
         graph_config=graph_config,
         memory_repository=StoreMemoryRepository(store, now=lambda: FIXED_NOW),
+        memory_config=MemoryRuntimeConfig(enabled=True, max_results=5),
     )

@@ -7,6 +7,7 @@ from langgraph.graph import END, START, StateGraph
 
 from chatbot.graphs.nodes.memory import extract_memory, maybe_consolidate
 from chatbot.graphs.state import ConversationState
+from chatbot.memory import MemoryRuntimeConfig
 
 
 class FailingMemoryRepository:
@@ -15,6 +16,22 @@ class FailingMemoryRepository:
 
     async def aget_consolidation_state(self, client_id):
         raise RuntimeError("store unavailable")
+
+
+class RecordingMemoryRepository:
+    def __init__(self):
+        self.calls = []
+
+    async def aremember(self, client_id, candidates):
+        self.calls.append(("remember", client_id, candidates))
+
+    async def aget_consolidation_state(self, client_id):
+        self.calls.append(("get_consolidation", client_id))
+        return {
+            "last_turn_count": 0,
+            "last_message_id": None,
+            "processed_checkpoint_ids": [],
+        }
 
 
 def test_compiled_state_retains_memory_warning_transient():
@@ -163,3 +180,27 @@ async def test_memory_store_failures_are_nonfatal_and_correlated(
     assert "request_id=req-1" in caplog.text
     assert "thread_id=thread-a" in caplog.text
     assert writer.events == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("node", [extract_memory, maybe_consolidate])
+async def test_memory_nodes_do_not_touch_repository_when_disabled(
+    deps, runtime, writer, node
+):
+    repository = RecordingMemoryRepository()
+    disabled = replace(
+        deps,
+        memory_repository=repository,
+        memory_config=MemoryRuntimeConfig(enabled=False, max_results=5),
+    )
+
+    update = await node(
+        completed_turn_state("我希望以后都用中文回答。", "好的。"),
+        runtime,
+        writer,
+        {"configurable": {"thread_id": "thread-a"}},
+        deps=disabled,
+    )
+
+    assert update == {"memory_warning": ""}
+    assert repository.calls == []

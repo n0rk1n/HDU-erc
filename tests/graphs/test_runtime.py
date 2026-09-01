@@ -396,6 +396,28 @@ async def test_build_runtime_constructs_models_once_and_compiles_parent_once():
 
 
 @pytest.mark.asyncio
+async def test_build_runtime_snapshots_memory_config_once(monkeypatch):
+    saver = InMemorySaver()
+    store = InMemoryStore()
+    chat_config, graph_config = configs()
+    monkeypatch.setenv("MEMORY_ENABLED", "false")
+    monkeypatch.setenv("MEMORY_MAX_RESULTS", "3")
+
+    runtime = build_graph_runtime(
+        SimpleNamespace(checkpointer=saver, store=store),
+        chat_config,
+        graph_config,
+        model_factory=lambda config: (StaticModel("回复"), StaticModel(EMOTION_JSON)),
+        now=lambda: FIXED_NOW,
+    )
+    monkeypatch.setenv("MEMORY_ENABLED", "true")
+    monkeypatch.setenv("MEMORY_MAX_RESULTS", "9")
+
+    assert runtime.dependencies.memory_config.enabled is False
+    assert runtime.dependencies.memory_config.max_results == 3
+
+
+@pytest.mark.asyncio
 async def test_create_thread_initializes_checkpoint_and_rolls_back_on_failure():
     """Catches directory records existing without a corresponding initial checkpoint."""
     runtime, saver, _ = memory_runtime()

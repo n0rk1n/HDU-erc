@@ -10,6 +10,7 @@ from langgraph.store.memory import InMemoryStore
 from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.onboarding import build_onboarding_graph
+from chatbot.memory import MemoryRuntimeConfig
 from chatbot.models.graph import GraphContext
 
 
@@ -56,6 +57,7 @@ def make_deps(model: StructuredDraftModel) -> NodeDependencies:
             client_id_signing_secret="a" * 32,
         ),
         memory_repository=object(),
+        memory_config=MemoryRuntimeConfig(enabled=True, max_results=5),
         now=lambda: datetime(2026, 9, 1, tzinfo=timezone.utc),
     )
 

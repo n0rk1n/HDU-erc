@@ -13,7 +13,7 @@ from langgraph.types import StateSnapshot
 from chatbot.core.config import ChatConfig, GraphConfig
 from chatbot.graphs.conversation import build_conversation_graph
 from chatbot.graphs.dependencies import NodeDependencies
-from chatbot.memory import StoreMemoryRepository
+from chatbot.memory import StoreMemoryRepository, load_memory_config
 from chatbot.models.graph import GraphContext, ProfileAnswer, ThreadRecord
 from chatbot.persistence.runtime import PersistenceHandles
 from chatbot.persistence.threads import ThreadRepository
@@ -305,6 +305,7 @@ def build_graph_runtime(
         model_factory = build_runtime_llms
     clock = now or _utc_now
     chat_model, emotion_model = model_factory(chat_config)
+    memory_config = load_memory_config()
     memory_repository = StoreMemoryRepository(handles.store, now=clock)
     dependencies = NodeDependencies(
         chat_model=chat_model,
@@ -312,6 +313,7 @@ def build_graph_runtime(
         chat_config=chat_config,
         graph_config=graph_config,
         memory_repository=memory_repository,
+        memory_config=memory_config,
         now=clock,
     )
     compiled_graph = build_conversation_graph(dependencies).compile(

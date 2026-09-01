@@ -49,3 +49,33 @@ async def test_open_persistence_rejects_unsafe_checkpoint_values_without_saving(
         saved = [item async for item in handles.checkpointer.alist(checkpoint_config)]
 
     assert saved == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("corrupt_component", ["checkpoint", "store"])
+async def test_open_persistence_fails_closed_for_corrupt_database(
+    tmp_path,
+    corrupt_component,
+):
+    checkpoint_path = tmp_path / "checkpoints.sqlite3"
+    store_path = tmp_path / "store.sqlite3"
+    corrupt_path = checkpoint_path if corrupt_component == "checkpoint" else store_path
+    corrupt_bytes = b"not sqlite; preserve these exact bytes"
+    corrupt_path.write_bytes(corrupt_bytes)
+    config = GraphConfig(
+        checkpoint_db_path=str(checkpoint_path),
+        store_db_path=str(store_path),
+        timeline_limit=50,
+        request_history_limit=64,
+        strict_msgpack=True,
+        client_id_signing_secret="a" * 32,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=rf"invalid {corrupt_component} database",
+    ):
+        async with open_persistence(config):
+            pytest.fail("corrupt database must not open")
+
+    assert corrupt_path.read_bytes() == corrupt_bytes

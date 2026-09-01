@@ -2,9 +2,19 @@ import logging
 from types import SimpleNamespace
 
 import pytest
+from dataclasses import replace
 
 from chatbot.graphs.nodes.context import load_context
-from chatbot.memory import MemoryCandidate
+from chatbot.memory import MemoryCandidate, MemoryRuntimeConfig
+
+
+class RecordingMemoryRepository:
+    def __init__(self):
+        self.searches = []
+
+    async def asearch(self, client_id, query, *, limit):
+        self.searches.append((client_id, query, limit))
+        return []
 
 
 @pytest.mark.asyncio
@@ -82,3 +92,42 @@ async def test_load_context_degrades_malformed_store_records_to_empty_strings(
     assert "profile context read failed" in caplog.text
     assert "memory context read failed" in caplog.text
     assert writer.events == []
+
+
+@pytest.mark.asyncio
+async def test_load_context_skips_memory_search_when_disabled(deps, runtime, writer):
+    repository = RecordingMemoryRepository()
+    disabled = replace(
+        deps,
+        memory_repository=repository,
+        memory_config=MemoryRuntimeConfig(enabled=False, max_results=3),
+    )
+
+    update = await load_context(
+        {"input_message": "继续", "recent_emotions": []},
+        runtime,
+        writer,
+        deps=disabled,
+    )
+
+    assert update["memory_context"] == ""
+    assert repository.searches == []
+
+
+@pytest.mark.asyncio
+async def test_load_context_uses_configured_memory_result_limit(deps, runtime, writer):
+    repository = RecordingMemoryRepository()
+    configured = replace(
+        deps,
+        memory_repository=repository,
+        memory_config=MemoryRuntimeConfig(enabled=True, max_results=3),
+    )
+
+    await load_context(
+        {"input_message": "继续", "recent_emotions": []},
+        runtime,
+        writer,
+        deps=configured,
+    )
+
+    assert repository.searches == [("client-a", "继续", 3)]

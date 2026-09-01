@@ -13,6 +13,7 @@ from langgraph.store.memory import InMemoryStore
 from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.regeneration import RegenerationError, build_regeneration_graph
+from chatbot.memory import MemoryRuntimeConfig
 from chatbot.models.graph import GraphContext
 
 
@@ -72,6 +73,7 @@ def make_deps(model: RecordingModel, memory_repository) -> NodeDependencies:
             client_id_signing_secret="a" * 32,
         ),
         memory_repository=memory_repository,
+        memory_config=MemoryRuntimeConfig(enabled=True, max_results=5),
         now=lambda: FIXED_NOW,
     )
 

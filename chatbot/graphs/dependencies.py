@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from chatbot.core.config import ChatConfig, GraphConfig
-from chatbot.memory import StoreMemoryRepository
+from chatbot.memory import MemoryRuntimeConfig, StoreMemoryRepository
 
 
 @dataclass(frozen=True)
@@ -16,4 +16,5 @@ class NodeDependencies:
     chat_config: ChatConfig
     graph_config: GraphConfig
     memory_repository: StoreMemoryRepository
+    memory_config: MemoryRuntimeConfig
     now: Callable[[], datetime]

@@ -41,6 +41,15 @@ CRISIS_TERMS = (
 )
 SUPPORTIVE_TERMS = ("hopeless", "can't go on", "崩溃", "绝望", "撑不住")
 SUPPORTIVE_EMOTIONS = {"devastated", "terrified", "afraid", "sad", "lonely", "anxious"}
+_SAFETY_RANK = {"normal": 0, "supportive": 1, "crisis": 2}
+_SAFETY_GUIDANCE = {
+    "normal": "",
+    "supportive": "Use supportive validation before practical next steps.",
+    "crisis": (
+        "Use immediate supportive language, avoid diagnosis, and encourage the user "
+        "to contact trusted people or local emergency/professional support now."
+    ),
+}
 
 _QUOTED_TEXT = re.compile(r'“[^”]*”|‘[^’]*’|"[^"]*"|\'[^\']*\'')
 _CLAUSE_BOUNDARY = re.compile(r"[,.!?，。！？;；\n]+")
@@ -137,22 +146,20 @@ def assess_safety(
 ) -> SafetyDecision:
     text = message.lower()
     risk = risk if risk is not None else precheck_risk(message)
+    local_level = "normal"
     if risk["explicit_crisis"]:
-        return {
-            "level": "crisis",
-            "guidance": (
-                "Use immediate supportive language, avoid diagnosis, and encourage the user "
-                "to contact trusted people or local emergency/professional support now."
-            ),
-        }
-    if any(term in text for term in SUPPORTIVE_TERMS):
-        return {
-            "level": "supportive",
-            "guidance": "Use supportive validation before practical next steps.",
-        }
-    if state and state.primary_emotion in SUPPORTIVE_EMOTIONS and state.confidence >= 0.85:
-        return {
-            "level": "supportive",
-            "guidance": "Use supportive validation before practical next steps.",
-        }
-    return {"level": "normal", "guidance": ""}
+        local_level = "crisis"
+    elif any(term in text for term in SUPPORTIVE_TERMS):
+        local_level = "supportive"
+    elif state and state.primary_emotion in SUPPORTIVE_EMOTIONS and state.confidence >= 0.85:
+        local_level = "supportive"
+
+    model_level = state.safety_level if state is not None else "normal"
+    final_level = max(
+        (local_level, model_level),
+        key=_SAFETY_RANK.__getitem__,
+    )
+    return {
+        "level": final_level,
+        "guidance": _SAFETY_GUIDANCE[final_level],
+    }

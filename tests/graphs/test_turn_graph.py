@@ -18,7 +18,7 @@ from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.nodes.generation import CRISIS_FALLBACK_ZH_CN, generate_crisis_reply
 from chatbot.graphs.turn import build_turn_graph
-from chatbot.memory import StoreMemoryRepository
+from chatbot.memory import MemoryRuntimeConfig, StoreMemoryRepository
 from chatbot.models.graph import GraphContext
 
 
@@ -94,6 +94,8 @@ def make_deps(
     emotion_model: Any | None = None,
     emotion_interval: int = 5,
     memory_repository: Any | None = None,
+    memory_enabled: bool = True,
+    memory_max_results: int = 5,
 ) -> NodeDependencies:
     llm = LlmConfig(provider="test", api_key="test", model="test", temperature=0.0)
     return NodeDependencies(
@@ -114,6 +116,10 @@ def make_deps(
         ),
         memory_repository=memory_repository
         or StoreMemoryRepository(store, now=lambda: FIXED_NOW),
+        memory_config=MemoryRuntimeConfig(
+            enabled=memory_enabled,
+            max_results=memory_max_results,
+        ),
         now=lambda: FIXED_NOW,
     )
 
@@ -299,6 +305,69 @@ async def test_explicit_crisis_uses_crisis_generation_and_one_validated_token():
 
 
 @pytest.mark.asyncio
+async def test_model_crisis_monotonically_routes_ordinary_text_to_validated_crisis_reply():
+    store = InMemoryStore()
+    emotion_model = SequenceModel(
+        '{"primary_emotion":"content","confidence":0.6,'
+        '"secondary_emotions":[],"evidence":"ordinary wording",'
+        '"reply_strategy":"stay present","trajectory_note":"",'
+        '"safety_level":"crisis"}'
+    )
+    crisis_reply = "请先确认自己当下安全，并联系可信任的人。"
+    chat_model = SequenceModel(crisis_reply)
+    deps = make_deps(
+        store,
+        chat_model=chat_model,
+        emotion_model=emotion_model,
+    )
+    graph = compile_graph(deps, store)
+    config = {"configurable": {"thread_id": "thread-model-crisis"}}
+
+    parts = await stream_parts(
+        graph,
+        turn_input("req-model-crisis", "今天只是普通的一天。"),
+        config,
+        context("req-model-crisis"),
+    )
+
+    events = custom_events(parts)
+    safety_events = [event for event in events if event["event"] == "safety"]
+    token_events = [event for event in events if event["event"] == "token"]
+    generation_chunks = [
+        (message, metadata)
+        for part in parts
+        if part["type"] == "messages"
+        for message, metadata in [part["data"]]
+        if isinstance(message, AIMessageChunk)
+        if metadata["langgraph_node"] in {"generate_reply", "generate_crisis_reply"}
+    ]
+    snapshot = await graph.aget_state(config)
+    final_ai = snapshot.values["messages"][-1]
+    system_prompt = chat_model.calls[0][0].to_messages()[0].content
+
+    assert safety_events == [
+        {
+            "event": "safety",
+            "data": {
+                "level": "crisis",
+                "guidance": (
+                    "Use immediate supportive language, avoid diagnosis, and encourage the user "
+                    "to contact trusted people or local emergency/professional support now."
+                ),
+            },
+        }
+    ]
+    assert token_events == [
+        {"event": "token", "data": {"content": crisis_reply}}
+    ]
+    assert generation_chunks == []
+    assert final_ai.additional_kwargs["safety_level"] == "crisis"
+    assert final_ai.content == crisis_reply
+    assert "Safety Context:\n- level: crisis" in system_prompt
+    assert "Safety Context:\n- level: normal" not in system_prompt
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("model_reply", "expected_token"),
     [
@@ -471,6 +540,28 @@ async def test_memory_failures_do_not_prevent_turn_completion(caplog):
     assert snapshot.values["memory_warning"] == ""
     assert "memory context read failed" in caplog.text
     assert "memory extraction write failed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_disabled_memory_skips_all_repository_operations_in_compiled_turn():
+    store = InMemoryStore()
+    repository = FailingMemoryRepository()
+    deps = make_deps(
+        store,
+        chat_model=SequenceModel("正常完成"),
+        memory_repository=repository,
+        memory_enabled=False,
+    )
+    graph = compile_graph(deps, store)
+
+    result = await graph.ainvoke(
+        turn_input("req-disabled-memory", "我希望以后都用中文回答。"),
+        {"configurable": {"thread_id": "thread-disabled-memory"}},
+        context=context("req-disabled-memory"),
+    )
+
+    assert result["processed_requests"]["req-disabled-memory"]["content"] == "正常完成"
+    assert result.get("memory_warning", "") == ""
 
 
 @pytest.mark.asyncio

@@ -151,3 +151,34 @@ def test_assess_safety_returns_crisis_for_common_chinese_self_harm_language():
 
     assert result["level"] == "crisis"
     assert "immediate" in result["guidance"].lower()
+
+
+@pytest.mark.parametrize("level", ["supportive", "crisis"])
+def test_model_safety_level_cannot_be_downgraded_by_ordinary_local_text(level):
+    state = EmotionState(
+        primary_emotion="content",
+        confidence=0.6,
+        safety_level=level,
+    )
+
+    decision = assess_safety("今天只是普通的一天。", state)
+
+    assert decision["level"] == level
+    if level == "crisis":
+        assert "immediate" in decision["guidance"].lower()
+    else:
+        assert "supportive" in decision["guidance"].lower()
+
+
+def test_local_crisis_upgrades_model_supportive_safety():
+    decision = assess_safety(
+        "我今晚准备结束自己的生命。",
+        EmotionState(
+            primary_emotion="sad",
+            confidence=0.9,
+            safety_level="supportive",
+        ),
+    )
+
+    assert decision["level"] == "crisis"
+    assert "immediate" in decision["guidance"].lower()

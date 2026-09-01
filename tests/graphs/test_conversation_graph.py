@@ -12,7 +12,7 @@ from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
 from chatbot.graphs.conversation import build_conversation_graph
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.nodes.input import GraphInputError
-from chatbot.memory import StoreMemoryRepository
+from chatbot.memory import MemoryRuntimeConfig, StoreMemoryRepository
 from chatbot.models.graph import GraphContext
 
 
@@ -59,6 +59,7 @@ def make_deps(store: InMemoryStore) -> NodeDependencies:
             client_id_signing_secret="a" * 32,
         ),
         memory_repository=StoreMemoryRepository(store, now=lambda: FIXED_NOW),
+        memory_config=MemoryRuntimeConfig(enabled=True, max_results=5),
         now=lambda: FIXED_NOW,
     )
 

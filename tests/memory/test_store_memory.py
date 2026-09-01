@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
+from langgraph.store.base import BaseStore
+from langgraph.store.memory import InMemoryStore
 from langgraph.store.sqlite.aio import AsyncSqliteStore
 
 from chatbot.memory import MemoryCandidate, StoreMemoryRepository
@@ -12,18 +14,52 @@ from chatbot.memory import MemoryCandidate, StoreMemoryRepository
 FIXED_NOW = datetime(2026, 9, 1, 10, 0, tzinfo=timezone.utc)
 
 
+class GateableInMemoryStore(InMemoryStore):
+    """Real InMemoryStore with optional scheduling gates for concurrency contracts."""
+
+    def __init__(self):
+        super().__init__()
+        self.search_gate = None
+        self.get_gate = None
+
+    async def asearch(self, namespace_prefix, /, **kwargs):
+        call = super().asearch
+        if self.search_gate is not None:
+            return await self.search_gate(call, namespace_prefix, **kwargs)
+        return await call(namespace_prefix, **kwargs)
+
+    async def aget(self, namespace, key, /, *, refresh_ttl=None):
+        call = super().aget
+        if self.get_gate is not None:
+            return await self.get_gate(call, namespace, key, refresh_ttl=refresh_ttl)
+        return await call(namespace, key, refresh_ttl=refresh_ttl)
+
+
 @dataclass(frozen=True)
 class MemoryRepoFixture:
     repository: StoreMemoryRepository
-    store: AsyncSqliteStore
+    store: BaseStore
     client_id: str = "client-a"
+    backend: str = "sqlite"
 
 
-@pytest_asyncio.fixture
-async def memory_repo(tmp_path):
+@pytest_asyncio.fixture(params=["sqlite", "memory"])
+async def memory_repo(request, tmp_path):
+    if request.param == "memory":
+        store = GateableInMemoryStore()
+        yield MemoryRepoFixture(
+            StoreMemoryRepository(store, now=lambda: FIXED_NOW),
+            store,
+            backend="memory",
+        )
+        return
     async with AsyncSqliteStore.from_conn_string(str(tmp_path / "store.sqlite3")) as store:
         await store.setup()
-        yield MemoryRepoFixture(StoreMemoryRepository(store, now=lambda: FIXED_NOW), store)
+        yield MemoryRepoFixture(
+            StoreMemoryRepository(store, now=lambda: FIXED_NOW),
+            store,
+            backend="sqlite",
+        )
 
 
 async def _values(fixture: MemoryRepoFixture, client_id: str = "client-a") -> list[dict]:
@@ -354,9 +390,9 @@ async def _pause_first_memory_search(memory_repo):
     release_first_search = asyncio.Event()
     calls = 0
 
-    async def controlled(namespace_prefix, /, **kwargs):
+    async def controlled(call, namespace_prefix, /, **kwargs):
         nonlocal calls
-        result = await original(namespace_prefix, **kwargs)
+        result = await call(namespace_prefix, **kwargs)
         if namespace_prefix == (memory_repo.client_id, "memories"):
             calls += 1
             if calls == 1:
@@ -364,7 +400,13 @@ async def _pause_first_memory_search(memory_repo):
                 await release_first_search.wait()
         return result
 
-    memory_repo.store.asearch = controlled
+    if memory_repo.backend == "memory":
+        memory_repo.store.search_gate = controlled
+    else:
+        async def sqlite_controlled(namespace_prefix, /, **kwargs):
+            return await controlled(original, namespace_prefix, **kwargs)
+
+        memory_repo.store.asearch = sqlite_controlled
     return first_search_started, release_first_search
 
 
@@ -429,9 +471,9 @@ async def test_concurrent_consolidation_keeps_distinct_checkpoint_ids(memory_rep
     release_first_read = asyncio.Event()
     calls = 0
 
-    async def controlled(namespace, key, /, *, refresh_ttl=None):
+    async def controlled(call, namespace, key, /, *, refresh_ttl=None):
         nonlocal calls
-        result = await original(namespace, key, refresh_ttl=refresh_ttl)
+        result = await call(namespace, key, refresh_ttl=refresh_ttl)
         if namespace == (memory_repo.client_id, "memory_meta") and key == "consolidation":
             calls += 1
             if calls == 1:
@@ -439,7 +481,18 @@ async def test_concurrent_consolidation_keeps_distinct_checkpoint_ids(memory_rep
                 await release_first_read.wait()
         return result
 
-    memory_repo.store.aget = controlled
+    if memory_repo.backend == "memory":
+        memory_repo.store.get_gate = controlled
+    else:
+        async def sqlite_controlled(namespace, key, /, *, refresh_ttl=None):
+            return await controlled(
+                original,
+                namespace,
+                key,
+                refresh_ttl=refresh_ttl,
+            )
+
+        memory_repo.store.aget = sqlite_controlled
     first = asyncio.create_task(memory_repo.repository.amark_consolidated(
         memory_repo.client_id, turn_count=5, last_message_id="msg_5", source_checkpoint_id="cp_5"
     ))

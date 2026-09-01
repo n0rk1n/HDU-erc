@@ -8,7 +8,6 @@ from langchain_core.runnables import RunnableConfig
 
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.state import ConversationState
-from chatbot.memory import load_memory_config
 from chatbot.memory.consolidation import (
     consolidation_due,
     extract_consolidated_memory_candidates,
@@ -30,6 +29,8 @@ async def extract_memory(
     deps: NodeDependencies,
 ) -> dict[str, str]:
     """Extract and idempotently persist durable candidates from a completed turn."""
+    if not deps.memory_config.enabled:
+        return {"memory_warning": ""}
     candidates = extract_memory_candidates(
         state.get("input_message", ""),
         state.get("response_content", ""),
@@ -53,10 +54,12 @@ async def maybe_consolidate(
     deps: NodeDependencies,
 ) -> dict[str, str]:
     """Consolidate a due message window once per source checkpoint."""
+    if not deps.memory_config.enabled:
+        return {"memory_warning": ""}
     client_id = runtime.context["client_id"]
     request_id = state.get("request_id") or runtime.context["request_id"]
     source_checkpoint_id = _source_checkpoint_id(config, request_id)
-    consolidation_config = load_memory_consolidation_config(load_memory_config())
+    consolidation_config = load_memory_consolidation_config(deps.memory_config)
     try:
         consolidation_state = await deps.memory_repository.aget_consolidation_state(
             client_id
