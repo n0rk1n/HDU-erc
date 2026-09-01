@@ -5,7 +5,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph
 from langgraph.store.memory import InMemoryStore
 
@@ -109,6 +110,41 @@ def regeneration_input(*, reason: str = "不准确") -> dict[str, Any]:
     }
 
 
+def tool_chain_input(*, target_message_id: str) -> dict[str, Any]:
+    return {
+        "operation": "regenerate",
+        "request_id": "regen-1",
+        "target_message_id": target_message_id,
+        "regeneration_reason": "不准确",
+        "messages": [
+            HumanMessage(id="human-tool", content="请查询天气"),
+            AIMessage(
+                id="ai-tool-call",
+                content="",
+                tool_calls=[
+                    {
+                        "name": "lookup_weather",
+                        "args": {"city": "杭州"},
+                        "id": "call-weather",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            ToolMessage(
+                id="tool-weather",
+                content="晴，26℃",
+                tool_call_id="call-weather",
+            ),
+            AIMessage(id="ai-final", content="杭州今天晴，26℃。"),
+        ],
+        "turn_count": 1,
+        "emotion_state": {"primary_emotion": "content", "confidence": 0.8},
+        "emotion_timeline": [{"turn_count": 1, "primary_emotion": "content"}],
+        "recent_emotions": ["content"],
+        "safety_state": {"level": "normal", "guidance": "reply naturally"},
+    }
+
+
 async def compile_graph(deps: NodeDependencies, store: InMemoryStore):
     builder = build_regeneration_graph(deps)
     assert isinstance(builder, StateGraph)
@@ -156,6 +192,92 @@ async def test_regeneration_replaces_same_message_id_and_preserves_original_meta
     }
     assert result["processed_requests"]["regen-1"]["status"] == "completed"
     assert result["processed_requests"]["regen-1"]["response_message_id"] == "ai-target"
+
+
+@pytest.mark.asyncio
+async def test_regeneration_rejects_intermediate_tool_call_and_preserves_transcript():
+    """Catches same-ID replacement deleting a tool call required by later ToolMessage."""
+    store = InMemoryStore()
+    builder = build_regeneration_graph(
+        make_deps(RecordingModel(), RecordingMemoryRepository())
+    )
+    graph = builder.compile(checkpointer=InMemorySaver(), store=store)
+    state = tool_chain_input(target_message_id="ai-tool-call")
+    original_messages = list(state["messages"])
+    config = {"configurable": {"thread_id": "thread-tool-reject"}}
+
+    with pytest.raises(RegenerationError) as exc_info:
+        await graph.ainvoke(state, config, context=graph_context())
+
+    snapshot = await graph.aget_state(config)
+    assert exc_info.value.code == "non_ai_target"
+    assert snapshot.values["messages"] == original_messages
+    assert snapshot.values["messages"][1].tool_calls == [
+        {
+            "name": "lookup_weather",
+            "args": {"city": "杭州"},
+            "id": "call-weather",
+            "type": "tool_call",
+        }
+    ]
+    assert snapshot.values["messages"][2].tool_call_id == "call-weather"
+
+
+@pytest.mark.asyncio
+async def test_regeneration_accepts_final_tool_chain_reply_and_replaces_only_final_id():
+    """Catches final reply validation damaging the preceding valid tool-call chain."""
+    store = InMemoryStore()
+    graph = await compile_graph(
+        make_deps(RecordingModel("新的最终回复"), RecordingMemoryRepository()), store
+    )
+    state = tool_chain_input(target_message_id="ai-final")
+
+    result = await graph.ainvoke(state, context=graph_context())
+
+    assert [message.id for message in result["messages"]] == [
+        "human-tool",
+        "ai-tool-call",
+        "tool-weather",
+        "ai-final",
+    ]
+    assert result["messages"][1].tool_calls == [
+        {
+            "name": "lookup_weather",
+            "args": {"city": "杭州"},
+            "id": "call-weather",
+            "type": "tool_call",
+        }
+    ]
+    assert result["messages"][2].tool_call_id == "call-weather"
+    assert result["messages"][3].content == "新的最终回复"
+    assert result["messages"][3].additional_kwargs["original_content"] == (
+        "杭州今天晴，26℃。"
+    )
+
+
+@pytest.mark.asyncio
+async def test_regeneration_rejects_ai_with_invalid_tool_calls():
+    """Catches malformed intermediate tool requests being treated as visible replies."""
+    store = InMemoryStore()
+    graph = await compile_graph(
+        make_deps(RecordingModel(), RecordingMemoryRepository()), store
+    )
+    state = regeneration_input()
+    target = next(message for message in state["messages"] if message.id == "ai-target")
+    target.invalid_tool_calls = [
+        {
+            "name": "lookup_weather",
+            "args": "{",
+            "id": "call-invalid",
+            "error": "invalid json",
+            "type": "invalid_tool_call",
+        }
+    ]
+
+    with pytest.raises(RegenerationError) as exc_info:
+        await graph.ainvoke(state, context=graph_context())
+
+    assert exc_info.value.code == "non_ai_target"
 
 
 @pytest.mark.asyncio

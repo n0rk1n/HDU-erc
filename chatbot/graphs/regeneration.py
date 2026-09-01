@@ -53,9 +53,7 @@ def validate_target(state: ConversationState) -> dict[str, Any]:
     reason = state.get("regeneration_reason")
     if reason not in REGENERATION_REASONS:
         raise RegenerationError("invalid_reason")
-    target = _target_message(state)
-    if not isinstance(target, AIMessage):
-        raise RegenerationError("non_ai_target")
+    target = _eligible_target_message(state)
     if target.additional_kwargs.get("regenerated") is True:
         raise RegenerationError("already_regenerated")
     return {}
@@ -124,9 +122,7 @@ def replace_message(
     deps: NodeDependencies,
 ) -> dict[str, Any]:
     """Return one same-ID AIMessage so add_messages performs an in-place replacement."""
-    target = _target_message(state)
-    if not isinstance(target, AIMessage):
-        raise RegenerationError("non_ai_target")
+    target = _eligible_target_message(state)
     metadata = {
         **target.additional_kwargs,
         "feedback": None,
@@ -201,6 +197,17 @@ def _target_message(state: ConversationState) -> BaseMessage:
     return messages[index]
 
 
+def _eligible_target_message(state: ConversationState) -> AIMessage:
+    target = _target_message(state)
+    if (
+        not isinstance(target, AIMessage)
+        or target.tool_calls
+        or target.invalid_tool_calls
+    ):
+        raise RegenerationError("non_ai_target")
+    return target
+
+
 def _target_index(messages: list[BaseMessage], target_id: str) -> int:
     for index, message in enumerate(messages):
         if message.id == target_id:
@@ -214,7 +221,11 @@ def _regeneration_dialogue(
     messages = list(state.get("messages", []))
     target_index = _target_index(messages, state.get("target_message_id", ""))
     target = messages[target_index]
-    if not isinstance(target, AIMessage):
+    if (
+        not isinstance(target, AIMessage)
+        or target.tool_calls
+        or target.invalid_tool_calls
+    ):
         raise RegenerationError("non_ai_target")
     for human_index in range(target_index - 1, -1, -1):
         message = messages[human_index]
