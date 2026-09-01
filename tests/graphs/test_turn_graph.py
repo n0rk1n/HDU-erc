@@ -192,7 +192,7 @@ async def test_completed_request_replays_without_model_or_store_access():
 
     parts = await stream_parts(
         graph,
-        turn_input("req-replay", "重复提交"),
+        turn_input("req-replay", "普通消息"),
         config,
         graph_context,
     )
@@ -513,6 +513,43 @@ async def test_emotion_failure_cannot_downgrade_explicit_crisis():
     snapshot = await graph.aget_state(config)
     assert snapshot.values["messages"][-1].additional_kwargs["safety_level"] == "crisis"
     assert snapshot.values.get("last_emotion_analysis_turn", 0) == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "message",
+    ["我刚刚吞了很多药。", "I'm standing on the bridge and want to die."],
+)
+async def test_current_danger_with_emotion_and_chat_failure_uses_buffered_local_crisis(
+    message,
+):
+    store = InMemoryStore()
+    deps = make_deps(
+        store,
+        chat_model=SequenceModel(RuntimeError("chat unavailable")),
+        emotion_model=SequenceModel(RuntimeError("emotion unavailable")),
+    )
+    graph = compile_graph(deps, store)
+    config = {"configurable": {"thread_id": f"thread-{abs(hash(message))}"}}
+
+    parts = await stream_parts(
+        graph, turn_input("req-current-danger", message), config,
+        context("req-current-danger"),
+    )
+    events = custom_events(parts)
+    assert [event["event"] for event in events] == [
+        "user_message", "emotion_start", "emotion_error", "safety", "token", "done"
+    ]
+    assert [event for event in events if event["event"] == "token"] == [
+        {"event": "token", "data": {"content": CRISIS_FALLBACK_ZH_CN}}
+    ]
+    assert not [
+        part for part in parts
+        if part["type"] == "messages"
+        and part["data"][1].get("langgraph_node") == "generate_reply"
+    ]
+    snapshot = await graph.aget_state(config)
+    assert snapshot.values["messages"][-1].additional_kwargs["safety_level"] == "crisis"
 
 
 @pytest.mark.asyncio

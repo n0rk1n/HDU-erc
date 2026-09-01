@@ -3,6 +3,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.graph import END, START, StateGraph
 
 from chatbot.graphs.nodes.input import GraphInputError, accept_turn
+from chatbot.graphs.requests import turn_fingerprint
 from chatbot.graphs.state import ConversationState
 from chatbot.models import GraphContext
 
@@ -44,6 +45,8 @@ def test_accept_turn_marks_completed_request_for_replay_without_duplicate_turn(w
                 "req-1": {
                     "status": "completed",
                     "response_message_id": "ai_req-1",
+                    "operation": "turn",
+                    "input_fingerprint": turn_fingerprint("重试"),
                 }
             },
         },
@@ -51,7 +54,10 @@ def test_accept_turn_marks_completed_request_for_replay_without_duplicate_turn(w
         writer,
     )
 
-    assert update == {"replay_request": True}
+    assert update == {
+        "replay_request": True,
+        "request_fingerprint": turn_fingerprint("重试"),
+    }
     assert writer.events == []
 
 
@@ -73,6 +79,8 @@ def test_compiled_graph_retains_completed_request_replay_without_duplicate_human
                 "req-1": {
                     "status": "completed",
                     "response_message_id": "ai_req-1",
+                    "operation": "turn",
+                    "input_fingerprint": turn_fingerprint("重试"),
                 }
             },
         },
@@ -96,7 +104,10 @@ def test_accept_turn_does_not_increment_when_stable_human_message_already_exists
         writer,
     )
 
-    assert update == {"replay_request": False}
+    assert update == {
+        "replay_request": False,
+        "request_fingerprint": turn_fingerprint("你好"),
+    }
     assert writer.events == []
 
 

@@ -41,6 +41,11 @@
 
       <section id="messages" class="messages" aria-live="polite"></section>
 
+      <div id="pending-turn" class="pending-turn" hidden>
+        <span id="pending-turn-status">上一条消息尚未完成。</span>
+        <button id="pending-retry-button" type="button">重试此消息</button>
+      </div>
+
       <form id="chat-form" class="composer">
         <label class="sr-only" for="message-input">输入消息</label>
         <textarea id="message-input" rows="2" placeholder="输入消息，按 Enter 发送"></textarea>

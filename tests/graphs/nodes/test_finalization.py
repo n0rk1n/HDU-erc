@@ -18,6 +18,7 @@ class FixedDatetime(datetime):
 TERMINAL_CLEANUP = {
     "operation": "",
     "request_id": "",
+    "request_fingerprint": "",
     "input_message": "",
     "target_message_id": "",
     "regeneration_reason": "",
@@ -31,6 +32,7 @@ TERMINAL_CLEANUP = {
     "error_code": "",
     "memory_warning": "",
     "replay_request": False,
+    "pending_turn": None,
 }
 
 

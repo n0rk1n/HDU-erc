@@ -3,20 +3,28 @@
 from langchain_core.messages import HumanMessage
 
 from chatbot.graphs.state import ConversationState
+from chatbot.graphs.requests import request_binding_matches, turn_fingerprint
 
 
 class GraphInputError(ValueError):
     """Raised when a graph invocation contains invalid user input."""
 
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
 
 def accept_turn(state: ConversationState, runtime, writer) -> dict:
     """Normalize one user turn and return only its durable state delta."""
     request_id = state.get("request_id") or runtime.context["request_id"]
+    content = str(state.get("input_message", "")).strip()
+    fingerprint = turn_fingerprint(content)
     processed = state.get("processed_requests", {}).get(request_id, {})
     if processed.get("status") == "completed":
-        return {"replay_request": True}
+        if not request_binding_matches(processed, "turn", fingerprint):
+            raise GraphInputError("request_id_conflict")
+        return {"replay_request": True, "request_fingerprint": fingerprint}
 
-    content = str(state.get("input_message", "")).strip()
     if not content:
         raise GraphInputError("empty_message")
 
@@ -25,7 +33,7 @@ def accept_turn(state: ConversationState, runtime, writer) -> dict:
         getattr(message, "id", None) == message_id
         for message in state.get("messages", [])
     ):
-        return {"replay_request": False}
+        return {"replay_request": False, "request_fingerprint": fingerprint}
 
     human = HumanMessage(id=message_id, content=content)
     writer(
@@ -39,4 +47,5 @@ def accept_turn(state: ConversationState, runtime, writer) -> dict:
         "input_message": content,
         "turn_count": state.get("turn_count", 0) + 1,
         "replay_request": False,
+        "request_fingerprint": fingerprint,
     }

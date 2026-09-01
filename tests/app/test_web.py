@@ -61,7 +61,7 @@ class Element {
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
   focus(){this.focused=true;} requestSubmit(){} set innerHTML(v){this.children=[];this._html=v;} get innerHTML(){return this._html||"";}
 }
-const ids=["messages","chat-form","message-input","send-button","emotion-status","app-status","safety-status","emotion-timeline","thread-list","new-thread-button","delete-thread-button"];
+const ids=["messages","chat-form","message-input","send-button","emotion-status","app-status","safety-status","emotion-timeline","thread-list","new-thread-button","delete-thread-button","pending-turn","pending-turn-status","pending-retry-button"];
 const elements=Object.fromEntries(ids.map(id=>[`#${id}`,new Element(id)]));
 function response(body,status=200){return {ok:status<400,status,json:async()=>body};}
 '''
@@ -402,6 +402,20 @@ const fetch=async(url,options={})=>{calls.push({url,options});
 const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"00000000-0000-4000-8000-000000000010"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
 vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
 setImmediate(()=>setImmediate(async()=>{try{const wrapper=elements["#messages"].children[0];const controls=wrapper.children[1];const status=controls.children[controls.children.length-1];await context.__HDU_ERC_TEST__.submitRegeneration(wrapper,"a1","不准确",controls,status);const request=calls.find(c=>c.url.includes("regenerate:stream"));assert.deepEqual(JSON.parse(request.options.body),{reason:"不准确",request_id:"00000000-0000-4000-8000-000000000010"});assert.equal(elements["#messages"].children.length,1);const updated=elements["#messages"].children[0];assert.equal(updated.attributes["data-message-id"],"a1");assert.equal(updated.children[0].textContent,"新");assert.equal(updated.attributes["data-original-content"],"旧");}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_pending_snapshot_retries_same_request_and_content():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const calls=[];const encoder=new TextEncoder();
+function streamResponse(text){const bytes=encoder.encode(text);let sent=false;return {ok:true,status:200,body:{getReader(){return {async read(){if(sent)return {done:true};sent=true;return {done:false,value:bytes};},releaseLock(){}};}}};}
+const fetch=async(url,options={})=>{calls.push({url,options});
+ if(url.endsWith("messages:stream"))return streamResponse('event: run_started\ndata: {"request_id":"pending-id","operation":"turn","thread_id":"t"}\n\nevent: done\ndata: {"message_id":"ai_pending-id","content":"完成"}\n\n');
+ return new Promise(()=>{});};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"new-id"},localStorage:{getItem:()=>null,setItem(){},removeItem(){}},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);context.__HDU_ERC_TEST__.setStateForTest("c","t");context.__HDU_ERC_TEST__.renderSnapshot({messages:[{role:"human",id:"human_pending-id",content:"原消息"}],emotion:null,pending_turn:{request_id:"pending-id",content:"原消息"}});
+(async()=>{try{assert.equal(elements["#message-input"].disabled,true);assert.equal(elements["#pending-turn"].hidden,false);await elements["#pending-retry-button"].listeners.click();const request=calls.find(c=>c.url.endsWith("messages:stream"));assert.deepEqual(JSON.parse(request.options.body),{message:"原消息",request_id:"pending-id"});assert.equal(elements["#pending-turn"].hidden,true);assert.equal(elements["#message-input"].disabled,false);}catch(e){console.error(e);process.exit(1);}})();
 ''')
 
 

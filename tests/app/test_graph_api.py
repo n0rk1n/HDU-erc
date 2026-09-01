@@ -169,6 +169,24 @@ def test_thread_listing_reconciles_store_record_without_checkpoint(app_client):
     assert app_client.portal.call(stale_removed) is False
 
 
+def test_stale_store_record_stream_returns_json_404_before_sse_headers(app_client):
+    payload = bootstrap(app_client)
+    client_id = payload["client_id"]
+    runtime = app_client.app.state.graph_runtime
+
+    async def create_stale_record():
+        return await runtime.thread_repository.create(client_id, title="stale-stream")
+
+    stale = app_client.portal.call(create_stale_record)
+    response = app_client.post(
+        f"/api/clients/{client_id}/threads/{stale.thread_id}/messages:stream",
+        json={"request_id": "00000000-0000-4000-8000-000000000099", "message": "你好"},
+    )
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json() == {"detail": "thread_not_found"}
+
+
 def test_thread_read_serializes_messages_and_emotion_metadata(app_client):
     payload = bootstrap(app_client)
     client_id = payload["client_id"]

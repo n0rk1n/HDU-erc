@@ -55,6 +55,12 @@ class ProfileAnswer(TypedDict):
     answer: str
 
 
+class PendingTurn(TypedDict):
+    request_id: str
+    content: str
+    input_fingerprint: str
+
+
 class RequestResult(TypedDict, total=False):
     status: RequestStatus
     response_message_id: str
@@ -62,6 +68,8 @@ class RequestResult(TypedDict, total=False):
     error_code: str
     completed_at: str
     event_data: CompletionEventData
+    operation: GraphOperation
+    input_fingerprint: str
 
 
 class ConversationInput(TypedDict, total=False):

@@ -17,6 +17,8 @@ const profilePanelBodyEl = document.querySelector("#profile-panel-body");
 const profilePromptEl = document.querySelector("#profile-onboarding-prompt");
 const profilePromptStartEl = document.querySelector("#profile-onboarding-start");
 const profilePromptSkipEl = document.querySelector("#profile-onboarding-skip");
+const pendingTurnEl = document.querySelector("#pending-turn");
+const pendingRetryButtonEl = document.querySelector("#pending-retry-button");
 
 const profileFields = [
   ["preferred_name", "称呼"], ["life_stage", "身份或阶段"],
@@ -32,6 +34,7 @@ const state = {
   clientId: null, threadId: null, threads: [], activeRun: null,
   navigationEpoch: 0, streamEpoch: 0, navigationBusy: false,
   authRecovery: null, loadedViews: new Map(), currentView: null,
+  pendingByThread: new Map(),
 };
 const profileState = {profile: {}, questions: [], answers: [], questionIndex: 0};
 
@@ -50,7 +53,9 @@ function setLocked(locked) {
 
 function updateInteractionLocks() {
   const streaming = Boolean(state.activeRun);
-  setLocked(state.navigationBusy || streaming);
+  const pending = state.threadId && state.pendingByThread.get(state.threadId);
+  setLocked(state.navigationBusy || streaming || Boolean(pending));
+  if (pendingRetryButtonEl) pendingRetryButtonEl.disabled = state.navigationBusy || streaming || !pending;
   if (newThreadButtonEl) newThreadButtonEl.disabled = state.navigationBusy || streaming;
   if (deleteThreadButtonEl) deleteThreadButtonEl.disabled = state.navigationBusy || streaming;
   if (threadListEl) {
@@ -58,6 +63,12 @@ function updateInteractionLocks() {
       Array.from(item.children || []).forEach((button) => { button.disabled = state.navigationBusy; });
     });
   }
+}
+
+function renderPendingTurn(pending) {
+  if (!pendingTurnEl) return;
+  pendingTurnEl.hidden = !pending;
+  updateInteractionLocks();
 }
 
 function showUiError(message) {
@@ -372,6 +383,13 @@ function renderSnapshot(payload) {
   const persistedSafety = latestAi && ["normal", "supportive", "crisis"].includes(latestAi.safety_level)
     ? latestAi.safety_level : "normal";
   renderSafety({level: persistedSafety});
+  const pending = payload.pending_turn && payload.pending_turn.request_id && payload.pending_turn.content
+    ? {request_id: payload.pending_turn.request_id, content: payload.pending_turn.content} : null;
+  if (state.threadId) {
+    if (pending) state.pendingByThread.set(state.threadId, pending);
+    else state.pendingByThread.delete(state.threadId);
+  }
+  renderPendingTurn(pending);
 }
 
 function applyLoadedView(view) {
@@ -565,11 +583,17 @@ async function runStream(url, body, handlers) {
   }
 }
 
-async function streamMessage(message) {
+async function streamMessage(message, requestId = crypto.randomUUID(), retryPending = false) {
   const streamClient = state.clientId;
   const streamThread = state.threadId;
   const navigationEpoch = state.navigationEpoch;
   const successfulView = cloneView(state.loadedViews.get(streamThread) || state.currentView);
+  const existingPending = state.pendingByThread.get(streamThread);
+  if (existingPending && !retryPending) {
+    showUiError("请先重试上一条未完成的消息"); return;
+  }
+  state.pendingByThread.set(streamThread, {request_id: requestId, content: message});
+  renderPendingTurn(state.pendingByThread.get(streamThread));
   let persistedUser = null;
   let persistedAssistant = null;
   let persistedSafety = (() => {
@@ -580,7 +604,7 @@ async function streamMessage(message) {
   let aiMessage = null;
   let streamCompleted = false;
   try {
-    await runStream(threadPath("/messages:stream"), {message, request_id: crypto.randomUUID()}, {
+    await runStream(threadPath("/messages:stream"), {message, request_id: requestId}, {
       user_message(data) {
         optimistic.wrapper.setAttribute("data-message-id", data.message_id);
         persistedUser = {id: data.message_id, role: "human", content: data.content};
@@ -608,6 +632,9 @@ async function streamMessage(message) {
       },
     });
     streamCompleted = true;
+    state.pendingByThread.delete(streamThread);
+    successfulView.snapshot.pending_turn = null;
+    renderPendingTurn(null);
     if (persistedUser) upsertMessage(successfulView.snapshot.messages, persistedUser);
     if (persistedAssistant) upsertMessage(successfulView.snapshot.messages, persistedAssistant);
     const committedView = commitSuccessfulView(streamThread, successfulView);
@@ -622,6 +649,8 @@ async function streamMessage(message) {
     if (!streamCompleted && error.name !== "AbortError" && streamClient === state.clientId && streamThread === state.threadId) {
       if (!aiMessage) aiMessage = addMessage("ai", "");
       aiMessage.bubble.textContent = "发送失败，请稍后重试";
+      showUiError("消息尚未完成，请点击“重试此消息”");
+      renderPendingTurn(state.pendingByThread.get(streamThread));
     }
   }
 }
@@ -812,6 +841,10 @@ async function initialize() {
 }
 
 if (formEl) formEl.addEventListener("submit", (event) => { event.preventDefault(); const message = inputEl.value.trim(); if (!message) return; inputEl.value = ""; streamMessage(message); });
+if (pendingRetryButtonEl) pendingRetryButtonEl.addEventListener("click", () => {
+  const pending = state.pendingByThread.get(state.threadId);
+  if (pending) return streamMessage(pending.content, pending.request_id, true);
+});
 if (inputEl) inputEl.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); formEl.requestSubmit(); } });
 if (newThreadButtonEl) newThreadButtonEl.addEventListener("click", () => createThread().catch(() => showUiError("新建对话失败，请重试")));
 if (deleteThreadButtonEl) deleteThreadButtonEl.addEventListener("click", () => deleteCurrentThread().catch(() => {}));

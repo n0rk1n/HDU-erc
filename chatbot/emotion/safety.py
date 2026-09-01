@@ -94,14 +94,39 @@ _ENGLISH_NEGATED_ACTION = re.compile(
     rf"i(?:'m| am)\s+not\s+(?:going|planning|about|trying)\s+to|i\s+will\s+not)"
     rf"\s+(?:{_ENGLISH_ACTION_PATTERN})\b|\bi(?:'m| am)\s+not\s+suicidal\b"
 )
+_CHINESE_CURRENT_POISONING = re.compile(
+    r"我(?!们|的).{0,10}(?:刚刚|刚才|已经|现在|正在).{0,8}"
+    r"(?:吞(?:了|下)?(?:很多|大量)?药|吃(?:了|下)?(?:很多|大量|过量)?药|"
+    r"过量服药|服毒|喝(?:了)?农药)"
+)
+_ENGLISH_CURRENT_POISONING = re.compile(
+    r"\bi\s+(?:(?:just|already)\s+(?:took|swallowed|drank)|"
+    r"have\s+(?:just|already)\s+(?:taken|swallowed|drunk)|"
+    r"am\s+(?:taking|swallowing|drinking))\s+"
+    r"(?:an?\s+overdose|too\s+many\s+pills?|pills?|poison|pesticide)\b"
+)
+_CHINESE_DANGEROUS_LOCATION = re.compile(
+    r"我(?!们|的).{0,10}(?:现在|已经|就)?(?:正在|站在|待在|坐在|走在?)"
+    r"(?:楼顶|天台|桥边|桥上|铁轨|轨道).{0,18}"
+    r"(?:不想活|想死|自杀|跳下去|结束生命|一了百了)"
+)
+_ENGLISH_DANGEROUS_LOCATION = re.compile(
+    r"\bi(?:'m| am)\s+(?:now\s+)?(?:standing|sitting|waiting|walking)\s+"
+    r"(?:on|at|by|beside|near)\s+(?:a|the)?\s*"
+    r"(?:rooftop|roof|bridge|railroad tracks?|train tracks?)\b.{0,80}"
+    r"\b(?:want to die|kill myself|end my life|jump|suicidal)\b"
+)
 
 
 def precheck_risk(message: str) -> RiskAssessment:
     """Return deterministic browser-safe risk codes before model analysis."""
     text = message.lower()
-    has_crisis_term = any(term in text for term in CRISIS_TERMS)
+    contextual_current_danger = _has_contextual_current_danger(text)
+    has_crisis_term = any(term in text for term in CRISIS_TERMS) or contextual_current_danger
     has_distress = any(term in text for term in SUPPORTIVE_TERMS)
-    explicit_crisis = has_crisis_term and _has_explicit_first_person_action(text)
+    explicit_crisis = contextual_current_danger or (
+        has_crisis_term and _has_explicit_first_person_action(text)
+    )
 
     signals = []
     if has_crisis_term:
@@ -134,6 +159,40 @@ def _has_explicit_first_person_action(text: str) -> bool:
         ):
             continue
         if _CHINESE_DIRECT_DISTRESS.search(clause) or _CHINESE_EXPLICIT_ACTION.search(clause):
+            return True
+    return False
+
+
+def _has_contextual_current_danger(text: str) -> bool:
+    unquoted = _QUOTED_TEXT.sub("", text)
+    if not (
+        _REPORTED_SPEECH.search(unquoted)
+        or _CONDITIONAL_CONTEXT.search(unquoted)
+        or _GENERAL_DISCUSSION.search(unquoted)
+    ) and any(
+        pattern.search(unquoted)
+        for pattern in (
+            _CHINESE_CURRENT_POISONING,
+            _ENGLISH_CURRENT_POISONING,
+            _CHINESE_DANGEROUS_LOCATION,
+            _ENGLISH_DANGEROUS_LOCATION,
+        )
+    ):
+        return True
+    for clause in _CLAUSE_BOUNDARY.split(unquoted):
+        if _REPORTED_SPEECH.search(clause) or _CONDITIONAL_CONTEXT.search(clause):
+            continue
+        if _GENERAL_DISCUSSION.search(clause):
+            continue
+        if any(
+            pattern.search(clause)
+            for pattern in (
+                _CHINESE_CURRENT_POISONING,
+                _ENGLISH_CURRENT_POISONING,
+                _CHINESE_DANGEROUS_LOCATION,
+                _ENGLISH_DANGEROUS_LOCATION,
+            )
+        ):
             return True
     return False
 

@@ -5,6 +5,7 @@ from typing import Any
 
 from chatbot.core.config import GraphConfig
 from chatbot.graphs.state import ConversationState
+from chatbot.graphs.requests import turn_fingerprint
 
 
 def finalize_turn(
@@ -18,6 +19,9 @@ def finalize_turn(
     message_id = state["response_message_id"]
     content = state["response_content"]
     completed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    fingerprint = state.get("request_fingerprint") or turn_fingerprint(
+        str(state.get("input_message", ""))
+    )
     processed_requests = {
         **state.get("processed_requests", {}),
         request_id: {
@@ -25,6 +29,8 @@ def finalize_turn(
             "response_message_id": message_id,
             "content": content,
             "completed_at": completed_at,
+            "operation": "turn",
+            "input_fingerprint": fingerprint,
         },
     }
     processed_requests = _newest_requests(
@@ -76,6 +82,7 @@ def _terminal_cleanup_delta() -> dict[str, Any]:
     return {
         "operation": "",
         "request_id": "",
+        "request_fingerprint": "",
         "input_message": "",
         "target_message_id": "",
         "regeneration_reason": "",
@@ -89,6 +96,7 @@ def _terminal_cleanup_delta() -> dict[str, Any]:
         "error_code": "",
         "memory_warning": "",
         "replay_request": False,
+        "pending_turn": None,
     }
 
 

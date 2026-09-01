@@ -116,6 +116,8 @@ STREAM_ERROR_POLICIES = {
     "already_regenerated": False,
     "invalid_reason": False,
     "completed_request_invalid": False,
+    "turn_in_progress": False,
+    "request_id_conflict": False,
 }
 
 
@@ -460,11 +462,19 @@ def _graph_message(message) -> dict[str, Any]:
 
 def _thread_snapshot(snapshot) -> dict[str, Any]:
     values = snapshot.values
+    pending = values.get("pending_turn")
+    safe_pending = None
+    if isinstance(pending, Mapping):
+        request_id = pending.get("request_id")
+        content = pending.get("content")
+        if isinstance(request_id, str) and isinstance(content, str):
+            safe_pending = {"request_id": request_id, "content": content}
     return {
         "messages": [_graph_message(message) for message in values.get("messages", [])],
         "emotion": values.get("emotion_state"),
         "emotion_timeline": values.get("emotion_timeline", []),
         "metadata": values.get("thread_meta", {}),
+        "pending_turn": safe_pending,
     }
 
 
@@ -488,7 +498,10 @@ def create_app() -> FastAPI:
     async def runtime_error_handler(request: Request, exc: RuntimeOperationError):
         if exc.code in {"thread_not_found", "message_not_found"}:
             status_code = 404
-        elif exc.code in {"already_rated", "already_regenerated"}:
+        elif exc.code in {
+            "already_rated", "already_regenerated", "turn_in_progress",
+            "request_id_conflict",
+        }:
             status_code = 409
         elif exc.code in {"invalid_feedback", "invalid_input"}:
             status_code = 422

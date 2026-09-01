@@ -158,12 +158,14 @@ CLIENT_ID_SIGNING_SECRET=粘贴上一步生成的随机值
 启动应用：
 
 ```bash
-uvicorn chatbot.web:app --workers 1
+uvicorn chatbot.web:app --workers 1 --no-access-log
 ```
 
 打开 <http://127.0.0.1:8000>。
 
 当前本地 SQLite 运行时只支持**一个 Uvicorn worker**，不是多进程生产部署方案；不要使用 `--workers 2` 或由进程管理器并发启动多个应用实例。生产化前应替换为支持多进程协调的持久化后端，并补充认证、备份和迁移策略。
+
+匿名 `client_id` 具有类似 bearer token 的本地数据分区访问能力：拿到它的人可以读取对应画像和线程，因此示例用 `--no-access-log` 避免把路径中的标识写入默认访问日志。它不等同于生产认证；未来部署应改用安全 Cookie 或受保护请求头传递身份，并对代理、应用和追踪日志统一做标识脱敏。
 
 `chatbot.main` 只用于配置校验和 Web 启动提示，不再提供交互式 CLI 聊天。
 

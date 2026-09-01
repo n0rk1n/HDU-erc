@@ -107,6 +107,41 @@ def test_precheck_risk_keeps_reported_or_conditional_language_contextual(message
     }
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "我刚刚吞了很多药。",
+        "我已经过量服药。",
+        "我现在喝了农药。",
+        "我正在楼顶，已经不想活了。",
+        "I just took an overdose.",
+        "I have already swallowed too many pills.",
+        "I'm standing on the bridge and want to die.",
+    ],
+)
+def test_precheck_risk_recognizes_contextual_current_danger(message):
+    assert precheck_risk(message) == {
+        "signals": ["crisis_term", "first_person_intent"],
+        "force_emotion_analysis": True,
+        "explicit_crisis": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "报道说他刚刚吞了很多药。",
+        "如果我吞了很多药，应该怎么帮助我？",
+        "She said she just took an overdose.",
+        "If I took an overdose, where could I get help?",
+        "我今天参观了楼顶。",
+        "The article discusses railroad tracks.",
+    ],
+)
+def test_contextual_current_danger_avoids_reported_conditional_and_isolated_terms(message):
+    assert precheck_risk(message)["explicit_crisis"] is False
+
+
 def test_assess_safety_returns_normal_for_ordinary_message():
     result = assess_safety("I am preparing slides.", None)
 

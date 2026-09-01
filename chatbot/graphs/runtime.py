@@ -13,6 +13,11 @@ from langgraph.types import StateSnapshot
 from chatbot.core.config import ChatConfig, GraphConfig
 from chatbot.graphs.conversation import build_conversation_graph
 from chatbot.graphs.dependencies import NodeDependencies
+from chatbot.graphs.requests import (
+    regeneration_fingerprint,
+    request_binding_matches,
+    turn_fingerprint,
+)
 from chatbot.memory import StoreMemoryRepository, load_memory_config
 from chatbot.models.graph import GraphContext, ProfileAnswer, ThreadRecord
 from chatbot.persistence.runtime import PersistenceHandles
@@ -95,16 +100,17 @@ class ConversationRuntime:
         message: str,
     ) -> AsyncIterator[Any]:
         """Prevalidate ownership and open a lock-retaining turn iterator."""
-        await self._require_thread(client_id, thread_id)
+        graph_input = {
+            "operation": "turn",
+            "request_id": request_id,
+            "input_message": message,
+        }
+        await self._preflight_stream(client_id, thread_id, request_id, graph_input)
         return self._astream_locked(
             client_id,
             thread_id,
             request_id,
-            {
-                "operation": "turn",
-                "request_id": request_id,
-                "input_message": message,
-            },
+            graph_input,
         )
 
     async def astream_regeneration(
@@ -116,17 +122,18 @@ class ConversationRuntime:
         reason: str,
     ) -> AsyncIterator[Any]:
         """Prevalidate ownership and open a lock-retaining regeneration iterator."""
-        await self._require_thread(client_id, thread_id)
+        graph_input = {
+            "operation": "regenerate",
+            "request_id": request_id,
+            "target_message_id": message_id,
+            "regeneration_reason": reason,
+        }
+        await self._preflight_stream(client_id, thread_id, request_id, graph_input)
         return self._astream_locked(
             client_id,
             thread_id,
             request_id,
-            {
-                "operation": "regenerate",
-                "request_id": request_id,
-                "target_message_id": message_id,
-                "regeneration_reason": reason,
-            },
+            graph_input,
         )
 
     async def ainvoke_profile_draft(
@@ -233,6 +240,35 @@ class ConversationRuntime:
             self._catalog_locks[client_id] = lock
         return lock
 
+    async def _preflight_stream(
+        self,
+        client_id: str,
+        thread_id: str,
+        request_id: str,
+        graph_input: dict[str, Any],
+    ) -> None:
+        async with self.lock_for(thread_id):
+            await self._require_initialized_thread(client_id, thread_id)
+            snapshot = await self.compiled_graph.aget_state(self._config(thread_id))
+            values = snapshot.values
+            operation = graph_input["operation"]
+            if operation == "turn":
+                fingerprint = turn_fingerprint(str(graph_input.get("input_message", "")))
+            else:
+                fingerprint = regeneration_fingerprint(
+                    str(graph_input.get("target_message_id", "")),
+                    str(graph_input.get("regeneration_reason", "")),
+                )
+            completed = values.get("processed_requests", {}).get(request_id, {})
+            if completed and not request_binding_matches(completed, operation, fingerprint):
+                raise RuntimeOperationError("request_id_conflict")
+            pending = values.get("pending_turn")
+            if isinstance(pending, dict):
+                if pending.get("request_id") != request_id:
+                    raise RuntimeOperationError("turn_in_progress")
+                if operation != "turn" or pending.get("input_fingerprint") != fingerprint:
+                    raise RuntimeOperationError("request_id_conflict")
+
     async def _astream_locked(
         self,
         client_id: str,
@@ -252,6 +288,8 @@ class ConversationRuntime:
                     request_id,
                     graph_input,
                 )
+            elif graph_input.get("operation") == "regenerate":
+                await self._prepare_regeneration(thread_id, request_id, graph_input)
             if user_event is not None:
                 yield {"type": "custom", "ns": (), "data": user_event}
             graph_stream = self.graph.astream(
@@ -289,8 +327,26 @@ class ConversationRuntime:
         """
         snapshot = await self.compiled_graph.aget_state(self._config(thread_id))
         values = snapshot.values
+        content = str(graph_input.get("input_message", "")).strip()
+        if not content:
+            raise RuntimeOperationError("invalid_input")
+        fingerprint = turn_fingerprint(content)
         completed = values.get("processed_requests", {}).get(request_id, {})
-        if completed.get("status") == "completed":
+        if completed:
+            if not request_binding_matches(completed, "turn", fingerprint):
+                raise RuntimeOperationError("request_id_conflict")
+            graph_input["request_fingerprint"] = fingerprint
+            return None
+
+        pending = values.get("pending_turn")
+        if isinstance(pending, dict):
+            if pending.get("request_id") != request_id:
+                raise RuntimeOperationError("turn_in_progress")
+            if pending.get("input_fingerprint") != fingerprint:
+                raise RuntimeOperationError("request_id_conflict")
+            content = str(pending.get("content", "")).strip()
+            graph_input["input_message"] = content
+            graph_input["request_fingerprint"] = fingerprint
             return None
 
         message_id = f"human_{request_id}"
@@ -309,9 +365,6 @@ class ConversationRuntime:
             graph_input["input_message"] = content
             return None
 
-        content = str(graph_input.get("input_message", "")).strip()
-        if not content:
-            raise RuntimeOperationError("invalid_input")
         human = HumanMessage(id=message_id, content=content)
         await self.compiled_graph.aupdate_state(
             self._config(thread_id),
@@ -320,15 +373,41 @@ class ConversationRuntime:
                 "operation": "turn",
                 "request_id": request_id,
                 "input_message": content,
+                "request_fingerprint": fingerprint,
+                "pending_turn": {
+                    "request_id": request_id,
+                    "content": content,
+                    "input_fingerprint": fingerprint,
+                },
                 "turn_count": int(values.get("turn_count", 0)) + 1,
             },
             as_node="turn",
         )
         graph_input["input_message"] = content
+        graph_input["request_fingerprint"] = fingerprint
         return {
             "event": "user_message",
             "data": {"message_id": message_id, "role": "human", "content": content},
         }
+
+    async def _prepare_regeneration(
+        self, thread_id: str, request_id: str, graph_input: dict[str, Any]
+    ) -> None:
+        snapshot = await self.compiled_graph.aget_state(self._config(thread_id))
+        values = snapshot.values
+        fingerprint = regeneration_fingerprint(
+            str(graph_input.get("target_message_id", "")),
+            str(graph_input.get("regeneration_reason", "")),
+        )
+        completed = values.get("processed_requests", {}).get(request_id, {})
+        if completed and not request_binding_matches(completed, "regenerate", fingerprint):
+            raise RuntimeOperationError("request_id_conflict")
+        pending = values.get("pending_turn")
+        if isinstance(pending, dict):
+            if pending.get("request_id") == request_id:
+                raise RuntimeOperationError("request_id_conflict")
+            raise RuntimeOperationError("turn_in_progress")
+        graph_input["request_fingerprint"] = fingerprint
 
     @staticmethod
     def _message_text(message: HumanMessage) -> str:

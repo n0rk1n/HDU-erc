@@ -8,6 +8,7 @@ from chatbot.models.graph import (
     EmotionSnapshot,
     GraphOperation,
     ProfileAnswer,
+    PendingTurn,
     RequestResult,
     RiskAssessment,
     SafetyDecision,
@@ -36,8 +37,10 @@ class ConversationState(MessagesState, total=False):
     last_emotion_analysis_turn: int
     thread_meta: ThreadMetadata
     processed_requests: dict[str, RequestResult]
+    pending_turn: PendingTurn | None
     operation: GraphOperation
     request_id: str
+    request_fingerprint: str
     replay_request: bool
     input_message: str
     target_message_id: str

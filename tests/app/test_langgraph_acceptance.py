@@ -190,13 +190,41 @@ async def test_feedback_and_regeneration_replace_the_same_ai_message(tmp_path):
         )
         record = await runtime.acreate_thread("client-a")
         await turn(runtime, "client-a", record.thread_id, "你好", "req-1")
+        with pytest.raises(RuntimeOperationError) as conflict_info:
+            await runtime.astream_turn(
+                "client-a", record.thread_id, "req-1", "不同正文"
+            )
+        assert conflict_info.value.code == "request_id_conflict"
         rated = await runtime.aupdate_message_feedback(
             "client-a", record.thread_id, "ai_req-1", "dislike"
         )
         assert rated.id == "ai_req-1"
+        with pytest.raises(RuntimeOperationError) as cross_operation_info:
+            await runtime.astream_regeneration(
+                "client-a", record.thread_id, "req-1", "ai_req-1", "不准确"
+            )
+        assert cross_operation_info.value.code == "request_id_conflict"
         await consume(await runtime.astream_regeneration(
             "client-a", record.thread_id, "regen-1", "ai_req-1", "不准确"
         ))
+        replay = await consume(await runtime.astream_regeneration(
+            "client-a", record.thread_id, "regen-1", "ai_req-1", "不准确"
+        ))
+        assert any(
+            part.get("type") == "custom"
+            and part.get("data", {}).get("data", {}).get("replayed") is True
+            for part in replay
+        )
+        with pytest.raises(RuntimeOperationError) as regen_conflict_info:
+            await runtime.astream_regeneration(
+                "client-a", record.thread_id, "regen-1", "ai_req-1", "其他"
+            )
+        assert regen_conflict_info.value.code == "request_id_conflict"
+        with pytest.raises(RuntimeOperationError) as target_conflict_info:
+            await runtime.astream_regeneration(
+                "client-a", record.thread_id, "regen-1", "ai-other", "不准确"
+            )
+        assert target_conflict_info.value.code == "request_id_conflict"
         state = await runtime.aget_state("client-a", record.thread_id)
         ai_messages = [m for m in state.values["messages"] if m.type == "ai"]
         assert [(m.id, m.content) for m in ai_messages] == [("ai_req-1", "新回复")]
@@ -337,7 +365,7 @@ async def test_generation_failure_has_no_partial_ai_and_same_request_retries(tmp
             now=lambda: NOW,
         )
         retry_parts = await turn(
-            runtime, "client-a", record.thread_id, "不会覆盖原输入", "same-request"
+            runtime, "client-a", record.thread_id, "你好", "same-request"
         )
         assert user_message_events(retry_parts) == []
         recovered = await runtime.aget_state("client-a", record.thread_id)
@@ -427,14 +455,15 @@ async def test_user_message_event_is_request_scoped_across_failure_interleaving_
     chat, graph = configs(tmp_path)
     chat_model = RecordingModel(
         RuntimeError("A failed"),
-        "B completed",
         "A recovered",
+        "B completed",
         "cancel recovered",
     )
+    emotion_model = RecordingModel(NORMAL_EMOTION)
     async with open_persistence(graph) as handles:
         runtime = build_graph_runtime(
             handles, chat, graph,
-            model_factory=lambda _: (chat_model, RecordingModel(NORMAL_EMOTION)),
+            model_factory=lambda _: (chat_model, emotion_model),
             now=lambda: NOW,
         )
         record = await runtime.acreate_thread("client-a")
@@ -446,21 +475,30 @@ async def test_user_message_event_is_request_scoped_across_failure_interleaving_
         )
         assert isinstance(a_error, RuntimeError)
         assert len(user_message_events(a_first)) == 1
+        failed_state = await runtime.aget_state("client-a", record.thread_id)
+        assert failed_state.values["pending_turn"]["request_id"] == "request-a"
+
+        with pytest.raises(RuntimeOperationError) as b_error:
+            await runtime.astream_turn(
+                "client-a", record.thread_id, "request-b", "B 输入"
+            )
+        assert b_error.value.code == "turn_in_progress"
+        assert all("B 输入" not in str(prompt) for prompt in emotion_model.calls)
+
+        a_retry = await turn(
+            runtime, "client-a", record.thread_id, "原始 A", "request-a"
+        )
+        assert user_message_events(a_retry) == []
+
+        a_replay = await turn(
+            runtime, "client-a", record.thread_id, "原始 A", "request-a"
+        )
+        assert user_message_events(a_replay) == []
 
         b_parts = await turn(
             runtime, "client-a", record.thread_id, "B 输入", "request-b"
         )
         assert len(user_message_events(b_parts)) == 1
-
-        a_retry = await turn(
-            runtime, "client-a", record.thread_id, "不得替换 A", "request-a"
-        )
-        assert user_message_events(a_retry) == []
-
-        a_replay = await turn(
-            runtime, "client-a", record.thread_id, "仍不得替换 A", "request-a"
-        )
-        assert user_message_events(a_replay) == []
 
         cancelled = await runtime.astream_turn(
             "client-a", record.thread_id, "request-cancel", "取消后保留"
@@ -473,7 +511,7 @@ async def test_user_message_event_is_request_scoped_across_failure_interleaving_
             runtime,
             "client-a",
             record.thread_id,
-            "不得替换取消输入",
+            "取消后保留",
             "request-cancel",
         )
         assert user_message_events(cancel_retry) == []
@@ -586,9 +624,19 @@ def test_api_failed_stream_keeps_human_and_retry_does_not_duplicate(
         assert [(m["id"], m["role"]) for m in failed_snapshot["messages"]] == [
             (f"human_{request_id}", "human")
         ]
+        assert failed_snapshot["pending_turn"] == {
+            "request_id": request_id,
+            "content": "保存这条输入",
+        }
+        blocked = client.post(
+            endpoint,
+            json={"request_id": str(uuid4()), "message": "B 不应进入"},
+        )
+        assert blocked.status_code == 409
+        assert blocked.json() == {"detail": "turn_in_progress"}
 
         recovered = client.post(
-            endpoint, json={"request_id": request_id, "message": "不能替换原输入"}
+            endpoint, json={"request_id": request_id, "message": "保存这条输入"}
         )
         assert "event: done" in recovered.text
         assert "event: user_message" not in recovered.text
@@ -600,3 +648,4 @@ def test_api_failed_stream_keeps_human_and_retry_does_not_duplicate(
             (f"ai_{request_id}", "ai"),
         ]
         assert snapshot["messages"][0]["content"] == "保存这条输入"
+        assert snapshot["pending_turn"] is None

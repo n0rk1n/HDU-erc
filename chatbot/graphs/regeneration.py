@@ -13,6 +13,7 @@ from langgraph.graph import END, START, StateGraph
 from chatbot.graphs.dependencies import NodeDependencies
 from chatbot.graphs.nodes.context import load_context
 from chatbot.graphs.nodes.generation import build_chat_prompt
+from chatbot.graphs.requests import regeneration_fingerprint, request_binding_matches
 from chatbot.graphs.state import ConversationState
 from chatbot.models.graph import GraphContext, SafetyDecision
 
@@ -74,16 +75,21 @@ def build_regeneration_graph(deps: NodeDependencies) -> StateGraph:
 def validate_target(state: ConversationState, runtime) -> dict[str, Any]:
     """Validate the target, UI reason, and default single-regeneration limit."""
     request_id = state.get("request_id") or runtime.context["request_id"]
+    fingerprint = regeneration_fingerprint(
+        state.get("target_message_id", ""), state.get("regeneration_reason", "")
+    )
     completed = state.get("processed_requests", {}).get(request_id, {})
     if completed.get("status") == "completed":
-        return {"replay_request": True}
+        if not request_binding_matches(completed, "regenerate", fingerprint):
+            raise RegenerationError("request_id_conflict")
+        return {"replay_request": True, "request_fingerprint": fingerprint}
     reason = state.get("regeneration_reason")
     if reason not in REGENERATION_REASONS:
         raise RegenerationError("invalid_reason")
     target = _eligible_target_message(state)
     if target.additional_kwargs.get("regenerated") is True:
         raise RegenerationError("already_regenerated")
-    return {"replay_request": False}
+    return {"replay_request": False, "request_fingerprint": fingerprint}
 
 
 def _route_after_validation(
@@ -215,6 +221,8 @@ def finalize_regeneration(
             "content": content,
             "completed_at": completed_at,
             "event_data": event_data,
+            "operation": "regenerate",
+            "input_fingerprint": state["request_fingerprint"],
         },
     }
     writer({"event": "done", "data": event_data})
@@ -376,6 +384,7 @@ def _regeneration_cleanup_delta() -> dict[str, Any]:
     return {
         "operation": "",
         "request_id": "",
+        "request_fingerprint": "",
         "input_message": "",
         "target_message_id": "",
         "regeneration_reason": "",
