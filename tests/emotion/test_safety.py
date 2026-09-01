@@ -151,6 +151,8 @@ def test_contextual_current_danger_avoids_reported_conditional_and_isolated_term
         "我刚刚药物过量了。",
         "我服毒了。",
         "我刚吃了很多药。",
+        "服毒了。",
+        "刚吃了很多药。",
     ],
 )
 def test_precheck_risk_recognizes_natural_completed_poisoning_variants(message):
@@ -165,6 +167,10 @@ def test_precheck_risk_recognizes_natural_completed_poisoning_variants(message):
         "This is an overdose prevention article.",
         "药。",
         "楼顶。",
+        "药物过量",
+        "服毒",
+        "overdose",
+        "poisoning",
     ],
 )
 def test_completed_poisoning_context_rejects_reported_conditional_and_isolated_terms(message):

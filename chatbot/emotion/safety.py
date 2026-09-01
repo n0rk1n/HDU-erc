@@ -102,6 +102,10 @@ _CHINESE_POISONING_ACTION = re.compile(
     r"(?:药物过量(?:了)?|过量服药(?:了)?|服毒(?:了)?|喝(?:了)?农药|"
     r"(?:吞|吃|服)(?:了|下)?(?:很多|大量|过量)(?:的)?药)"
 )
+_CHINESE_CURRENT_OR_COMPLETED = re.compile(
+    r"(?:刚刚|刚才|刚|已经|现在|正在)|"
+    r"(?:药物过量|过量服药|服毒)了|喝了农药|(?:吞|吃|服)(?:了|下)"
+)
 _ENGLISH_FIRST_PERSON = re.compile(r"\bi(?:'m|'ve| am| have)?(?=\s|$)")
 _ENGLISH_POISONING_ACTION = re.compile(
     r"^\s*(?:(?:have\s+)?(?:just\s+|already\s+)?overdosed\b|"
@@ -204,7 +208,9 @@ def _has_current_poisoning(clause: str) -> bool:
         return False
     if _CHINESE_FIRST_PERSON.search(clause):
         return True
-    return not _CHINESE_OTHER_PERSON.search(clause)
+    if _CHINESE_OTHER_PERSON.search(clause):
+        return False
+    return _CHINESE_CURRENT_OR_COMPLETED.search(clause) is not None
 
 
 def assess_safety(
