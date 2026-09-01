@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 
 DEFAULT_MEMORY_DB_PATH = "data/records/memory.sqlite3"
@@ -43,6 +43,31 @@ class MemoryProvider(Protocol):
         raise NotImplementedError
 
     def remember(self, candidates: list[MemoryCandidate]) -> list[Memory]:
+        raise NotImplementedError
+
+
+class AsyncMemoryRepository(Protocol):
+    """Async, client-scoped memory contract for graph runtime nodes."""
+
+    async def asearch(self, client_id: str, query: str, *, limit: int) -> list[Memory]:
+        raise NotImplementedError
+
+    async def aremember(
+        self, client_id: str, candidates: list[MemoryCandidate]
+    ) -> list[Memory]:
+        raise NotImplementedError
+
+    async def aget_consolidation_state(self, client_id: str) -> dict[str, Any]:
+        raise NotImplementedError
+
+    async def amark_consolidated(
+        self,
+        client_id: str,
+        *,
+        turn_count: int,
+        last_message_id: str | None,
+        source_checkpoint_id: str | None,
+    ) -> None:
         raise NotImplementedError
 
 
