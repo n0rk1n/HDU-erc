@@ -74,6 +74,39 @@ def test_precheck_risk_distinguishes_context(
     }
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "我今晚准备去死。",
+        "我决定结束生命。",
+        "我打算自残。",
+        "我不会告诉任何人就自杀。",
+        "I'm going to kill myself tonight.",
+    ],
+)
+def test_precheck_risk_recognizes_explicit_first_person_plans_and_actions(message):
+    assert precheck_risk(message) == {
+        "signals": ["crisis_term", "first_person_intent"],
+        "force_emotion_analysis": True,
+        "explicit_crisis": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "He said I want to kill myself.",
+        "If I want to kill myself, where can I get help?",
+    ],
+)
+def test_precheck_risk_keeps_reported_or_conditional_language_contextual(message):
+    assert precheck_risk(message) == {
+        "signals": ["crisis_term"],
+        "force_emotion_analysis": True,
+        "explicit_crisis": False,
+    }
+
+
 def test_assess_safety_returns_normal_for_ordinary_message():
     result = assess_safety("I am preparing slides.", None)
 

@@ -7,19 +7,20 @@ import re
 from chatbot.emotion.state import EmotionState
 from chatbot.models import RiskAssessment, SafetyDecision
 
-CRISIS_TERMS = (
+_ENGLISH_ACTION_TERMS = (
     "kill myself",
-    "suicide",
+    "commit suicide",
     "end my life",
     "take my own life",
     "hurt myself",
     "hurting myself",
+    "cut myself",
+    "cutting myself",
+    "suicidal",
+)
+_CHINESE_ACTION_TERMS = (
     "自杀",
-    "不想活",
-    "想死",
     "去死",
-    "活不下去",
-    "活不下去了",
     "结束生命",
     "结束自己的生命",
     "了结自己",
@@ -31,36 +32,58 @@ CRISIS_TERMS = (
     "一了百了",
     "离开这个世界",
 )
+_CHINESE_DISTRESS_TERMS = ("不想活", "想死", "活不下去", "活不下去了")
+CRISIS_TERMS = (
+    *_ENGLISH_ACTION_TERMS,
+    "suicide",
+    *_CHINESE_ACTION_TERMS,
+    *_CHINESE_DISTRESS_TERMS,
+)
 SUPPORTIVE_TERMS = ("hopeless", "can't go on", "崩溃", "绝望", "撑不住")
 SUPPORTIVE_EMOTIONS = {"devastated", "terrified", "afraid", "sad", "lonely", "anxious"}
 
 _QUOTED_TEXT = re.compile(r'“[^”]*”|‘[^’]*’|"[^"]*"|\'[^\']*\'')
 _CLAUSE_BOUNDARY = re.compile(r"[,.!?，。！？;；\n]+")
 _CHINESE_FIRST_PERSON = re.compile(r"我(?!们|的)")
-_CHINESE_STRONG_ACTION = re.compile(
-    r"想死|不想活|活不下去|自杀|轻生|结束自己的?生命|了结自己|"
-    r"伤害自己|割腕|跳楼|一了百了|离开这个世界"
+_CHINESE_ACTION_PATTERN = "|".join(
+    re.escape(term) for term in sorted(_CHINESE_ACTION_TERMS, key=len, reverse=True)
 )
-_CHINESE_INTENT_OR_ACTION = re.compile(
-    r"想|要|准备|打算|决定|计划|马上|今晚|现在|正在|已经|"
-    r"不想活|活不下去|割腕|跳楼|一了百了"
+_ENGLISH_ACTION_PATTERN = "|".join(
+    re.escape(term) for term in sorted(_ENGLISH_ACTION_TERMS, key=len, reverse=True)
+)
+_CHINESE_DIRECT_DISTRESS = re.compile(
+    "|".join(re.escape(term) for term in _CHINESE_DISTRESS_TERMS)
+)
+_CHINESE_EXPLICIT_ACTION = re.compile(
+    rf"(?:想(?:要)?|要|准备|打算|决定|计划|马上|今晚|现在|正在|已经|就)"
+    rf"[^，。！？\n]{{0,8}}(?:{_CHINESE_ACTION_PATTERN})"
 )
 _GENERAL_DISCUSSION = re.compile(r"讨论|研究|预防|报道|新闻|文章|演示")
-_REPORTED_SPEECH = re.compile(r"(?:他|她|他们|她们|有人|朋友|家人|同事).{0,8}(?:说|表示|提到)")
+_REPORTED_SPEECH = re.compile(
+    r"(?:他|她|他们|她们|有人|朋友|家人|同事).{0,8}(?:说|表示|提到)|"
+    r"\b(?:he|she|they|someone|my friend|my family|a friend)\s+"
+    r"(?:said|says|reported|mentioned)\b"
+)
+_CONDITIONAL_CONTEXT = re.compile(
+    r"^\s*(?:(?:if|suppose|assuming)\b|如果|假如|假设|万一)"
+)
 _CHINESE_NEGATED_ACTION = re.compile(
-    r"(?:没有|从未|并不|不是|没|不).{0,8}"
-    r"(?:想死|不想活|自杀|轻生|结束自己的?生命|了结自己|"
-    r"伤害自己|割腕|跳楼|一了百了|离开这个世界)"
+    rf"(?:不想|不打算|不准备|不计划|不会|并不想|"
+    rf"没有(?:想过|打算|计划|准备|决定|要|去)?|"
+    rf"没(?:想过|打算|计划|准备|决定|要|去)?|"
+    rf"从未(?:想过|打算|计划|准备|决定|要|去)?)"
+    rf"(?:要|去|再)?(?:{_CHINESE_ACTION_PATTERN})"
 )
 _ENGLISH_FIRST_PERSON_ACTION = re.compile(
-    r"\b(?:i\s+(?:want|plan|intend|decided|am going|will|am about|am trying)\s+to\s+"
-    r"(?:kill myself|commit suicide|end my life|take my own life|die|hurt myself)|"
-    r"i(?:'m| am)\s+(?:suicidal|cutting myself|hurting myself))\b"
+    rf"\b(?:i\s+(?:want|plan|intend|decided|am going|am about|am trying)\s+to\s+"
+    rf"(?:{_ENGLISH_ACTION_PATTERN})|i\s+will\s+(?:{_ENGLISH_ACTION_PATTERN})|"
+    rf"i(?:'m| am)\s+(?:going|planning|about|trying)\s+to\s+(?:{_ENGLISH_ACTION_PATTERN})|"
+    rf"i(?:'m| am)\s+(?:suicidal|cutting myself|hurting myself))\b"
 )
 _ENGLISH_NEGATED_ACTION = re.compile(
-    r"\b(?:i\s+(?:do not|don't|never|no longer)\s+(?:want|plan|intend)|"
-    r"i(?:'m| am)\s+not)\b.{0,24}"
-    r"(?:kill myself|end my life|take my own life|die|suicidal|hurt myself)"
+    rf"\b(?:i\s+(?:do not|don't|never|no longer)\s+(?:want|plan|intend)\s+to|"
+    rf"i(?:'m| am)\s+not\s+(?:going|planning|about|trying)\s+to|i\s+will\s+not)"
+    rf"\s+(?:{_ENGLISH_ACTION_PATTERN})\b|\bi(?:'m| am)\s+not\s+suicidal\b"
 )
 
 
@@ -88,6 +111,8 @@ def precheck_risk(message: str) -> RiskAssessment:
 def _has_explicit_first_person_action(text: str) -> bool:
     unquoted = _QUOTED_TEXT.sub("", text)
     for clause in _CLAUSE_BOUNDARY.split(unquoted):
+        if _REPORTED_SPEECH.search(clause) or _CONDITIONAL_CONTEXT.search(clause):
+            continue
         if _ENGLISH_NEGATED_ACTION.search(clause):
             continue
         if _ENGLISH_FIRST_PERSON_ACTION.search(clause):
@@ -96,11 +121,10 @@ def _has_explicit_first_person_action(text: str) -> bool:
             continue
         if (
             _GENERAL_DISCUSSION.search(clause)
-            or _REPORTED_SPEECH.search(clause)
             or _CHINESE_NEGATED_ACTION.search(clause)
         ):
             continue
-        if _CHINESE_STRONG_ACTION.search(clause) and _CHINESE_INTENT_OR_ACTION.search(clause):
+        if _CHINESE_DIRECT_DISTRESS.search(clause) or _CHINESE_EXPLICIT_ACTION.search(clause):
             return True
     return False
 
