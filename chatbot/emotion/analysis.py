@@ -150,6 +150,27 @@ def append_analysis_record(record: dict[str, Any]) -> None:
         )
 
 
+def _response_output(response: Any) -> str:
+    content = response.content if hasattr(response, "content") else str(response)
+    return content if isinstance(content, str) else str(content)
+
+
+def _result_from_output(prompt: str, output: str) -> EmotionAnalysisResult:
+    state = emotion_state_from_output(output)
+    emotion = state.primary_emotion if state else parse_emotion_output(output)
+    if emotion is None:
+        return EmotionAnalysisResult(
+            "",
+            prompt,
+            output,
+            False,
+            "Failed to parse a known emotion label.",
+        )
+    if state is None:
+        state = EmotionState(primary_emotion=emotion)
+    return EmotionAnalysisResult(emotion, prompt, output, True, state=state)
+
+
 def analyze_emotion(
     llm,
     records: list[dict],
@@ -170,39 +191,20 @@ def analyze_emotion(
         max_turns=emotion_interval,
     )
     try:
-        response = llm.invoke(prompt)
-        content = response.content if hasattr(response, "content") else str(response)
-        output = content if isinstance(content, str) else str(content)
-        state = emotion_state_from_output(output)
-        emotion = state.primary_emotion if state else parse_emotion_output(output)
-        if emotion is None:
-            append_analysis_record({
-                "turn_count": turn_count,
-                "emotion_interval": emotion_interval,
-                "input": prompt,
-                "dialogue_context": dialogue_context,
-                "output": output,
-                "emotion": "",
-                "state": {},
-                "success": False,
-                "error": "Failed to parse a known emotion label.",
-            })
-            return EmotionAnalysisResult("", prompt, output, False, "Failed to parse a known emotion label.")
-
-        if state is None:
-            state = EmotionState(primary_emotion=emotion)
+        output = _response_output(llm.invoke(prompt))
+        result = _result_from_output(prompt, output)
         append_analysis_record({
             "turn_count": turn_count,
             "emotion_interval": emotion_interval,
             "input": prompt,
             "dialogue_context": dialogue_context,
             "output": output,
-            "emotion": emotion,
-            "state": state.to_dict(),
-            "success": True,
-            "error": "",
+            "emotion": result.emotion,
+            "state": result.state.to_dict() if result.state is not None else {},
+            "success": result.success,
+            "error": result.error,
         })
-        return EmotionAnalysisResult(emotion, prompt, output, True, state=state)
+        return result
     except Exception as exc:
         append_analysis_record({
             "turn_count": turn_count,
@@ -215,4 +217,29 @@ def analyze_emotion(
             "success": False,
             "error": str(exc),
         })
+        return EmotionAnalysisResult("", prompt, "", False, str(exc))
+
+
+async def analyze_emotion_async(
+    llm,
+    records: list[dict],
+    current_input: str,
+    *,
+    previous_emotion: str = "",
+    likely_emotions: list[str] | None = None,
+    turn_count: int,
+    emotion_interval: int,
+) -> EmotionAnalysisResult:
+    """Build and analyze one emotion prompt without persisting runtime state."""
+    prompt = build_emotion_prompt(
+        records,
+        current_input,
+        previous_emotion=previous_emotion,
+        likely_emotions=likely_emotions,
+        max_turns=emotion_interval,
+    )
+    try:
+        output = _response_output(await llm.ainvoke(prompt))
+        return _result_from_output(prompt, output)
+    except Exception as exc:
         return EmotionAnalysisResult("", prompt, "", False, str(exc))

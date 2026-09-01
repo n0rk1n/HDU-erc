@@ -74,6 +74,26 @@ def test_adapter_delegates_invoke_to_client(monkeypatch):
     assert response.content == "handled: hello"
 
 
+@pytest.mark.asyncio
+async def test_adapter_delegates_ainvoke_to_client(monkeypatch):
+    class AsyncFakeChatOpenAI(FakeChatOpenAI):
+        async def ainvoke(self, prompt, *args, **kwargs):
+            return AIMessage(content=f"async handled: {prompt}")
+
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", AsyncFakeChatOpenAI)
+    config = LlmConfig(
+        provider="openai",
+        api_key="test-key",
+        model="gpt-4o-mini",
+        temperature=0.7,
+    )
+    adapter = build_chat_model(config)
+
+    response = await adapter.ainvoke("hello")
+
+    assert response.content == "async handled: hello"
+
+
 def test_adapter_delegates_stream_to_client(monkeypatch):
     class StreamingFakeChatOpenAI(FakeChatOpenAI):
         def stream(self, prompt, *args, **kwargs):
@@ -92,6 +112,27 @@ def test_adapter_delegates_stream_to_client(monkeypatch):
     chunks = list(adapter.stream("hello"))
 
     assert [chunk.content for chunk in chunks] == ["hello", " world"]
+
+
+@pytest.mark.asyncio
+async def test_adapter_delegates_astream_to_client(monkeypatch):
+    class AsyncStreamingFakeChatOpenAI(FakeChatOpenAI):
+        async def astream(self, prompt, *args, **kwargs):
+            yield AIMessage(content="async hello")
+            yield AIMessage(content=" world")
+
+    monkeypatch.setattr("chatbot.core.llm_adapter.ChatOpenAI", AsyncStreamingFakeChatOpenAI)
+    config = LlmConfig(
+        provider="openai",
+        api_key="test-key",
+        model="gpt-4o-mini",
+        temperature=0.7,
+    )
+    adapter = build_chat_model(config)
+
+    chunks = [chunk async for chunk in adapter.astream("hello")]
+
+    assert [chunk.content for chunk in chunks] == ["async hello", " world"]
 
 
 def test_build_chat_model_rejects_unknown_provider():

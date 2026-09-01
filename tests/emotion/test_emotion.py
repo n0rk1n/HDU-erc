@@ -1,8 +1,10 @@
 from pathlib import Path
 
 import chatbot.emotion.analysis as emotion
+import pytest
 from chatbot.core.runtime_store import RuntimeStore
 from chatbot.emotion import (
+    analyze_emotion_async,
     append_analysis_record,
     build_emotion_prompt,
     load_analysis_records,
@@ -353,6 +355,59 @@ def test_analyze_emotion_persists_structured_state(tmp_path, monkeypatch):
     assert data[0]["emotion"] == "anxious"
     assert data[0]["dialogue_context"] == "I am worried about tomorrow."
     assert data[0]["state"]["confidence"] == 0.8
+
+
+@pytest.mark.asyncio
+async def test_analyze_emotion_async_has_no_runtime_store_side_effect(monkeypatch):
+    class AsyncFakeLlm:
+        async def ainvoke(self, prompt):
+            return type("Response", (), {"content": (
+                '{"primary_emotion":"anxious","confidence":0.8,'
+                '"secondary_emotions":["apprehensive"],'
+                '"evidence":"The user is worried.",'
+                '"reply_strategy":"Be calm.",'
+                '"trajectory_note":"","safety_level":"normal"}'
+            )})()
+
+    monkeypatch.setattr(
+        "chatbot.emotion.analysis.append_analysis_record",
+        lambda record: pytest.fail("must not persist"),
+    )
+
+    result = await analyze_emotion_async(
+        AsyncFakeLlm(),
+        [],
+        "我有点担心明天。",
+        turn_count=1,
+        emotion_interval=5,
+    )
+
+    assert result.success is True
+    assert result.state is not None
+    assert result.state.primary_emotion == "anxious"
+
+
+@pytest.mark.asyncio
+async def test_analyze_emotion_async_preserves_legacy_label_fallback():
+    class AsyncFakeLlm:
+        async def ainvoke(self, prompt):
+            return type(
+                "Response",
+                (),
+                {"content": "Model note: positive tone. Emotion: joyful"},
+            )()
+
+    result = await analyze_emotion_async(
+        AsyncFakeLlm(),
+        [],
+        "That went well.",
+        turn_count=1,
+        emotion_interval=5,
+    )
+
+    assert result.success is True
+    assert result.emotion == "joyful"
+    assert result.state == emotion.EmotionState(primary_emotion="joyful")
 
 
 def test_emotion_labels_are_shared_from_label_module():

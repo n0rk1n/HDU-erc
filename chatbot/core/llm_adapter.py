@@ -9,12 +9,18 @@ from chatbot.core.config import LlmConfig
 
 
 class ChatModelAdapter(Protocol):
-    """LLM 调用的结构协议，上层仅依赖 invoke/stream，不关心底层 provider 实现。"""
+    """LLM 调用的结构协议，上层不关心底层 provider 实现。"""
 
     def invoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
         raise NotImplementedError
 
     def stream(self, input: Any, config: Any = None, **kwargs: Any):
+        raise NotImplementedError
+
+    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        raise NotImplementedError
+
+    async def astream(self, input: Any, config: Any = None, **kwargs: Any):
         raise NotImplementedError
 
 
@@ -36,6 +42,13 @@ class OpenAICompatibleChatAdapter(Runnable[Any, Any]):
 
     def stream(self, input: Any, config: Any = None, **kwargs: Any):
         return self._client.stream(input, config=config, **kwargs)
+
+    async def ainvoke(self, input: Any, config: Any = None, **kwargs: Any) -> Any:
+        return await self._client.ainvoke(input, config=config, **kwargs)
+
+    async def astream(self, input: Any, config: Any = None, **kwargs: Any):
+        async for chunk in self._client.astream(input, config=config, **kwargs):
+            yield chunk
 
 
 OPENAI_COMPATIBLE_PROVIDERS = {"openai", "deepseek"}

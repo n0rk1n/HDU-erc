@@ -3,6 +3,7 @@
 from chatbot.emotion.analysis import (
     EmotionAnalysisResult,
     analyze_emotion,
+    analyze_emotion_async,
     append_analysis_record,
     build_emotion_prompt,
     load_analysis_records,
@@ -16,12 +17,14 @@ from chatbot.emotion.prompt_variants import (
     PROMPT_VARIANT_NAMES,
     resolve_emotion_prompt_template,
 )
+from chatbot.emotion.safety import assess_safety, precheck_risk
 
 __all__ = [
     "EMOTION_LABELS",
     "EMOTION_LABEL_SET",
     "EmotionAnalysisResult",
     "analyze_emotion",
+    "analyze_emotion_async",
     "append_analysis_record",
     "build_emotion_prompt",
     "load_analysis_records",
@@ -31,4 +34,6 @@ __all__ = [
     "DEFAULT_PROMPT_VARIANT",
     "PROMPT_VARIANT_NAMES",
     "resolve_emotion_prompt_template",
+    "assess_safety",
+    "precheck_risk",
 ]
