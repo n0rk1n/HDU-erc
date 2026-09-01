@@ -186,6 +186,4 @@ def _thread_id(state: ConversationState, config: RunnableConfig) -> str:
 
 def _isolated_crisis_model_config(config: RunnableConfig) -> RunnableConfig:
     """Preserve request config while preventing pre-validation model stream callbacks."""
-    if "callbacks" not in config:
-        return config
     return {**config, "callbacks": []}

@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.runnables.config import set_config_context
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph
+from langgraph.pregel._messages import StreamMessagesHandler
 from langgraph.store.memory import InMemoryStore
 
 from chatbot.core.config import ChatConfig, GraphConfig, LlmConfig
 from chatbot.graphs.dependencies import NodeDependencies
-from chatbot.graphs.nodes.generation import CRISIS_FALLBACK_ZH_CN
+from chatbot.graphs.nodes.generation import CRISIS_FALLBACK_ZH_CN, generate_crisis_reply
 from chatbot.graphs.turn import build_turn_graph
 from chatbot.memory import StoreMemoryRepository
 from chatbot.models.graph import GraphContext
@@ -71,6 +75,16 @@ class CountingStore(InMemoryStore):
     async def asearch(self, *args, **kwargs):
         self.calls.append("search")
         return await super().asearch(*args, **kwargs)
+
+
+class RecordingStreamMessagesHandler(StreamMessagesHandler):
+    def __init__(self, stream) -> None:
+        super().__init__(stream, subgraphs=True)
+        self.chat_model_starts = 0
+
+    def on_chat_model_start(self, *args, **kwargs):
+        self.chat_model_starts += 1
+        return super().on_chat_model_start(*args, **kwargs)
 
 
 def make_deps(
@@ -327,6 +341,82 @@ async def test_crisis_stream_withholds_runnable_chunks_until_validation(
     assert token_events == [
         {"event": "token", "data": {"content": expected_token}}
     ]
+
+
+@pytest.mark.asyncio
+async def test_crisis_config_without_callbacks_blocks_ambient_stream_handler():
+    """Catches ensure_config re-inheriting ambient callbacks omitted by explicit config."""
+    store = InMemoryStore()
+    deps = make_deps(
+        store,
+        chat_model=FakeListChatModel(responses=["隔离后的完整危机回复"]),
+        emotion_model=SequenceModel(EMOTION_JSON),
+    )
+    ambient_messages = []
+    handler = RecordingStreamMessagesHandler(ambient_messages.append)
+    custom = []
+    explicit_config = {
+        "configurable": {
+            "thread_id": "thread-ambient-crisis",
+            "request_scope": "preserved",
+        },
+        "tags": ["explicit-tag"],
+    }
+    state = {
+        "request_id": "req-ambient-crisis",
+        "input_message": "我现在想自杀",
+        "messages": [],
+        "turn_count": 1,
+        "profile_context": "",
+        "memory_context": "",
+        "emotion_state": {"primary_emotion": "devastated", "confidence": 0.99},
+        "safety_state": {"level": "crisis", "guidance": "优先确保当下安全。"},
+    }
+    runtime = SimpleNamespace(
+        context={
+            "client_id": "client-a",
+            "request_id": "req-ambient-crisis",
+            "locale": "zh-CN",
+        },
+        store=store,
+    )
+    ambient_config = {
+        "callbacks": [handler],
+        "metadata": {
+            "langgraph_checkpoint_ns": "generate_crisis_reply:ambient",
+            "langgraph_node": "generate_crisis_reply",
+        },
+    }
+
+    with set_config_context(ambient_config) as ambient_context:
+        task = ambient_context.run(
+            asyncio.create_task,
+            generate_crisis_reply(
+                state,
+                runtime,
+                custom.append,
+                explicit_config,
+                deps=deps,
+            ),
+        )
+        update = await task
+
+    assert handler.chat_model_starts == 0
+    assert ambient_messages == []
+    assert custom == [
+        {
+            "event": "token",
+            "data": {"content": "隔离后的完整危机回复"},
+        }
+    ]
+    assert update["response_content"] == "隔离后的完整危机回复"
+    assert explicit_config == {
+        "configurable": {
+            "thread_id": "thread-ambient-crisis",
+            "request_scope": "preserved",
+        },
+        "tags": ["explicit-tag"],
+    }
 
 
 @pytest.mark.asyncio

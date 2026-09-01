@@ -115,7 +115,11 @@ async def test_crisis_generation_buffers_then_emits_one_full_token(deps, runtime
     """Catches crisis replies exposing partial model output before validation."""
     model = ChatModel("请先离开危险处，并联系你信任的人。")
     crisis_deps = replace(deps, chat_model=model)
-    config = {"configurable": {"thread_id": "thread-a"}}
+    config = {
+        "configurable": {"thread_id": "thread-a"},
+        "tags": ["request-tag"],
+        "metadata": {"locale": "zh-CN"},
+    }
     state = {
         "request_id": "req-1",
         "input_message": "我想伤害自己",
@@ -135,7 +139,11 @@ async def test_crisis_generation_buffers_then_emits_one_full_token(deps, runtime
         deps=crisis_deps,
     )
 
-    assert model.calls[0][1] is config
+    assert model.calls[0][1] == {
+        **config,
+        "callbacks": [],
+    }
+    assert model.calls[0][1] is not config
     assert writer.events == [
         {"event": "token", "data": {"content": "请先离开危险处，并联系你信任的人。"}}
     ]
