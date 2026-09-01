@@ -18,7 +18,7 @@
 
 | 目标 | 项目实现 |
 | --- | --- |
-| 构建可运行的情绪陪伴原型 | 使用 FastAPI、LangChain 和免构建前端实现流式 Web 聊天。 |
+| 构建可运行的情绪陪伴原型 | 使用 FastAPI、LangGraph 和免构建前端实现流式 Web 聊天。 |
 | 提升回复的情绪适配能力 | 按固定回合识别 32 类情绪，并生成置信度、证据、回复策略和情绪轨迹。 |
 | 保持多轮交流的连续性 | 将聊天历史、用户画像、近期情绪和相关长期记忆共同注入 Prompt。 |
 | 保护用户本地数据 | 使用 SQLite 保存运行记录和长期记忆，不依赖托管记忆服务。 |
@@ -44,6 +44,13 @@ flowchart LR
 ```
 
 一次完整交互由持久化 LangGraph 主图统一编排：先在 Checkpoint 中记录输入并检索 Store 记忆，在指定回合执行情绪分析和安全判断，再把画像、记忆、情绪状态注入聊天 Prompt，最后流式生成并保存本轮结果。
+
+主图 `ConversationGraph` 只负责按 `operation` 路由，三个无独立持久化的子图分别处理普通对话 `TurnGraph`、同消息 ID 重新生成 `RegenerationGraph` 和画像草稿 `OnboardingGraph`。只有主图绑定官方 SQLite Checkpointer 和 Store，避免出现第二套在线编排或双写路径。
+
+两类持久化职责严格分开：
+
+- **Saver / Checkpointer** 保存线程内状态，包括消息、情绪轨迹、反馈、幂等请求结果和线程元数据；线程是否存在以公开 Checkpoint 为准。
+- **Store** 保存 `client_id` 命名空间下跨线程共享的用户画像、长期记忆、情绪反馈和线程目录索引；它不是聊天历史来源。
 
 ## 主要研究与工程工作
 
@@ -131,15 +138,65 @@ MEMORY_MAX_RESULTS=5
 PROMPT_CONFIG_PATH=data/config/prompts.json
 ```
 
+还必须配置两个互不相同的 LangGraph SQLite 文件和客户端签名密钥：
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+将输出保存为 `CLIENT_ID_SIGNING_SECRET`，不要提交到 Git：
+
+```env
+LANGGRAPH_CHECKPOINT_DB_PATH=data/langgraph/checkpoints.sqlite3
+LANGGRAPH_STORE_DB_PATH=data/langgraph/store.sqlite3
+LANGGRAPH_STRICT_MSGPACK=true
+CLIENT_ID_SIGNING_SECRET=粘贴上一步生成的随机值
+```
+
+`LANGGRAPH_STRICT_MSGPACK` 必须为 `true`。聊天模型使用 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL` 和 `LLM_TEMPERATURE`；情绪模型可通过对应的 `EMOTION_LLM_*` 变量独立配置，未配置时复用聊天模型。
+
 启动应用：
 
 ```bash
-uvicorn chatbot.web:app
+uvicorn chatbot.web:app --workers 1
 ```
 
 打开 <http://127.0.0.1:8000>。
 
+当前本地 SQLite 运行时只支持**一个 Uvicorn worker**，不是多进程生产部署方案；不要使用 `--workers 2` 或由进程管理器并发启动多个应用实例。生产化前应替换为支持多进程协调的持久化后端，并补充认证、备份和迁移策略。
+
 `chatbot.main` 只用于配置校验和 Web 启动提示，不再提供交互式 CLI 聊天。
+
+### 浏览器身份与本地数据
+
+首次打开页面时，浏览器调用 bootstrap 接口获取 HMAC 签名的匿名 `client_id` 和第一个线程，并把身份与当前线程写入 `localStorage`。清除站点数据、换浏览器/无痕窗口或前端收到 `401` 后执行身份重置，都会获得一个新的匿名身份；旧 SQLite 数据不会自动删除，但新身份无法再访问旧身份下的画像、记忆和线程，这在用户视角等同于数据丢失。删除某个线程则先删除 Checkpoint，再删除 Store 中的目录记录。
+
+### 旧数据库边界
+
+LangGraph 运行时只读取上面的两个新 SQLite 文件。旧版聊天、画像或记忆数据库会被**忽略**：项目不迁移旧数据、不双写，也不会自动删除旧文件。需要保留或清理旧数据时，应先自行备份并在应用停止后显式处理。
+
+## HTTP API
+
+所有包含 `{client_id}` 的接口都会验证签名；线程接口还会验证该线程属于当前客户端。跨客户端读取返回 `404 thread_not_found`，签名无效返回 `401 invalid_client_id`。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| `POST` | `/api/clients/bootstrap` | 创建匿名客户端及第一个线程。 |
+| `GET` | `/api/clients/{client_id}/threads` | 列出并校验该客户端的线程目录。 |
+| `POST` | `/api/clients/{client_id}/threads` | 创建线程。 |
+| `GET` | `/api/clients/{client_id}/threads/{thread_id}` | 获取消息、当前情绪、轨迹和线程元数据快照。 |
+| `DELETE` | `/api/clients/{client_id}/threads/{thread_id}` | 删除线程 Checkpoint 后删除目录记录。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages:stream` | 以 POST 请求提交消息，并通过同一响应的 SSE 流返回事件。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream` | 按原因重新生成并原位替换同 ID 的 AI 消息。 |
+| `PATCH` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback` | 对同一 AI 消息点赞或点踩。 |
+| `GET` | `/api/clients/{client_id}/threads/{thread_id}/emotion-timeline` | 获取该线程的情绪轨迹。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/emotion-feedback` | 保存情绪识别反馈。 |
+| `GET` | `/api/clients/{client_id}/profile` | 获取跨线程共享画像。 |
+| `PUT` | `/api/clients/{client_id}/profile` | 显式保存清洗后的画像。 |
+| `POST` | `/api/clients/{client_id}/profile/draft` | 在指定所属线程中生成画像草稿，不自动保存。 |
+| `GET` | `/api/profile/onboarding/questions` | 获取首次画像录入问题。 |
+
+流式事件包含 `run_started`、`user_message`、`emotion_start`、`emotion_done`、`emotion_error`、`safety`、`token`、`done` 和 `error`；前端用 Fetch `ReadableStream` 消费 POST 响应，不使用 EventSource 或客户端消息 ID 映射。
 
 ## 系统配置
 

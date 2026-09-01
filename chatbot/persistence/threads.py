@@ -50,7 +50,10 @@ class ThreadRepository:
                 break
             offset += len(page)
         records = [
-            (self._from_value(item.value), item.value.get("_sort_key", ""))
+            (
+                self._from_value(item.value),
+                str(item.value.get("_sort_key") or item.key),
+            )
             for item in items
         ]
         if exists is not None:
