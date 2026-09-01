@@ -1,6 +1,6 @@
 import pytest
 
-from chatbot.core.config import ChatConfig, ConfigError, load_config
+from chatbot.core.config import ChatConfig, ConfigError, load_config, load_graph_config
 
 
 CONFIG_ENV_KEYS = (
@@ -19,6 +19,12 @@ CONFIG_ENV_KEYS = (
     "EMOTION_LLM_BASE_URL",
     "EMOTION_LLM_TEMPERATURE",
     "EMOTION_INTERVAL",
+    "LANGGRAPH_CHECKPOINT_DB_PATH",
+    "LANGGRAPH_STORE_DB_PATH",
+    "LANGGRAPH_TIMELINE_LIMIT",
+    "LANGGRAPH_REQUEST_HISTORY_LIMIT",
+    "LANGGRAPH_STRICT_MSGPACK",
+    "CLIENT_ID_SIGNING_SECRET",
 )
 
 
@@ -26,6 +32,56 @@ CONFIG_ENV_KEYS = (
 def clear_config_environment(monkeypatch):
     for key in CONFIG_ENV_KEYS:
         monkeypatch.delenv(key, raising=False)
+
+
+def test_load_graph_config_uses_local_sqlite_defaults(monkeypatch):
+    """Catches a graph config regression that loses its isolated local SQLite defaults."""
+    monkeypatch.setenv("CLIENT_ID_SIGNING_SECRET", "test-signing-secret-with-at-least-32-bytes")
+
+    config = load_graph_config()
+
+    assert config.checkpoint_db_path == "data/langgraph/checkpoints.sqlite3"
+    assert config.store_db_path == "data/langgraph/store.sqlite3"
+    assert config.timeline_limit == 50
+    assert config.request_history_limit == 64
+    assert config.strict_msgpack is True
+
+
+def test_load_graph_config_rejects_same_database_file(monkeypatch):
+    """Catches checkpoint and store writes being configured against one SQLite file."""
+    monkeypatch.setenv("LANGGRAPH_CHECKPOINT_DB_PATH", "data/shared.sqlite3")
+    monkeypatch.setenv("LANGGRAPH_STORE_DB_PATH", "data/shared.sqlite3")
+    monkeypatch.setenv("CLIENT_ID_SIGNING_SECRET", "test-signing-secret-with-at-least-32-bytes")
+
+    with pytest.raises(ConfigError, match="must use different files"):
+        load_graph_config()
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("LANGGRAPH_TIMELINE_LIMIT", "0"),
+        ("LANGGRAPH_REQUEST_HISTORY_LIMIT", "not-an-integer"),
+        ("LANGGRAPH_STRICT_MSGPACK", "false"),
+    ],
+)
+def test_load_graph_config_rejects_invalid_graph_runtime_settings(monkeypatch, name, value):
+    """Catches unsafe graph runtime settings being accepted instead of failing closed."""
+    monkeypatch.setenv("CLIENT_ID_SIGNING_SECRET", "test-signing-secret-with-at-least-32-bytes")
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigError):
+        load_graph_config()
+
+
+@pytest.mark.parametrize("secret", ["", "too-short-secret"])
+def test_load_graph_config_rejects_missing_or_short_client_id_signing_secret(monkeypatch, secret):
+    """Catches client identifiers being signed with a missing or weak secret."""
+    if secret:
+        monkeypatch.setenv("CLIENT_ID_SIGNING_SECRET", secret)
+
+    with pytest.raises(ConfigError, match="CLIENT_ID_SIGNING_SECRET"):
+        load_graph_config()
 
 
 def test_load_config_uses_chat_llm_environment_values(monkeypatch):

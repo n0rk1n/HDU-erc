@@ -3,6 +3,7 @@
 import argparse
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -24,6 +25,16 @@ class LlmConfig:
     model: str
     temperature: float
     base_url: str | None = None
+
+
+@dataclass(frozen=True)
+class GraphConfig:
+    checkpoint_db_path: str
+    store_db_path: str
+    timeline_limit: int
+    request_history_limit: int
+    strict_msgpack: bool
+    client_id_signing_secret: str
 
 
 @dataclass(frozen=True, init=False)
@@ -141,6 +152,32 @@ def parse_positive_int(raw_value: str, name: str) -> int:
     return value
 
 
+def _parse_positive_int_env(name: str, default: int) -> int:
+    return parse_positive_int(_clean(os.getenv(name)) or str(default), name)
+
+
+def _parse_required_true(name: str, *, default: bool) -> bool:
+    value = _clean(os.getenv(name))
+    if value is None:
+        return default
+    if value.lower() != "true":
+        raise ConfigError(f"{name} must be true.")
+    return True
+
+
+def _required_secret(name: str, *, min_bytes: int) -> str:
+    secret = _clean(os.getenv(name))
+    if secret is None:
+        raise ConfigError(f"{name} is required.")
+    try:
+        byte_length = len(secret.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise ConfigError(f"{name} must be valid UTF-8 text.") from exc
+    if byte_length < min_bytes:
+        raise ConfigError(f"{name} must be at least {min_bytes} UTF-8 bytes.")
+    return secret
+
+
 def _load_chat_llm_config(args) -> LlmConfig:
     api_key = _first_value(os.getenv("LLM_API_KEY"), os.getenv("OPENAI_API_KEY"))
     if api_key is None:
@@ -224,4 +261,19 @@ def load_config(argv=None, *, load_env=True) -> ChatConfig:
         chat_llm=chat_llm,
         emotion_llm=emotion_llm,
         emotion_interval=parse_positive_int(raw_emotion_interval, "EMOTION_INTERVAL"),
+    )
+
+
+def load_graph_config() -> GraphConfig:
+    checkpoint_path = _clean(os.getenv("LANGGRAPH_CHECKPOINT_DB_PATH")) or "data/langgraph/checkpoints.sqlite3"
+    store_path = _clean(os.getenv("LANGGRAPH_STORE_DB_PATH")) or "data/langgraph/store.sqlite3"
+    if Path(checkpoint_path).resolve() == Path(store_path).resolve():
+        raise ConfigError("LangGraph checkpoint and store must use different files.")
+    return GraphConfig(
+        checkpoint_db_path=checkpoint_path,
+        store_db_path=store_path,
+        timeline_limit=_parse_positive_int_env("LANGGRAPH_TIMELINE_LIMIT", 50),
+        request_history_limit=_parse_positive_int_env("LANGGRAPH_REQUEST_HISTORY_LIMIT", 64),
+        strict_msgpack=_parse_required_true("LANGGRAPH_STRICT_MSGPACK", default=True),
+        client_id_signing_secret=_required_secret("CLIENT_ID_SIGNING_SECRET", min_bytes=32),
     )
