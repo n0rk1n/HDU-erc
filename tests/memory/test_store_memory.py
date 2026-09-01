@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -345,3 +346,174 @@ async def test_consolidation_state_is_client_scoped_and_records_processed_checkp
     }
     client_b_state = await memory_repo.repository.aget_consolidation_state("client-b")
     assert client_b_state["last_turn_count"] == 0
+
+
+async def _pause_first_memory_search(memory_repo):
+    original = memory_repo.store.asearch
+    first_search_started = asyncio.Event()
+    release_first_search = asyncio.Event()
+    calls = 0
+
+    async def controlled(namespace_prefix, /, **kwargs):
+        nonlocal calls
+        result = await original(namespace_prefix, **kwargs)
+        if namespace_prefix == (memory_repo.client_id, "memories"):
+            calls += 1
+            if calls == 1:
+                first_search_started.set()
+                await release_first_search.wait()
+        return result
+
+    memory_repo.store.asearch = controlled
+    return first_search_started, release_first_search
+
+
+@pytest.mark.asyncio
+async def test_concurrent_conflicting_candidates_leave_only_one_active_memory(memory_repo):
+    first_search_started, release_first_search = await _pause_first_memory_search(memory_repo)
+    english = asyncio.create_task(memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("User prefers replies in English.", "preference")
+    ]))
+    await first_search_started.wait()
+    chinese = asyncio.create_task(memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("User prefers replies in Chinese.", "preference")
+    ]))
+    await asyncio.sleep(0.02)
+    release_first_search.set()
+    await asyncio.gather(english, chinese)
+
+    values = await _values(memory_repo)
+    assert [value["status"] for value in values].count("active") == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_duplicate_merges_keep_maximum_confidence(memory_repo):
+    await memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("用户希望回答使用中文。", "preference", confidence=0.8)
+    ])
+    first_search_started, release_first_search = await _pause_first_memory_search(memory_repo)
+    lower = asyncio.create_task(memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("用户希望回答使用中文。", "preference", confidence=0.9)
+    ]))
+    await first_search_started.wait()
+    higher = asyncio.create_task(memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("用户希望回答使用中文。", "preference", confidence=0.95)
+    ]))
+    await asyncio.sleep(0.02)
+    release_first_search.set()
+    await asyncio.gather(lower, higher)
+
+    assert (await _values(memory_repo))[0]["confidence"] == 0.95
+
+
+@pytest.mark.asyncio
+async def test_concurrent_searches_increment_usage_without_lost_updates(memory_repo):
+    await memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("用户希望回答使用中文。", "preference")
+    ])
+    first_search_started, release_first_search = await _pause_first_memory_search(memory_repo)
+    first = asyncio.create_task(memory_repo.repository.asearch(memory_repo.client_id, "中文回答", limit=5))
+    await first_search_started.wait()
+    second = asyncio.create_task(memory_repo.repository.asearch(memory_repo.client_id, "中文回答", limit=5))
+    await asyncio.sleep(0.02)
+    release_first_search.set()
+    await asyncio.gather(first, second)
+
+    assert (await _values(memory_repo))[0]["use_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_consolidation_keeps_distinct_checkpoint_ids(memory_repo):
+    original = memory_repo.store.aget
+    first_read_started = asyncio.Event()
+    release_first_read = asyncio.Event()
+    calls = 0
+
+    async def controlled(namespace, key, /, *, refresh_ttl=None):
+        nonlocal calls
+        result = await original(namespace, key, refresh_ttl=refresh_ttl)
+        if namespace == (memory_repo.client_id, "memory_meta") and key == "consolidation":
+            calls += 1
+            if calls == 1:
+                first_read_started.set()
+                await release_first_read.wait()
+        return result
+
+    memory_repo.store.aget = controlled
+    first = asyncio.create_task(memory_repo.repository.amark_consolidated(
+        memory_repo.client_id, turn_count=5, last_message_id="msg_5", source_checkpoint_id="cp_5"
+    ))
+    await first_read_started.wait()
+    second = asyncio.create_task(memory_repo.repository.amark_consolidated(
+        memory_repo.client_id, turn_count=6, last_message_id="msg_6", source_checkpoint_id="cp_6"
+    ))
+    await asyncio.sleep(0.02)
+    release_first_read.set()
+    await asyncio.gather(first, second)
+
+    assert (await memory_repo.repository.aget_consolidation_state(memory_repo.client_id))["processed_checkpoint_ids"] == [
+        "cp_5", "cp_6"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_memory_listing_paginates_past_one_thousand_active_items(memory_repo):
+    namespace = (memory_repo.client_id, "memories")
+    for number in range(1002):
+        key = f"seed-{number:04d}"
+        await memory_repo.store.aput(namespace, key, {
+            "id": key,
+            "content": "unrelated record",
+            "category": "profile",
+            "source": "test",
+            "confidence": 0.8,
+            "created_at": "2026-09-01T10:00:00+00:00",
+            "updated_at": "2026-09-01T10:00:00+00:00",
+            "last_used_at": None,
+            "use_count": 0,
+            "status": "active",
+            "supersedes_id": None,
+        })
+    first_page = await memory_repo.store.asearch(namespace, limit=1000)
+    hidden_key = next(f"seed-{number:04d}" for number in range(1002) if f"seed-{number:04d}" not in {
+        item.key for item in first_page
+    })
+    hidden = await memory_repo.store.aget(namespace, hidden_key)
+    await memory_repo.store.aput(namespace, hidden_key, {
+        **hidden.value,
+        "content": "用户希望回答使用中文。",
+    })
+
+    assert [memory.id for memory in await memory_repo.repository.asearch(
+        memory_repo.client_id, "中文回答", limit=5
+    )] == [hidden_key]
+
+
+@pytest.mark.asyncio
+async def test_mixed_boundary_conflict_blocks_candidate_without_superseding(memory_repo):
+    boundary = (await memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("User requires replies in English.", "boundary")
+    ]))[0]
+    detailed = (await memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("User prefers detailed answers.", "preference")
+    ]))[0]
+
+    assert await memory_repo.repository.aremember(memory_repo.client_id, [
+        MemoryCandidate("User prefers concise replies in Chinese.", "preference")
+    ]) == []
+    values = {value["id"]: value for value in await _values(memory_repo)}
+    assert values[boundary.id]["status"] == values[detailed.id]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_repeated_consolidation_checkpoint_is_idempotent(memory_repo):
+    await memory_repo.repository.amark_consolidated(
+        memory_repo.client_id, turn_count=5, last_message_id="msg_5", source_checkpoint_id="cp_5"
+    )
+    await memory_repo.repository.amark_consolidated(
+        memory_repo.client_id, turn_count=6, last_message_id="msg_6", source_checkpoint_id="cp_5"
+    )
+
+    state = await memory_repo.repository.aget_consolidation_state(memory_repo.client_id)
+    assert state["processed_checkpoint_ids"] == ["cp_5"]
+    assert state["last_turn_count"] == 6

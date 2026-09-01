@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Iterable
 from datetime import datetime, timezone
 from typing import Any
@@ -26,11 +27,18 @@ class StoreMemoryRepository:
     def __init__(self, store: BaseStore, *, now: Callable[[], datetime] | None = None) -> None:
         self._store = store
         self._now = now or (lambda: datetime.now(timezone.utc))
+        self._client_locks: dict[str, asyncio.Lock] = {}
 
     async def asearch(self, client_id: str, query: str, *, limit: int) -> list[Memory]:
         query_tokens = _tokens(query)
         if not query_tokens or limit <= 0:
             return []
+        async with self._client_lock(client_id):
+            return await self._asearch_unlocked(client_id, query, query_tokens, limit)
+
+    async def _asearch_unlocked(
+        self, client_id: str, query: str, query_tokens: set[str], limit: int
+    ) -> list[Memory]:
         memories = await self._active_memories(client_id)
         scored = []
         for memory in memories:
@@ -53,6 +61,12 @@ class StoreMemoryRepository:
         return result
 
     async def aremember(
+        self, client_id: str, candidates: Iterable[MemoryCandidate]
+    ) -> list[Memory]:
+        async with self._client_lock(client_id):
+            return await self._aremember_unlocked(client_id, candidates)
+
+    async def _aremember_unlocked(
         self, client_id: str, candidates: Iterable[MemoryCandidate]
     ) -> list[Memory]:
         stored: list[Memory] = []
@@ -85,6 +99,10 @@ class StoreMemoryRepository:
         return stored
 
     async def aget_consolidation_state(self, client_id: str) -> dict[str, Any]:
+        async with self._client_lock(client_id):
+            return await self._aget_consolidation_state_unlocked(client_id)
+
+    async def _aget_consolidation_state_unlocked(self, client_id: str) -> dict[str, Any]:
         item = await self._store.aget(self._meta_namespace(client_id), "consolidation")
         if item is None:
             return self._default_consolidation_state()
@@ -104,23 +122,33 @@ class StoreMemoryRepository:
         last_message_id: str | None,
         source_checkpoint_id: str | None,
     ) -> None:
-        state = await self.aget_consolidation_state(client_id)
-        checkpoints = state["processed_checkpoint_ids"]
-        if source_checkpoint_id and source_checkpoint_id not in checkpoints:
-            checkpoints = [*checkpoints, source_checkpoint_id]
-        await self._store.aput(
-            self._meta_namespace(client_id),
-            "consolidation",
-            {
-                "last_turn_count": turn_count,
-                "last_message_id": last_message_id,
-                "processed_checkpoint_ids": checkpoints,
-                "updated_at": self._timestamp(),
-            },
-        )
+        async with self._client_lock(client_id):
+            state = await self._aget_consolidation_state_unlocked(client_id)
+            checkpoints = state["processed_checkpoint_ids"]
+            if source_checkpoint_id and source_checkpoint_id not in checkpoints:
+                checkpoints = [*checkpoints, source_checkpoint_id]
+            await self._store.aput(
+                self._meta_namespace(client_id),
+                "consolidation",
+                {
+                    "last_turn_count": turn_count,
+                    "last_message_id": last_message_id,
+                    "processed_checkpoint_ids": checkpoints,
+                    "updated_at": self._timestamp(),
+                },
+            )
 
     async def _active_memories(self, client_id: str) -> list[Memory]:
-        items = await self._store.asearch(self._memory_namespace(client_id), limit=1_000)
+        items = []
+        offset = 0
+        while True:
+            page = await self._store.asearch(
+                self._memory_namespace(client_id), limit=1_000, offset=offset
+            )
+            items.extend(page)
+            if len(page) < 1_000:
+                break
+            offset += len(page)
         return [
             self._memory_from_value(item.key, item.value)
             for item in items
@@ -186,6 +214,13 @@ class StoreMemoryRepository:
         if now.tzinfo is None or now.utcoffset() is None:
             raise ValueError("Memory timestamps must be timezone-aware UTC datetimes.")
         return now.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+    def _client_lock(self, client_id: str) -> asyncio.Lock:
+        lock = self._client_locks.get(client_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._client_locks[client_id] = lock
+        return lock
 
     @staticmethod
     def _memory_namespace(client_id: str) -> tuple[str, str]:
