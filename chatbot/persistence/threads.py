@@ -52,24 +52,25 @@ class ThreadRepository:
         records = [
             (
                 self._from_value(item.value),
-                str(item.value.get("_sort_key") or item.key),
+                self._item_sort_time(item),
+                str(item.key),
             )
             for item in items
         ]
         if exists is not None:
             retained = []
-            for record, sort_key in records:
+            for record, sort_time, item_key in records:
                 if await exists(record.thread_id):
-                    retained.append((record, sort_key))
+                    retained.append((record, sort_time, item_key))
                 else:
                     await self.delete_record(client_id, record.thread_id)
             records = retained
         ordered = sorted(
             records,
-            key=lambda item: (item[0].updated_at, item[1]),
+            key=lambda item: (item[0].updated_at, item[1], item[2]),
             reverse=True,
         )
-        return [record for record, _ in ordered]
+        return [record for record, _, _ in ordered]
 
     async def owns(self, client_id: str, thread_id: str) -> bool:
         return await self._store.aget(self._namespace(client_id), thread_id) is not None
@@ -109,6 +110,24 @@ class ThreadRepository:
             "updated_at": record.updated_at,
             "_sort_key": str(time_ns()),
         }
+
+    @staticmethod
+    def _item_sort_time(item: Any) -> int:
+        """Use write time for legacy records and nanoseconds for current records."""
+        explicit = item.value.get("_sort_key")
+        if explicit is not None:
+            try:
+                return int(explicit)
+            except (TypeError, ValueError):
+                pass
+        timestamp = getattr(item, "updated_at", None) or getattr(
+            item, "created_at", None
+        )
+        if isinstance(timestamp, datetime):
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=timezone.utc)
+            return int(timestamp.timestamp() * 1_000_000_000)
+        return 0
 
     @staticmethod
     def _from_value(value: dict[str, Any]) -> ThreadRecord:

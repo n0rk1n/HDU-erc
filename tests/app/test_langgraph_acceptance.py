@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -299,13 +299,24 @@ async def test_generation_failure_has_no_partial_ai_and_same_request_retries(tmp
         with pytest.raises(RuntimeError, match="provider unavailable"):
             await turn(runtime, "client-a", record.thread_id, "你好", "same-request")
         failed = await runtime.aget_state("client-a", record.thread_id)
-        assert not any(m.type == "ai" for m in failed.values["messages"])
+        assert [(m.id, m.type, m.content) for m in failed.values["messages"]] == [
+            ("human_same-request", "human", "你好")
+        ]
+        assert failed.values["turn_count"] == 1
 
-        await turn(runtime, "client-a", record.thread_id, "你好", "same-request")
+    async with open_persistence(graph) as handles:
+        runtime = build_graph_runtime(
+            handles, chat, graph,
+            model_factory=lambda _: (RecordingModel("重试成功"), RecordingModel(NORMAL_EMOTION)),
+            now=lambda: NOW,
+        )
+        await turn(runtime, "client-a", record.thread_id, "不会覆盖原输入", "same-request")
         recovered = await runtime.aget_state("client-a", record.thread_id)
         assert [m.id for m in recovered.values["messages"]] == [
             "human_same-request", "ai_same-request"
         ]
+        assert recovered.values["turn_count"] == 1
+        assert recovered.values["messages"][0].content == "你好"
         assert recovered.values["messages"][-1].content == "重试成功"
 
 
@@ -315,14 +326,149 @@ async def test_legacy_thread_sort_fallback_survives_same_second_sqlite_reopen(tm
     timestamp = NOW.isoformat(timespec="seconds")
     namespace = ("client-a", "threads")
     async with open_persistence(graph) as handles:
-        for thread_id in ("legacy-a", "legacy-z"):
+        # Create in reverse lexical order: Store timestamps, not UUID/key order,
+        # must identify the later legacy record.
+        for index, thread_id in enumerate(("legacy-z", "legacy-a")):
             await handles.store.aput(namespace, thread_id, {
                 "thread_id": thread_id,
                 "title": thread_id,
                 "created_at": timestamp,
                 "updated_at": timestamp,
             })
+            if index == 0:
+                # Official SQLite Store timestamps are second-resolution. Both
+                # legacy record timestamps remain the same second, while this
+                # makes the Store write-time fallback observable after reopen.
+                await asyncio.sleep(1.05)
 
     async with open_persistence(graph) as handles:
         records = await ThreadRepository(handles.store, now=lambda: NOW).list("client-a")
-        assert [record.thread_id for record in records] == ["legacy-z", "legacy-a"]
+        assert [record.thread_id for record in records] == ["legacy-a", "legacy-z"]
+
+
+@pytest.mark.asyncio
+async def test_current_same_second_thread_order_survives_sqlite_reopen(tmp_path):
+    _, graph = configs(tmp_path)
+    async with open_persistence(graph) as handles:
+        repository = ThreadRepository(handles.store, now=lambda: NOW)
+        first = await repository.create("client-a", title="first")
+        second = await repository.create("client-a", title="second")
+
+    async with open_persistence(graph) as handles:
+        records = await ThreadRepository(handles.store, now=lambda: NOW).list("client-a")
+        assert [record.thread_id for record in records] == [
+            second.thread_id,
+            first.thread_id,
+        ]
+
+
+def _install_web_runtime(monkeypatch, chat, graph, chat_model, emotion_model):
+    monkeypatch.setattr(web, "load_config", lambda argv: chat)
+    monkeypatch.setattr(web, "load_graph_config", lambda: graph)
+    monkeypatch.setattr(
+        web,
+        "build_graph_runtime",
+        lambda handles, chat_config, graph_config: build_graph_runtime(
+            handles,
+            chat_config,
+            graph_config,
+            model_factory=lambda _: (chat_model, emotion_model),
+            now=lambda: NOW,
+        ),
+    )
+
+
+def test_real_lifespan_http_flow_and_restart_persistence(tmp_path, monkeypatch):
+    chat, graph = configs(tmp_path)
+    _install_web_runtime(
+        monkeypatch,
+        chat,
+        graph,
+        RecordingModel("HTTP 回复"),
+        RecordingModel(NORMAL_EMOTION),
+    )
+    with TestClient(web.create_app()) as client:
+        bootstrap = client.post("/api/clients/bootstrap").json()
+        client_id = bootstrap["client_id"]
+        thread_id = bootstrap["thread"]["thread_id"]
+        assert client.put(
+            f"/api/clients/{client_id}/profile",
+            json={"profile": {"preferred_name": "小明"}},
+        ).status_code == 200
+        stream = client.post(
+            f"/api/clients/{client_id}/threads/{thread_id}/messages:stream",
+            json={"request_id": str(uuid4()), "message": "第一轮"},
+        )
+        assert stream.status_code == 200
+        assert "event: emotion_done" in stream.text
+        assert "event: safety" in stream.text
+        assert "event: done" in stream.text
+        snapshot = client.get(
+            f"/api/clients/{client_id}/threads/{thread_id}"
+        ).json()
+        ai_id = snapshot["messages"][-1]["id"]
+        assert client.patch(
+            f"/api/clients/{client_id}/threads/{thread_id}/messages/{ai_id}/feedback",
+            json={"feedback": "like"},
+        ).status_code == 200
+        assert client.get(
+            f"/api/clients/{client_id}/threads/{thread_id}/emotion-timeline"
+        ).json()["timeline"]
+
+    _install_web_runtime(
+        monkeypatch,
+        chat,
+        graph,
+        RecordingModel("unused"),
+        RecordingModel(NORMAL_EMOTION),
+    )
+    with TestClient(web.create_app()) as client:
+        snapshot = client.get(
+            f"/api/clients/{client_id}/threads/{thread_id}"
+        )
+        assert snapshot.status_code == 200
+        assert snapshot.json()["messages"][-1]["feedback"] == "like"
+        assert client.get(f"/api/clients/{client_id}/profile").json()["profile"] == {
+            "preferred_name": "小明"
+        }
+
+
+def test_api_failed_stream_keeps_human_and_retry_does_not_duplicate(
+    tmp_path, monkeypatch
+):
+    chat, graph = configs(tmp_path)
+    chat_model = RecordingModel(RuntimeError("provider unavailable"), "API 重试成功")
+    _install_web_runtime(
+        monkeypatch, chat, graph, chat_model, RecordingModel(NORMAL_EMOTION)
+    )
+    request_id = str(uuid4())
+    with TestClient(web.create_app()) as client:
+        bootstrap = client.post("/api/clients/bootstrap").json()
+        client_id = bootstrap["client_id"]
+        thread_id = bootstrap["thread"]["thread_id"]
+        endpoint = f"/api/clients/{client_id}/threads/{thread_id}/messages:stream"
+
+        failed = client.post(
+            endpoint, json={"request_id": request_id, "message": "保存这条输入"}
+        )
+        assert "event: error" in failed.text
+        assert '"error_code": "stream_failed"' in failed.text
+        failed_snapshot = client.get(
+            f"/api/clients/{client_id}/threads/{thread_id}"
+        ).json()
+        assert [(m["id"], m["role"]) for m in failed_snapshot["messages"]] == [
+            (f"human_{request_id}", "human")
+        ]
+
+        recovered = client.post(
+            endpoint, json={"request_id": request_id, "message": "不能替换原输入"}
+        )
+        assert "event: done" in recovered.text
+        snapshot = client.get(
+            f"/api/clients/{client_id}/threads/{thread_id}"
+        ).json()
+        assert [(m["id"], m["role"]) for m in snapshot["messages"]] == [
+            (f"human_{request_id}", "human"),
+            (f"ai_{request_id}", "ai"),
+        ]
+        assert snapshot["messages"][0]["content"] == "保存这条输入"

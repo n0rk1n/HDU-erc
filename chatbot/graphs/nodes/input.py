@@ -21,7 +21,28 @@ def accept_turn(state: ConversationState, runtime, writer) -> dict:
         raise GraphInputError("empty_message")
 
     message_id = f"human_{request_id}"
-    if any(getattr(message, "id", None) == message_id for message in state.get("messages", [])):
+    existing = next(
+        (
+            message
+            for message in state.get("messages", [])
+            if getattr(message, "id", None) == message_id
+        ),
+        None,
+    )
+    if existing is not None:
+        if state.get("input_event_pending") is True:
+            content = existing.content
+            writer(
+                {
+                    "event": "user_message",
+                    "data": {
+                        "message_id": message_id,
+                        "role": "human",
+                        "content": content,
+                    },
+                }
+            )
+            return {"replay_request": False, "input_event_pending": False}
         return {"replay_request": False}
 
     human = HumanMessage(id=message_id, content=content)

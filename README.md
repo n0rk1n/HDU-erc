@@ -179,22 +179,23 @@ LangGraph 运行时只读取上面的两个新 SQLite 文件。旧版聊天、�
 
 所有包含 `{client_id}` 的接口都会验证签名；线程接口还会验证该线程属于当前客户端。跨客户端读取返回 `404 thread_not_found`，签名无效返回 `401 invalid_client_id`。
 
-| 方法 | 路径 | 用途 |
-| --- | --- | --- |
-| `POST` | `/api/clients/bootstrap` | 创建匿名客户端及第一个线程。 |
-| `GET` | `/api/clients/{client_id}/threads` | 列出并校验该客户端的线程目录。 |
-| `POST` | `/api/clients/{client_id}/threads` | 创建线程。 |
-| `GET` | `/api/clients/{client_id}/threads/{thread_id}` | 获取消息、当前情绪、轨迹和线程元数据快照。 |
-| `DELETE` | `/api/clients/{client_id}/threads/{thread_id}` | 删除线程 Checkpoint 后删除目录记录。 |
-| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages:stream` | 以 POST 请求提交消息，并通过同一响应的 SSE 流返回事件。 |
-| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream` | 按原因重新生成并原位替换同 ID 的 AI 消息。 |
-| `PATCH` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback` | 对同一 AI 消息点赞或点踩。 |
-| `GET` | `/api/clients/{client_id}/threads/{thread_id}/emotion-timeline` | 获取该线程的情绪轨迹。 |
-| `POST` | `/api/clients/{client_id}/threads/{thread_id}/emotion-feedback` | 保存情绪识别反馈。 |
-| `GET` | `/api/clients/{client_id}/profile` | 获取跨线程共享画像。 |
-| `PUT` | `/api/clients/{client_id}/profile` | 显式保存清洗后的画像。 |
-| `POST` | `/api/clients/{client_id}/profile/draft` | 在指定所属线程中生成画像草稿，不自动保存。 |
-| `GET` | `/api/profile/onboarding/questions` | 获取首次画像录入问题。 |
+| 方法 | 路径 | 请求体或参数 | 用途 |
+| --- | --- | --- | --- |
+| `GET` | `/` | 无 | 返回聊天页面。 |
+| `POST` | `/api/clients/bootstrap` | 无 | 创建匿名客户端及第一个线程。 |
+| `GET` | `/api/clients/{client_id}/threads` | 无 | 列出并校验该客户端的线程目录。 |
+| `POST` | `/api/clients/{client_id}/threads` | `{"title": string}`；默认“新对话” | 创建线程。 |
+| `GET` | `/api/clients/{client_id}/threads/{thread_id}` | 无 | 获取消息、当前情绪、轨迹和线程元数据快照。 |
+| `DELETE` | `/api/clients/{client_id}/threads/{thread_id}` | 无 | 删除线程 Checkpoint 后删除目录记录。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages:stream` | `{"request_id": UUID4, "message": 非空字符串}` | 提交幂等消息，并通过同一响应返回 SSE。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream` | `request_id` 为 UUID4；`reason` 为“不准确”“不完整”“没有理解我的问题”“语气不合适”“其他”之一 | 按原因重新生成并原位替换同 ID 的 AI 消息。 |
+| `PATCH` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback` | `{"feedback": "like" \| "dislike"}` | 对同一 AI 消息点赞或点踩。 |
+| `GET` | `/api/clients/{client_id}/threads/{thread_id}/emotion-timeline` | 查询参数 `limit=1..50`，默认 10 | 获取该线程的情绪轨迹。 |
+| `POST` | `/api/clients/{client_id}/threads/{thread_id}/emotion-feedback` | `feedback` 为 `accurate`、`too_positive`、`too_negative`、`wrong_emotion` 之一；可带 `message_id`、`turn_count`、`predicted_emotion`、`corrected_emotion` | 保存情绪识别反馈。 |
+| `GET` | `/api/clients/{client_id}/profile` | 无 | 获取跨线程共享画像。 |
+| `PUT` | `/api/clients/{client_id}/profile` | `{"profile": object}` | 显式保存清洗后的画像。 |
+| `POST` | `/api/clients/{client_id}/profile/draft` | `{"thread_id": string, "answers": [{"key": string, "answer": any}]}` | 在指定所属线程中生成画像草稿，不自动保存。 |
+| `GET` | `/api/profile/onboarding/questions` | 无 | 获取首次画像录入问题。 |
 
 流式事件包含 `run_started`、`user_message`、`emotion_start`、`emotion_done`、`emotion_error`、`safety`、`token`、`done` 和 `error`；前端用 Fetch `ReadableStream` 消费 POST 响应，不使用 EventSource 或客户端消息 ID 映射。
 
@@ -313,31 +314,16 @@ LLM 应返回结构化 JSON：
 
 安全层是本地关键词和高置信度情绪驱动的回复策略，不是临床评估、诊断或紧急服务。
 
-## 系统接口设计
-
-| 方法 | 路径 | 用途 |
-| --- | --- | --- |
-| `GET` | `/` | 返回聊天页面。 |
-| `POST` | `/api/clients/bootstrap` | 签发客户端身份并创建首个线程。 |
-| `GET/POST` | `/api/clients/{client_id}/threads` | 列出或创建客户端线程。 |
-| `GET/DELETE` | `/api/clients/{client_id}/threads/{thread_id}` | 读取或删除线程。 |
-| `GET/PUT` | `/api/clients/{client_id}/profile` | 读取或保存 client-scoped 画像。 |
-| `GET` | `/api/profile/onboarding/questions` | 返回 5 个可跳过的画像问题。 |
-| `POST` | `/api/clients/{client_id}/profile/draft` | 用图生成画像草稿；不可用时回退为规则草稿。 |
-| `GET` | `/api/clients/{client_id}/threads/{thread_id}/emotion-timeline` | 返回线程近期结构化情绪状态。 |
-| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages:stream` | 流式执行一个聊天回合。 |
-| `PATCH` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback` | 保存 `like` 或 `dislike`。 |
-| `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream` | 按固定原因重新生成同一条 AI 消息。 |
-| `POST` | `/api/clients/{client_id}/threads/{thread_id}/emotion-feedback` | 保存情绪识别正确性反馈。 |
-
-SSE 事件：
+## SSE 事件契约
 
 | 事件 | 含义 |
 | --- | --- |
+| `run_started` | 流已建立，包含 `request_id`、操作类型和线程 ID。 |
 | `user_message` | 用户消息已写入。 |
 | `emotion_start` | 开始情绪分析。 |
-| `emotion_done` | 情绪分析成功，包含 state 和 safety。 |
+| `emotion_done` | 情绪分析成功，只包含情绪标签和公开的结构化 `state`，不包含安全判断。 |
 | `emotion_error` | 情绪分析失败，本轮聊天继续。 |
+| `safety` | 独立的安全事件，包含 `normal`、`supportive` 或 `crisis` 级别及公开 guidance。 |
 | `token` | 一段回复内容。 |
 | `done` | 回复完成，包含完整内容和消息元数据。 |
 | `error` | 输入无效或聊天生成失败。 |

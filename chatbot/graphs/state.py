@@ -39,6 +39,7 @@ class ConversationState(MessagesState, total=False):
     operation: GraphOperation
     request_id: str
     replay_request: bool
+    input_event_pending: bool
     input_message: str
     target_message_id: str
     regeneration_reason: str

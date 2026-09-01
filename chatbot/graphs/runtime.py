@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Callable
 from datetime import datetime, timezone
 from typing import Any
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.types import StateSnapshot
 
 from chatbot.core.config import ChatConfig, GraphConfig
@@ -245,6 +245,12 @@ class ConversationRuntime:
         graph_stream = None
         try:
             await self._require_initialized_thread(client_id, thread_id)
+            if graph_input.get("operation") == "turn":
+                await self._prestage_turn_input(
+                    thread_id,
+                    request_id,
+                    graph_input,
+                )
             graph_stream = self.graph.astream(
                 graph_input,
                 self._config(thread_id),
@@ -264,6 +270,64 @@ class ConversationRuntime:
                         await close()
             finally:
                 lock.release()
+
+    async def _prestage_turn_input(
+        self,
+        thread_id: str,
+        request_id: str,
+        graph_input: dict[str, Any],
+    ) -> None:
+        """Durably stage one human input before the parent graph calls the model.
+
+        A parent/subgraph invocation is transactional, so a model exception would
+        otherwise roll back the accepted HumanMessage together with the generated
+        reply. This application-runtime boundary owns the separate input checkpoint;
+        retries reuse it by stable request/message ID and never increment the turn.
+        """
+        snapshot = await self.compiled_graph.aget_state(self._config(thread_id))
+        values = snapshot.values
+        completed = values.get("processed_requests", {}).get(request_id, {})
+        if completed.get("status") == "completed":
+            return
+
+        message_id = f"human_{request_id}"
+        existing = next(
+            (
+                message
+                for message in values.get("messages", [])
+                if getattr(message, "id", None) == message_id
+            ),
+            None,
+        )
+        if existing is not None:
+            if not isinstance(existing, HumanMessage):
+                raise RuntimeOperationError("invalid_input")
+            content = self._message_text(existing)
+            graph_input["input_message"] = content
+            return
+
+        content = str(graph_input.get("input_message", "")).strip()
+        if not content:
+            raise RuntimeOperationError("invalid_input")
+        human = HumanMessage(id=message_id, content=content)
+        await self.compiled_graph.aupdate_state(
+            self._config(thread_id),
+            {
+                "messages": [human],
+                "operation": "turn",
+                "request_id": request_id,
+                "input_message": content,
+                "input_event_pending": True,
+                "turn_count": int(values.get("turn_count", 0)) + 1,
+            },
+            as_node="turn",
+        )
+        graph_input["input_message"] = content
+
+    @staticmethod
+    def _message_text(message: HumanMessage) -> str:
+        content = message.content
+        return content.strip() if isinstance(content, str) else str(content).strip()
 
     async def _require_thread(self, client_id: str, thread_id: str) -> None:
         if not await self.thread_repository.owns(client_id, thread_id):
