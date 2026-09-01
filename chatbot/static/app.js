@@ -27,15 +27,19 @@ const emotionFeedbackChoices = [
   ["准确", "accurate"], ["过于积极", "too_positive"],
   ["过于消极", "too_negative"], ["情绪判断不对", "wrong_emotion"],
 ];
-const state = {clientId: null, threadId: null, threads: [], activeController: null};
+const state = {
+  clientId: null, threadId: null, threads: [], activeRun: null,
+  navigationEpoch: 0, streamEpoch: 0, navigationBusy: false,
+  authRecovery: null,
+};
 const profileState = {profile: {}, questions: [], answers: [], questionIndex: 0};
 
-function clientPath(suffix = "") {
-  return `/api/clients/${encodeURIComponent(state.clientId)}${suffix}`;
+function clientPath(suffix = "", clientId = state.clientId) {
+  return `/api/clients/${encodeURIComponent(clientId)}${suffix}`;
 }
 
-function threadPath(suffix = "") {
-  return clientPath(`/threads/${encodeURIComponent(state.threadId)}${suffix}`);
+function threadPath(suffix = "", clientId = state.clientId, threadId = state.threadId) {
+  return clientPath(`/threads/${encodeURIComponent(threadId)}${suffix}`, clientId);
 }
 
 function setLocked(locked) {
@@ -43,33 +47,110 @@ function setLocked(locked) {
   if (sendButtonEl) sendButtonEl.disabled = locked;
 }
 
-function abortActiveStream() {
-  if (state.activeController) state.activeController.abort();
-  state.activeController = null;
-  setLocked(false);
+function updateInteractionLocks() {
+  const streaming = Boolean(state.activeRun);
+  setLocked(state.navigationBusy || streaming);
+  if (newThreadButtonEl) newThreadButtonEl.disabled = state.navigationBusy || streaming;
+  if (deleteThreadButtonEl) deleteThreadButtonEl.disabled = state.navigationBusy || streaming;
+  if (threadListEl) {
+    Array.from(threadListEl.children || []).forEach((item) => {
+      Array.from(item.children || []).forEach((button) => { button.disabled = state.navigationBusy; });
+    });
+  }
 }
 
-async function fetchJson(url, options = {}) {
+function showUiError(message) {
+  if (emotionStatusEl) emotionStatusEl.textContent = message;
+}
+
+function abortActiveStream() {
+  state.streamEpoch += 1;
+  const active = state.activeRun;
+  if (active) active.controller.abort();
+  if (state.activeRun === active) state.activeRun = null;
+  updateInteractionLocks();
+}
+
+async function request(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
     const error = new Error(`Request failed: ${response.status}`);
     error.status = response.status;
     throw error;
   }
+  return response;
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await request(url, options);
   return response.json();
 }
 
-async function bootstrap() {
+async function bootstrapRaw() {
   const payload = await fetchJson("/api/clients/bootstrap", {method: "POST"});
   state.clientId = payload.client_id;
   state.threadId = payload.thread.thread_id;
   state.threads = [payload.thread];
   localStorage.setItem("hdu_erc_client_id", state.clientId);
   localStorage.setItem("hdu_erc_thread_id", state.threadId);
+  return payload;
+}
+
+async function recoverIdentity() {
+  if (state.authRecovery) return state.authRecovery;
+  let recoveryEpoch = 0;
+  state.authRecovery = (async () => {
+    const epoch = ++state.navigationEpoch; recoveryEpoch = epoch;
+    abortActiveStream();
+    state.navigationBusy = true; updateInteractionLocks();
+    localStorage.removeItem("hdu_erc_client_id");
+    localStorage.removeItem("hdu_erc_thread_id");
+    state.clientId = null; state.threadId = null; state.threads = [];
+    const payload = await bootstrapRaw();
+    renderThreads();
+    const clientId = state.clientId; const threadId = state.threadId;
+    const [snapshot, timeline] = await Promise.all([
+      fetchJson(threadPath("", clientId, threadId)),
+      fetchJson(threadPath("/emotion-timeline?limit=5", clientId, threadId)),
+    ]);
+    if (navigationIsCurrent(epoch, clientId, threadId)) {
+      renderSnapshot(snapshot); renderTimeline(timeline.timeline || []);
+    }
+    if (epoch === state.navigationEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
+    return payload;
+  })();
+  try { return await state.authRecovery; } finally {
+    state.authRecovery = null;
+    if (state.navigationEpoch === recoveryEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
+  }
+}
+
+async function readJson(buildUrl, options = {}) {
+  try { return await fetchJson(buildUrl(), options); }
+  catch (error) {
+    if (error.status !== 401) throw error;
+    await recoverIdentity();
+    return fetchJson(buildUrl(), options);
+  }
+}
+
+async function handleMutationUnauthorized(error) {
+  if (error.status !== 401) return false;
+  await recoverIdentity();
+  showUiError("身份已更新，请重试刚才的操作");
+  return true;
+}
+
+async function mutateJson(url, options) {
+  try { return await fetchJson(url, options); }
+  catch (error) {
+    await handleMutationUnauthorized(error);
+    throw error;
+  }
 }
 
 async function listThreads() {
-  const payload = await fetchJson(clientPath("/threads"));
+  const payload = await readJson(() => clientPath("/threads"));
   state.threads = payload.threads || [];
   return state.threads;
 }
@@ -85,7 +166,11 @@ function renderThreads() {
     button.textContent = thread.title || "新对话";
     button.setAttribute("data-thread-id", thread.thread_id);
     button.setAttribute("aria-current", thread.thread_id === state.threadId ? "true" : "false");
-    button.addEventListener("click", () => selectThread(thread.thread_id));
+    button.disabled = state.navigationBusy;
+    button.addEventListener("click", () => {
+      if (state.navigationBusy) return;
+      selectThread(thread.thread_id).catch(() => showUiError("对话切换失败，请重试"));
+    });
     item.appendChild(button);
     threadListEl.appendChild(item);
   });
@@ -95,16 +180,14 @@ async function initializeIdentity() {
   state.clientId = localStorage.getItem("hdu_erc_client_id");
   state.threadId = localStorage.getItem("hdu_erc_thread_id");
   if (!state.clientId) {
-    await bootstrap();
+    await bootstrapRaw();
     return;
   }
   try {
     await listThreads();
   } catch (error) {
     if (error.status !== 401) throw error;
-    localStorage.removeItem("hdu_erc_client_id");
-    localStorage.removeItem("hdu_erc_thread_id");
-    await bootstrap();
+    await recoverIdentity();
     return;
   }
   if (!state.threads.length) {
@@ -118,41 +201,96 @@ async function initializeIdentity() {
 }
 
 async function createThread() {
+  if (state.navigationBusy) return null;
+  const previous = {threadId: state.threadId, threads: state.threads.slice()};
+  const operationEpoch = ++state.navigationEpoch;
   abortActiveStream();
-  const payload = await fetchJson(clientPath("/threads"), {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({title: "新对话"}),
-  });
-  state.threads = [...state.threads, payload.thread];
-  await selectThread(payload.thread.thread_id);
-  return payload.thread;
+  state.navigationBusy = true; updateInteractionLocks();
+  try {
+    const payload = await fetchJson(clientPath("/threads"), {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({title: "新对话"}),
+    });
+    state.threads = [...state.threads, payload.thread];
+    if (state.navigationEpoch !== operationEpoch) { renderThreads(); return payload.thread; }
+    state.navigationBusy = false;
+    await selectThread(payload.thread.thread_id);
+    return payload.thread;
+  } catch (error) {
+    if (state.navigationEpoch === operationEpoch) {
+      state.threadId = previous.threadId; state.threads = previous.threads;
+      if (previous.threadId) localStorage.setItem("hdu_erc_thread_id", previous.threadId);
+      renderThreads();
+    }
+    if (!(await handleMutationUnauthorized(error))) showUiError("新建对话失败，请重试");
+    throw error;
+  } finally {
+    if (state.navigationEpoch === operationEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
+  }
 }
 
 async function deleteCurrentThread() {
-  if (!state.threadId) return;
+  if (!state.threadId || state.navigationBusy) return;
+  const deletedThread = state.threadId;
+  const operationEpoch = ++state.navigationEpoch;
   abortActiveStream();
-  await fetch(threadPath(), {method: "DELETE"}).then((response) => {
-    if (!response.ok) throw new Error(`Delete failed: ${response.status}`);
-  });
-  await listThreads();
-  if (!state.threads.length) {
-    await createThread();
-    return;
+  state.navigationBusy = true; updateInteractionLocks();
+  try {
+    await request(threadPath(), {method: "DELETE"});
+    state.threads = state.threads.filter((item) => item.thread_id !== deletedThread);
+    if (state.navigationEpoch === operationEpoch && state.threadId === deletedThread) {
+      state.threadId = null;
+      localStorage.removeItem("hdu_erc_thread_id");
+    }
+    try { await listThreads(); } catch (error) {
+      showUiError("对话已删除，正在重新同步");
+      throw error;
+    }
+    if (state.navigationEpoch !== operationEpoch) { renderThreads(); return; }
+    state.navigationBusy = false;
+    if (!state.threads.length) { await createThread(); return; }
+    await selectThread(state.threads[0].thread_id);
+  } catch (error) {
+    if (state.navigationEpoch === operationEpoch && state.threadId === deletedThread) localStorage.setItem("hdu_erc_thread_id", deletedThread);
+    if (!(await handleMutationUnauthorized(error))) showUiError(state.threadId ? "删除对话失败，请重试" : "对话已删除，请刷新以重新同步");
+    throw error;
+  } finally {
+    if (state.navigationEpoch === operationEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
   }
-  await selectThread(state.threads[0].thread_id);
 }
 
 async function selectThread(threadId) {
   if (!threadId) return;
+  const previousThreadId = state.threadId;
+  const clientId = state.clientId;
+  const epoch = ++state.navigationEpoch;
   abortActiveStream();
+  state.navigationBusy = true;
   state.threadId = threadId;
   localStorage.setItem("hdu_erc_thread_id", threadId);
   renderSafety({level: "normal", guidance: ""});
+  if (messagesEl) messagesEl.replaceChildren();
   renderThreads();
-  await loadCurrentThread();
+  updateInteractionLocks();
+  try {
+    await loadCurrentThread(epoch, clientId, threadId);
+  } catch (error) {
+    if (epoch === state.navigationEpoch && state.clientId === clientId && state.threadId === threadId) {
+      state.threadId = previousThreadId;
+      if (previousThreadId) localStorage.setItem("hdu_erc_thread_id", previousThreadId);
+      else localStorage.removeItem("hdu_erc_thread_id");
+      renderThreads(); showUiError("对话切换失败，请重试");
+    }
+    throw error;
+  } finally {
+    if (epoch === state.navigationEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
+  }
 }
 
 function messageText(content, role) {
+  if (role === "system") return "[系统消息]";
+  if (role === "tool") return "[工具消息]";
+  if (role !== "human" && role !== "ai") return "[内部消息]";
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     const text = content.map((part) => {
@@ -163,7 +301,7 @@ function messageText(content, role) {
     return text || (role === "ai" ? "[工具调用]" : "[复杂消息]");
   }
   if (content == null) return role === "ai" ? "[工具调用]" : "";
-  try { return JSON.stringify(content); } catch (error) { return "[无法显示的消息]"; }
+  return role === "ai" ? "[复杂回复]" : "[复杂消息]";
 }
 
 function scrollToBottom() {
@@ -201,6 +339,10 @@ function renderSnapshot(payload) {
     addMessage(message.role || "system", message.content, message);
   });
   renderEmotionState(payload.emotion);
+  const latestAi = (payload.messages || []).slice().reverse().find((message) => message.role === "ai");
+  const persistedSafety = latestAi && ["normal", "supportive", "crisis"].includes(latestAi.safety_level)
+    ? latestAi.safety_level : "normal";
+  renderSafety({level: persistedSafety});
 }
 
 function renderEmotionState(emotion) {
@@ -220,7 +362,9 @@ function renderSafety(data) {
   }
   safetyStatusEl.hidden = false;
   safetyStatusEl.className = `safety-status ${data.level}`;
-  safetyStatusEl.textContent = data.guidance || (data.level === "crisis" ? "请优先联系身边可信任的人或紧急支持。" : "我会更谨慎地陪你梳理。 ");
+  safetyStatusEl.textContent = data.level === "crisis"
+    ? "如果你正面临即时危险，请立即联系当地紧急服务或身边可信任的人。"
+    : "检测到你可能需要更多支持，我会谨慎回应。";
 }
 
 function renderTimeline(timeline) {
@@ -233,16 +377,24 @@ function renderTimeline(timeline) {
   });
 }
 
-async function loadEmotionTimeline() {
-  const payload = await fetchJson(threadPath("/emotion-timeline?limit=5"));
-  renderTimeline(payload.timeline || []);
+function navigationIsCurrent(epoch, clientId, threadId) {
+  return epoch === state.navigationEpoch && clientId === state.clientId && threadId === state.threadId;
 }
 
-async function loadCurrentThread() {
-  if (!state.clientId || !state.threadId) return;
-  const payload = await fetchJson(threadPath());
+async function loadEmotionTimeline(epoch = state.navigationEpoch, clientId = state.clientId, threadId = state.threadId) {
+  const payload = await readJson(() => threadPath("/emotion-timeline?limit=5", state.clientId, state.threadId));
+  if (!navigationIsCurrent(epoch, clientId, threadId)) return false;
+  renderTimeline(payload.timeline || []);
+  return true;
+}
+
+async function loadCurrentThread(epoch = state.navigationEpoch, clientId = state.clientId, threadId = state.threadId) {
+  if (!clientId || !threadId) return false;
+  const payload = await readJson(() => threadPath("", state.clientId, state.threadId));
+  if (!navigationIsCurrent(epoch, clientId, threadId)) return false;
   renderSnapshot(payload);
-  await loadEmotionTimeline();
+  await loadEmotionTimeline(epoch, clientId, threadId);
+  return navigationIsCurrent(epoch, clientId, threadId);
 }
 
 function parseSseFrame(frame) {
@@ -305,29 +457,56 @@ async function consumeSseResponse(response, onFrame) {
 async function runStream(url, body, handlers) {
   abortActiveStream();
   const controller = new AbortController();
-  state.activeController = controller;
-  setLocked(true);
+  const run = {
+    controller, epoch: ++state.streamEpoch, clientId: state.clientId,
+    threadId: state.threadId, requestId: body.request_id,
+  };
+  state.activeRun = run;
+  updateInteractionLocks();
   let completed = false;
+  let started = false;
   try {
-    const response = await fetch(url, {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(body), signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`Stream failed: ${response.status}`);
+    let response;
+    try {
+      response = await request(url, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body), signal: controller.signal,
+      });
+    } catch (error) {
+      if (error.status === 401) {
+        await recoverIdentity();
+        showUiError("身份已更新，请重新发送");
+      }
+      throw error;
+    }
     await consumeSseResponse(response, async ({event, data}) => {
+      if (state.activeRun !== run || run.epoch !== state.streamEpoch || run.clientId !== state.clientId || run.threadId !== state.threadId) return;
+      if (event === "run_started") {
+        if (data.request_id !== run.requestId || data.thread_id !== run.threadId) throw new Error("Mismatched stream identity");
+        started = true; return;
+      }
+      if (!started) throw new Error("Stream started without run identity");
       if (event === "done") completed = true;
       if (handlers[event]) await handlers[event](data);
     });
-    if (!completed) throw new Error("Stream ended before done");
+    if (state.activeRun !== run) {
+      const superseded = new Error("Stream superseded"); superseded.name = "AbortError"; throw superseded;
+    }
+    if (!started || !completed) throw new Error("Stream ended before done");
     return true;
   } finally {
-    if (state.activeController === controller) state.activeController = null;
-    setLocked(false);
-    if (inputEl) inputEl.focus();
+    if (state.activeRun === run) {
+      state.activeRun = null;
+      updateInteractionLocks();
+      if (inputEl) inputEl.focus();
+    }
   }
 }
 
 async function streamMessage(message) {
+  const streamClient = state.clientId;
+  const streamThread = state.threadId;
+  const navigationEpoch = state.navigationEpoch;
   const optimistic = addMessage("human", message);
   let aiMessage = null;
   try {
@@ -349,9 +528,11 @@ async function streamMessage(message) {
       },
       done() {},
     });
-    await loadCurrentThread();
+    if (streamClient === state.clientId && streamThread === state.threadId) {
+      await loadCurrentThread(navigationEpoch, streamClient, streamThread);
+    }
   } catch (error) {
-    if (error.name !== "AbortError") {
+    if (error.name !== "AbortError" && streamClient === state.clientId && streamThread === state.threadId) {
       if (!aiMessage) aiMessage = addMessage("ai", "");
       aiMessage.bubble.textContent = "发送失败，请稍后重试";
     }
@@ -372,13 +553,14 @@ function renderFeedbackControls(wrapper, metadata) {
   if (metadata.feedback) return;
   const controls = document.createElement("div"); controls.className = "feedback-controls";
   const status = document.createElement("span"); status.className = "feedback-status";
-  [["Good", "like"], ["Bad", "dislike"]].forEach(([label, value]) => {
+  [["有帮助", "like", "将回复评价为有帮助"], ["没帮助", "dislike", "将回复评价为没帮助"]].forEach(([label, value, ariaLabel]) => {
     const button = document.createElement("button"); button.type = "button"; button.className = "feedback-button"; button.textContent = label;
+    button.setAttribute("aria-label", ariaLabel);
     button.addEventListener("click", () => submitFeedback(metadata.id, value, controls, status)); controls.appendChild(button);
   });
-  const regenerate = document.createElement("button"); regenerate.type = "button"; regenerate.className = "feedback-button"; regenerate.textContent = "Regenerate";
+  const regenerate = document.createElement("button"); regenerate.type = "button"; regenerate.className = "feedback-button"; regenerate.textContent = "重新生成"; regenerate.setAttribute("aria-label", "重新生成回复");
   regenerate.addEventListener("click", () => renderRegenerationReasons(wrapper, metadata.id, controls, status)); controls.appendChild(regenerate);
-  const emotion = document.createElement("button"); emotion.type = "button"; emotion.className = "feedback-button"; emotion.textContent = "Emotion?";
+  const emotion = document.createElement("button"); emotion.type = "button"; emotion.className = "feedback-button"; emotion.textContent = "情绪判断"; emotion.setAttribute("aria-label", "反馈情绪判断是否准确");
   emotion.addEventListener("click", () => renderEmotionFeedbackChoices(metadata, controls, status)); controls.appendChild(emotion);
   controls.appendChild(status); wrapper.appendChild(controls);
 }
@@ -386,7 +568,7 @@ function renderFeedbackControls(wrapper, metadata) {
 async function submitFeedback(messageId, feedback, controls, status) {
   const buttons = allButtons(controls); buttons.forEach((button) => { button.disabled = true; });
   try {
-    await fetchJson(threadPath(`/messages/${encodeURIComponent(messageId)}/feedback`), {
+    await mutateJson(threadPath(`/messages/${encodeURIComponent(messageId)}/feedback`), {
       method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({feedback}),
     });
     controls.remove();
@@ -398,7 +580,7 @@ async function submitFeedback(messageId, feedback, controls, status) {
 async function submitEmotionFeedback(metadata, feedback, status) {
   const predicted = metadata.predicted_emotion || (metadata.emotion_state && metadata.emotion_state.primary_emotion) || "";
   try {
-    await fetchJson(threadPath("/emotion-feedback"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({message_id: metadata.id, feedback, predicted_emotion: predicted, turn_count: metadata.turn_count || null})});
+    await mutateJson(threadPath("/emotion-feedback"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({message_id: metadata.id, feedback, predicted_emotion: predicted, turn_count: metadata.turn_count || null})});
     status.textContent = "情绪反馈已保存";
   } catch (error) { status.textContent = "情绪反馈保存失败"; }
 }
@@ -443,18 +625,23 @@ async function submitRegeneration(wrapper, messageId, reason, controls, status) 
 }
 
 async function loadProfile() {
-  const payload = await fetchJson(clientPath("/profile")); profileState.profile = payload.profile || {}; return payload;
+  const payload = await readJson(() => clientPath("/profile")); profileState.profile = payload.profile || {}; return payload;
 }
 async function saveProfile(profile) {
-  const payload = await fetchJson(clientPath("/profile"), {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({profile})});
+  const payload = await mutateJson(clientPath("/profile"), {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({profile})});
   profileState.profile = payload.profile || {}; return payload;
 }
 async function requestProfileDraft() {
-  const payload = await fetchJson(clientPath("/profile/draft"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({thread_id: state.threadId, answers: profileState.answers})});
+  const payload = await mutateJson(clientPath("/profile/draft"), {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({thread_id: state.threadId, answers: profileState.answers})});
   return payload.draft || {};
 }
 
-function closeProfilePanel() { if (profilePanelEl) profilePanelEl.hidden = true; if (profileBackdropEl) profileBackdropEl.hidden = true; }
+function closeProfilePanel() {
+  if (profilePanelEl) profilePanelEl.hidden = true;
+  if (profileBackdropEl) profileBackdropEl.hidden = true;
+  if (profileState.previousFocus && profileState.previousFocus.focus) profileState.previousFocus.focus();
+  profileState.previousFocus = null;
+}
 function clearProfileBody() { if (profilePanelBodyEl) profilePanelBodyEl.replaceChildren(); }
 function profileStatus(text, error = false) { const element = document.createElement("p"); element.className = error ? "profile-status error" : "profile-status"; element.textContent = text; return element; }
 function renderProfileForm(profile) {
@@ -466,11 +653,15 @@ function renderProfileForm(profile) {
 }
 async function openProfilePanel() {
   if (!profilePanelEl || !profileBackdropEl || !profilePanelBodyEl) return;
+  profileState.previousFocus = document.activeElement || null;
   profilePanelEl.hidden = false; profileBackdropEl.hidden = false; clearProfileBody(); profilePanelBodyEl.appendChild(profileStatus("正在加载画像…"));
+  if (profileCloseEl) profileCloseEl.focus();
   try { const payload = await loadProfile(); renderProfileForm(payload.profile || {}); } catch (error) { clearProfileBody(); profilePanelBodyEl.appendChild(profileStatus("画像加载失败", true)); }
 }
 async function startProfileOnboarding() {
+  profileState.previousFocus = document.activeElement || null;
   if (profilePromptEl) profilePromptEl.hidden = true; if (profilePanelEl) profilePanelEl.hidden = false; if (profileBackdropEl) profileBackdropEl.hidden = false;
+  if (profileCloseEl) profileCloseEl.focus();
   try {
     const payload = await fetchJson("/api/profile/onboarding/questions");
     profileState.questions = payload.questions || [];
@@ -501,14 +692,14 @@ async function initialize() {
     await initializeIdentity(); renderThreads(); await loadCurrentThread(); maybeShowProfilePrompt();
   } catch (error) {
     if (emotionStatusEl) emotionStatusEl.textContent = "加载失败，请刷新重试";
-  } finally { setLocked(false); }
+  } finally { updateInteractionLocks(); }
 }
 
 if (formEl) formEl.addEventListener("submit", (event) => { event.preventDefault(); const message = inputEl.value.trim(); if (!message) return; inputEl.value = ""; streamMessage(message); });
 if (inputEl) inputEl.addEventListener("keydown", (event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); formEl.requestSubmit(); } });
-if (newThreadButtonEl) newThreadButtonEl.addEventListener("click", createThread);
-if (deleteThreadButtonEl) deleteThreadButtonEl.addEventListener("click", deleteCurrentThread);
-if (profileButtonEl) profileButtonEl.addEventListener("click", openProfilePanel);
+if (newThreadButtonEl) newThreadButtonEl.addEventListener("click", () => createThread().catch(() => showUiError("新建对话失败，请重试")));
+if (deleteThreadButtonEl) deleteThreadButtonEl.addEventListener("click", () => deleteCurrentThread().catch(() => {}));
+if (profileButtonEl) profileButtonEl.addEventListener("click", () => openProfilePanel().catch(() => showUiError("画像加载失败")));
 if (profileCloseEl) profileCloseEl.addEventListener("click", closeProfilePanel);
 if (profileBackdropEl) profileBackdropEl.addEventListener("click", closeProfilePanel);
 if (profilePromptStartEl) profilePromptStartEl.addEventListener("click", startProfileOnboarding);
@@ -517,5 +708,6 @@ if (profilePromptSkipEl) profilePromptSkipEl.addEventListener("click", () => { s
 globalThis.__HDU_ERC_TEST__ = {
   collectSseFrames, createThread, deleteCurrentThread, selectThread,
   streamMessage, submitRegeneration, renderSnapshot,
+  setStateForTest(clientId, threadId) { state.clientId = clientId; state.threadId = threadId; },
 };
 initialize();

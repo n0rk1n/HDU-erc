@@ -48,9 +48,9 @@
       </section>
     </main>
     <div id="profile-backdrop" class="profile-backdrop" hidden></div>
-    <aside id="profile-panel" class="profile-panel" aria-label="我的画像" hidden>
+    <aside id="profile-panel" class="profile-panel" role="dialog" aria-modal="true" aria-labelledby="profile-panel-title" tabindex="-1" hidden>
       <div class="profile-panel-header">
-        <h2>我的画像</h2>
+        <h2 id="profile-panel-title">我的画像</h2>
         <button id="profile-close" class="secondary-button" type="button" aria-label="关闭我的画像">关闭</button>
       </div>
       <div id="profile-panel-body" class="profile-panel-body"></div>
