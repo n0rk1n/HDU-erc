@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -30,9 +30,33 @@ class ThreadRepository:
         await self._store.aput(self._namespace(client_id), record.thread_id, self._as_value(record))
         return record
 
-    async def list(self, client_id: str) -> list[ThreadRecord]:
-        items = await self._store.asearch(self._namespace(client_id), limit=1_000)
+    async def list(
+        self,
+        client_id: str,
+        *,
+        exists: Callable[[str], Awaitable[bool]] | None = None,
+    ) -> list[ThreadRecord]:
+        items = []
+        offset = 0
+        while True:
+            page = await self._store.asearch(
+                self._namespace(client_id),
+                limit=1_000,
+                offset=offset,
+            )
+            items.extend(page)
+            if len(page) < 1_000:
+                break
+            offset += len(page)
         records = [self._from_value(item.value) for item in items]
+        if exists is not None:
+            retained = []
+            for record in records:
+                if await exists(record.thread_id):
+                    retained.append(record)
+                else:
+                    await self.delete_record(client_id, record.thread_id)
+            records = retained
         return sorted(records, key=lambda record: record.updated_at, reverse=True)
 
     async def owns(self, client_id: str, thread_id: str) -> bool:

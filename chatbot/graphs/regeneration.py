@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import partial
-from typing import Any
+from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
@@ -30,33 +30,67 @@ def build_regeneration_graph(deps: NodeDependencies) -> StateGraph:
     """Build the uncompiled message-replacement graph with shared dependencies."""
     builder = StateGraph(ConversationState, context_schema=GraphContext)
     builder.add_node("validate_target", validate_target)
+    builder.add_node("replay_completed_regeneration", replay_completed_regeneration)
     builder.add_node("rebuild_context", rebuild_context)
     builder.add_node("load_context", partial(load_context, deps=deps))
     builder.add_node("generate_variant", partial(generate_variant, deps=deps))
-    builder.add_node("replace_message", partial(replace_message, deps=deps))
     builder.add_node(
         "finalize_regeneration",
         partial(finalize_regeneration, deps=deps),
     )
     builder.add_edge(START, "validate_target")
-    builder.add_edge("validate_target", "rebuild_context")
+    builder.add_conditional_edges(
+        "validate_target",
+        _route_after_validation,
+        {
+            "replay_completed_regeneration": "replay_completed_regeneration",
+            "rebuild_context": "rebuild_context",
+        },
+    )
+    builder.add_edge("replay_completed_regeneration", END)
     builder.add_edge("rebuild_context", "load_context")
     builder.add_edge("load_context", "generate_variant")
-    builder.add_edge("generate_variant", "replace_message")
-    builder.add_edge("replace_message", "finalize_regeneration")
+    builder.add_edge("generate_variant", "finalize_regeneration")
     builder.add_edge("finalize_regeneration", END)
     return builder
 
 
-def validate_target(state: ConversationState) -> dict[str, Any]:
+def validate_target(state: ConversationState, runtime) -> dict[str, Any]:
     """Validate the target, UI reason, and default single-regeneration limit."""
+    request_id = state.get("request_id") or runtime.context["request_id"]
+    completed = state.get("processed_requests", {}).get(request_id, {})
+    if completed.get("status") == "completed":
+        return {"replay_request": True}
     reason = state.get("regeneration_reason")
     if reason not in REGENERATION_REASONS:
         raise RegenerationError("invalid_reason")
     target = _eligible_target_message(state)
     if target.additional_kwargs.get("regenerated") is True:
         raise RegenerationError("already_regenerated")
-    return {}
+    return {"replay_request": False}
+
+
+def _route_after_validation(
+    state: ConversationState,
+) -> Literal["replay_completed_regeneration", "rebuild_context"]:
+    if state.get("replay_request") is True:
+        return "replay_completed_regeneration"
+    return "rebuild_context"
+
+
+def replay_completed_regeneration(
+    state: ConversationState,
+    runtime,
+    writer,
+) -> dict[str, Any]:
+    """Replay the exact stored done payload for an idempotent request retry."""
+    request_id = state.get("request_id") or runtime.context["request_id"]
+    completed = state.get("processed_requests", {}).get(request_id, {})
+    event_data = completed.get("event_data")
+    if not isinstance(event_data, dict):
+        raise RegenerationError("completed_request_invalid")
+    writer({"event": "done", "data": dict(event_data)})
+    return _regeneration_cleanup_delta()
 
 
 def rebuild_context(state: ConversationState) -> dict[str, str]:
@@ -79,7 +113,7 @@ async def generate_variant(
     config: RunnableConfig,
     *,
     deps: NodeDependencies,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Generate a reason-aware replacement through the async observable model call."""
     target, question, history = _regeneration_dialogue(state)
     prompt = build_chat_prompt(
@@ -111,19 +145,9 @@ async def generate_variant(
         content = _complete_content(result)
     except Exception as exc:
         raise RegenerationError("generation_failed") from exc
-    return {"response_content": content}
-
-
-def replace_message(
-    state: ConversationState,
-    runtime,
-    writer,
-    *,
-    deps: NodeDependencies,
-) -> dict[str, Any]:
-    """Return one same-ID AIMessage so add_messages performs an in-place replacement."""
     target = _eligible_target_message(state)
     metadata = {
+        **_model_additional_kwargs(result),
         **target.additional_kwargs,
         "feedback": None,
         "original_content": _message_text(target),
@@ -133,13 +157,15 @@ def replace_message(
     }
     replacement = AIMessage(
         id=target.id,
-        content=state["response_content"],
+        content=content,
         additional_kwargs=metadata,
-        response_metadata=target.response_metadata,
-        name=target.name,
+        response_metadata=_model_response_metadata(result),
+        usage_metadata=_model_usage_metadata(result),
+        name=_model_name(result),
     )
     return {
         "messages": [replacement],
+        "response_content": content,
         "response_message_id": str(target.id),
     }
 
@@ -157,6 +183,12 @@ def finalize_regeneration(
     content = state["response_content"]
     reason = state["regeneration_reason"]
     completed_at = _utc_timestamp(deps.now())
+    event_data = {
+        "message_id": message_id,
+        "content": content,
+        "reason": reason,
+        "regenerated": True,
+    }
     processed_requests = {
         **state.get("processed_requests", {}),
         request_id: {
@@ -164,19 +196,10 @@ def finalize_regeneration(
             "response_message_id": message_id,
             "content": content,
             "completed_at": completed_at,
+            "event_data": event_data,
         },
     }
-    writer(
-        {
-            "event": "done",
-            "data": {
-                "message_id": message_id,
-                "content": content,
-                "reason": reason,
-                "regenerated": True,
-            },
-        }
-    )
+    writer({"event": "done", "data": event_data})
     return {
         "processed_requests": _newest_requests(
             processed_requests,
@@ -275,6 +298,26 @@ def _complete_content(result: Any) -> str:
     if not content:
         raise ValueError("empty model reply")
     return content
+
+
+def _model_additional_kwargs(result: Any) -> dict[str, Any]:
+    value = getattr(result, "additional_kwargs", {})
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _model_response_metadata(result: Any) -> dict[str, Any]:
+    value = getattr(result, "response_metadata", {})
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _model_usage_metadata(result: Any) -> dict[str, Any] | None:
+    value = getattr(result, "usage_metadata", None)
+    return dict(value) if isinstance(value, dict) else None
+
+
+def _model_name(result: Any) -> str | None:
+    value = getattr(result, "name", None)
+    return value if isinstance(value, str) else None
 
 
 def _utc_timestamp(value: datetime) -> str:

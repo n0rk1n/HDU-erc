@@ -27,8 +27,15 @@ REASONS = (
 
 
 class RecordingModel:
-    def __init__(self, response: str = "新回复", *, error: Exception | None = None):
+    def __init__(
+        self,
+        response: str = "新回复",
+        *,
+        result: AIMessage | None = None,
+        error: Exception | None = None,
+    ):
         self.response = response
+        self.result = result
         self.error = error
         self.calls: list[tuple[Any, Any]] = []
 
@@ -36,6 +43,8 @@ class RecordingModel:
         self.calls.append((value, config))
         if self.error is not None:
             raise self.error
+        if self.result is not None:
+            return self.result
         return AIMessage(content=self.response)
 
 
@@ -438,3 +447,113 @@ async def test_regeneration_emits_done_with_replaced_target_payload():
             },
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_completed_regeneration_request_replays_done_without_model_call():
+    """Catches idempotent retry conflicting with its own completed regeneration."""
+    store = InMemoryStore()
+    model = RecordingModel()
+    graph = build_regeneration_graph(
+        make_deps(model, RecordingMemoryRepository())
+    ).compile(checkpointer=InMemorySaver(), store=store)
+    config = {"configurable": {"thread_id": "thread-regen-retry"}}
+
+    first_events = [
+        event
+        async for event in graph.astream(
+            regeneration_input(reason="其他"),
+            config,
+            context=graph_context(),
+            stream_mode="custom",
+        )
+    ]
+    replay_events = [
+        event
+        async for event in graph.astream(
+            {
+                "operation": "regenerate",
+                "request_id": "regen-1",
+                "target_message_id": "ai-target",
+                "regeneration_reason": "其他",
+            },
+            config,
+            context=graph_context(),
+            stream_mode="custom",
+        )
+    ]
+
+    assert replay_events == first_events
+    assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_new_request_conflicts_after_target_was_regenerated():
+    """Catches the one-regeneration limit being bypassed by changing request_id."""
+    store = InMemoryStore()
+    model = RecordingModel()
+    graph = build_regeneration_graph(
+        make_deps(model, RecordingMemoryRepository())
+    ).compile(checkpointer=InMemorySaver(), store=store)
+    config = {"configurable": {"thread_id": "thread-regen-conflict"}}
+    await graph.ainvoke(regeneration_input(), config, context=graph_context())
+
+    with pytest.raises(RegenerationError) as exc_info:
+        await graph.ainvoke(
+            {
+                "operation": "regenerate",
+                "request_id": "regen-2",
+                "target_message_id": "ai-target",
+                "regeneration_reason": "不准确",
+            },
+            config,
+            context=GraphContext(
+                client_id="client-a", request_id="regen-2", locale="zh-CN"
+            ),
+        )
+
+    assert exc_info.value.code == "already_regenerated"
+    assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
+    """Catches regenerated messages retaining stale provider metadata from the original."""
+    store = InMemoryStore()
+    model = RecordingModel(
+        result=AIMessage(
+            content="新回复",
+            additional_kwargs={"provider_trace": "fresh-trace"},
+            response_metadata={"model_name": "new-model", "finish_reason": "stop"},
+            usage_metadata={"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
+            name="new-assistant",
+        )
+    )
+    graph = await compile_graph(make_deps(model, RecordingMemoryRepository()), store)
+    state = regeneration_input()
+    original = next(message for message in state["messages"] if message.id == "ai-target")
+    original.response_metadata = {"model_name": "old-model", "finish_reason": "length"}
+    original.usage_metadata = {
+        "input_tokens": 100,
+        "output_tokens": 50,
+        "total_tokens": 150,
+    }
+    original.name = "old-assistant"
+
+    result = await graph.ainvoke(state, context=graph_context())
+
+    replacement = next(
+        message for message in result["messages"] if message.id == "ai-target"
+    )
+    assert replacement.response_metadata == {
+        "model_name": "new-model",
+        "finish_reason": "stop",
+    }
+    assert replacement.usage_metadata == {
+        "input_tokens": 7,
+        "output_tokens": 3,
+        "total_tokens": 10,
+    }
+    assert replacement.name == "new-assistant"
+    assert replacement.additional_kwargs["provider_trace"] == "fresh-trace"
+    assert replacement.additional_kwargs["original_content"] == "旧回复"

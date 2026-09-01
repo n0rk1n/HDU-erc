@@ -65,3 +65,37 @@ async def test_thread_repository_deletes_only_the_client_record(store):
 
     assert await repo.owns("client-a", first.thread_id) is False
     assert await repo.owns("client-b", second.thread_id) is True
+
+
+@pytest.mark.asyncio
+async def test_thread_repository_lists_every_page(store):
+    """Catches thread directories silently truncating after the first Store page."""
+    repo = ThreadRepository(store, now=lambda: FIXED_NOW)
+    for index in range(1_005):
+        await repo.create("client-a", title=f"线程 {index}")
+
+    records = await repo.list("client-a")
+
+    assert len(records) == 1_005
+    assert {record.title for record in records} == {
+        f"线程 {index}" for index in range(1_005)
+    }
+
+
+@pytest.mark.asyncio
+async def test_thread_repository_reconciles_stale_records_with_async_exists(store):
+    """Catches Saver-missing directory records surviving reconciliation."""
+    repo = ThreadRepository(store, now=lambda: FIXED_NOW)
+    active = await repo.create("client-a", title="active")
+    stale = await repo.create("client-a", title="stale")
+    checked: list[str] = []
+
+    async def checkpoint_exists(thread_id: str) -> bool:
+        checked.append(thread_id)
+        return thread_id == active.thread_id
+
+    records = await repo.list("client-a", exists=checkpoint_exists)
+
+    assert [record.thread_id for record in records] == [active.thread_id]
+    assert set(checked) == {active.thread_id, stale.thread_id}
+    assert await repo.owns("client-a", stale.thread_id) is False
