@@ -531,7 +531,10 @@ async def test_stream_close_failure_still_releases_thread_lock():
     stream = await runtime.astream_turn(
         "client-a", record.thread_id, "req-close", "你好"
     )
-    await anext(stream)
+    staged = await anext(stream)
+    graph_part = await anext(stream)
+    assert staged["data"]["event"] == "user_message"
+    assert graph_part["data"]["event"] == "emotion_start"
 
     with pytest.raises(OSError, match="graph stream close failed"):
         await stream.aclose()

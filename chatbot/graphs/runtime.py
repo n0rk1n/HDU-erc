@@ -245,12 +245,15 @@ class ConversationRuntime:
         graph_stream = None
         try:
             await self._require_initialized_thread(client_id, thread_id)
+            user_event = None
             if graph_input.get("operation") == "turn":
-                await self._prestage_turn_input(
+                user_event = await self._prestage_turn_input(
                     thread_id,
                     request_id,
                     graph_input,
                 )
+            if user_event is not None:
+                yield {"type": "custom", "ns": (), "data": user_event}
             graph_stream = self.graph.astream(
                 graph_input,
                 self._config(thread_id),
@@ -276,7 +279,7 @@ class ConversationRuntime:
         thread_id: str,
         request_id: str,
         graph_input: dict[str, Any],
-    ) -> None:
+    ) -> dict[str, Any] | None:
         """Durably stage one human input before the parent graph calls the model.
 
         A parent/subgraph invocation is transactional, so a model exception would
@@ -288,7 +291,7 @@ class ConversationRuntime:
         values = snapshot.values
         completed = values.get("processed_requests", {}).get(request_id, {})
         if completed.get("status") == "completed":
-            return
+            return None
 
         message_id = f"human_{request_id}"
         existing = next(
@@ -304,7 +307,7 @@ class ConversationRuntime:
                 raise RuntimeOperationError("invalid_input")
             content = self._message_text(existing)
             graph_input["input_message"] = content
-            return
+            return None
 
         content = str(graph_input.get("input_message", "")).strip()
         if not content:
@@ -317,12 +320,15 @@ class ConversationRuntime:
                 "operation": "turn",
                 "request_id": request_id,
                 "input_message": content,
-                "input_event_pending": True,
                 "turn_count": int(values.get("turn_count", 0)) + 1,
             },
             as_node="turn",
         )
         graph_input["input_message"] = content
+        return {
+            "event": "user_message",
+            "data": {"message_id": message_id, "role": "human", "content": content},
+        }
 
     @staticmethod
     def _message_text(message: HumanMessage) -> str:

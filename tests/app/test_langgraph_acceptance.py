@@ -63,6 +63,26 @@ async def consume(stream) -> list[dict]:
     return [part async for part in stream]
 
 
+async def consume_until_error(stream) -> tuple[list[dict], Exception | None]:
+    parts = []
+    try:
+        async for part in stream:
+            parts.append(part)
+    except Exception as exc:
+        return parts, exc
+    return parts, None
+
+
+def user_message_events(parts: list[dict]) -> list[dict]:
+    return [
+        part["data"]
+        for part in parts
+        if part.get("type") == "custom"
+        and isinstance(part.get("data"), dict)
+        and part["data"].get("event") == "user_message"
+    ]
+
+
 async def turn(runtime, client_id: str, thread_id: str, message: str, request_id=None):
     request_id = request_id or str(uuid4())
     return await consume(
@@ -296,8 +316,14 @@ async def test_generation_failure_has_no_partial_ai_and_same_request_retries(tmp
             now=lambda: NOW,
         )
         record = await runtime.acreate_thread("client-a")
-        with pytest.raises(RuntimeError, match="provider unavailable"):
-            await turn(runtime, "client-a", record.thread_id, "你好", "same-request")
+        failed_parts, error = await consume_until_error(
+            await runtime.astream_turn(
+                "client-a", record.thread_id, "same-request", "你好"
+            )
+        )
+        assert isinstance(error, RuntimeError)
+        assert str(error) == "provider unavailable"
+        assert len(user_message_events(failed_parts)) == 1
         failed = await runtime.aget_state("client-a", record.thread_id)
         assert [(m.id, m.type, m.content) for m in failed.values["messages"]] == [
             ("human_same-request", "human", "你好")
@@ -310,7 +336,10 @@ async def test_generation_failure_has_no_partial_ai_and_same_request_retries(tmp
             model_factory=lambda _: (RecordingModel("重试成功"), RecordingModel(NORMAL_EMOTION)),
             now=lambda: NOW,
         )
-        await turn(runtime, "client-a", record.thread_id, "不会覆盖原输入", "same-request")
+        retry_parts = await turn(
+            runtime, "client-a", record.thread_id, "不会覆盖原输入", "same-request"
+        )
+        assert user_message_events(retry_parts) == []
         recovered = await runtime.aget_state("client-a", record.thread_id)
         assert [m.id for m in recovered.values["messages"]] == [
             "human_same-request", "ai_same-request"
@@ -329,11 +358,12 @@ async def test_legacy_thread_sort_fallback_survives_same_second_sqlite_reopen(tm
         # Create in reverse lexical order: Store timestamps, not UUID/key order,
         # must identify the later legacy record.
         for index, thread_id in enumerate(("legacy-z", "legacy-a")):
+            record_timestamp = timestamp.replace("+00:00", "Z") if index == 0 else timestamp
             await handles.store.aput(namespace, thread_id, {
                 "thread_id": thread_id,
                 "title": thread_id,
-                "created_at": timestamp,
-                "updated_at": timestamp,
+                "created_at": record_timestamp,
+                "updated_at": record_timestamp,
             })
             if index == 0:
                 # Official SQLite Store timestamps are second-resolution. Both
@@ -360,6 +390,101 @@ async def test_current_same_second_thread_order_survives_sqlite_reopen(tmp_path)
             second.thread_id,
             first.thread_id,
         ]
+
+
+@pytest.mark.asyncio
+async def test_record_timestamp_is_canonical_before_store_write_time(tmp_path):
+    _, graph = configs(tmp_path)
+    namespace = ("client-c", "threads")
+    async with open_persistence(graph) as handles:
+        # Newer business timestamp is written first; later Store write must not
+        # overtake it when the record timestamps differ.
+        await handles.store.aput(namespace, "business-new", {
+            "thread_id": "business-new",
+            "title": "new",
+            "created_at": "2026-09-01T10:00:01Z",
+            "updated_at": "2026-09-01T10:00:01Z",
+        })
+        await asyncio.sleep(1.05)
+        await handles.store.aput(namespace, "business-old", {
+            "thread_id": "business-old",
+            "title": "old",
+            "created_at": "2026-09-01T10:00:00+00:00",
+            "updated_at": "2026-09-01T10:00:00+00:00",
+        })
+
+    async with open_persistence(graph) as handles:
+        records = await ThreadRepository(handles.store, now=lambda: NOW).list("client-c")
+        assert [record.thread_id for record in records] == [
+            "business-new", "business-old"
+        ]
+
+
+@pytest.mark.asyncio
+async def test_user_message_event_is_request_scoped_across_failure_interleaving_and_cancel(
+    tmp_path,
+):
+    chat, graph = configs(tmp_path)
+    chat_model = RecordingModel(
+        RuntimeError("A failed"),
+        "B completed",
+        "A recovered",
+        "cancel recovered",
+    )
+    async with open_persistence(graph) as handles:
+        runtime = build_graph_runtime(
+            handles, chat, graph,
+            model_factory=lambda _: (chat_model, RecordingModel(NORMAL_EMOTION)),
+            now=lambda: NOW,
+        )
+        record = await runtime.acreate_thread("client-a")
+
+        a_first, a_error = await consume_until_error(
+            await runtime.astream_turn(
+                "client-a", record.thread_id, "request-a", "原始 A"
+            )
+        )
+        assert isinstance(a_error, RuntimeError)
+        assert len(user_message_events(a_first)) == 1
+
+        b_parts = await turn(
+            runtime, "client-a", record.thread_id, "B 输入", "request-b"
+        )
+        assert len(user_message_events(b_parts)) == 1
+
+        a_retry = await turn(
+            runtime, "client-a", record.thread_id, "不得替换 A", "request-a"
+        )
+        assert user_message_events(a_retry) == []
+
+        a_replay = await turn(
+            runtime, "client-a", record.thread_id, "仍不得替换 A", "request-a"
+        )
+        assert user_message_events(a_replay) == []
+
+        cancelled = await runtime.astream_turn(
+            "client-a", record.thread_id, "request-cancel", "取消后保留"
+        )
+        first_part = await anext(cancelled)
+        assert len(user_message_events([first_part])) == 1
+        await cancelled.aclose()
+
+        cancel_retry = await turn(
+            runtime,
+            "client-a",
+            record.thread_id,
+            "不得替换取消输入",
+            "request-cancel",
+        )
+        assert user_message_events(cancel_retry) == []
+        state = await runtime.aget_state("client-a", record.thread_id)
+        human = [message for message in state.values["messages"] if message.type == "human"]
+        assert [(message.id, message.content) for message in human] == [
+            ("human_request-a", "原始 A"),
+            ("human_request-b", "B 输入"),
+            ("human_request-cancel", "取消后保留"),
+        ]
+        assert state.values["turn_count"] == 3
 
 
 def _install_web_runtime(monkeypatch, chat, graph, chat_model, emotion_model):
@@ -400,6 +525,7 @@ def test_real_lifespan_http_flow_and_restart_persistence(tmp_path, monkeypatch):
             json={"request_id": str(uuid4()), "message": "第一轮"},
         )
         assert stream.status_code == 200
+        assert stream.text.count("event: user_message") == 1
         assert "event: emotion_done" in stream.text
         assert "event: safety" in stream.text
         assert "event: done" in stream.text
@@ -452,6 +578,7 @@ def test_api_failed_stream_keeps_human_and_retry_does_not_duplicate(
             endpoint, json={"request_id": request_id, "message": "保存这条输入"}
         )
         assert "event: error" in failed.text
+        assert failed.text.count("event: user_message") == 1
         assert '"error_code": "stream_failed"' in failed.text
         failed_snapshot = client.get(
             f"/api/clients/{client_id}/threads/{thread_id}"
@@ -464,6 +591,7 @@ def test_api_failed_stream_keeps_human_and_retry_does_not_duplicate(
             endpoint, json={"request_id": request_id, "message": "不能替换原输入"}
         )
         assert "event: done" in recovered.text
+        assert "event: user_message" not in recovered.text
         snapshot = client.get(
             f"/api/clients/{client_id}/threads/{thread_id}"
         ).json()

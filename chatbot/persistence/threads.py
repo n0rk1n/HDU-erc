@@ -52,6 +52,7 @@ class ThreadRepository:
         records = [
             (
                 self._from_value(item.value),
+                self._record_sort_time(item.value),
                 self._item_sort_time(item),
                 str(item.key),
             )
@@ -59,18 +60,18 @@ class ThreadRepository:
         ]
         if exists is not None:
             retained = []
-            for record, sort_time, item_key in records:
+            for record, record_time, sort_time, item_key in records:
                 if await exists(record.thread_id):
-                    retained.append((record, sort_time, item_key))
+                    retained.append((record, record_time, sort_time, item_key))
                 else:
                     await self.delete_record(client_id, record.thread_id)
             records = retained
         ordered = sorted(
             records,
-            key=lambda item: (item[0].updated_at, item[1], item[2]),
+            key=lambda item: (item[1], item[2], item[3]),
             reverse=True,
         )
-        return [record for record, _, _ in ordered]
+        return [record for record, _, _, _ in ordered]
 
     async def owns(self, client_id: str, thread_id: str) -> bool:
         return await self._store.aget(self._namespace(client_id), thread_id) is not None
@@ -128,6 +129,11 @@ class ThreadRepository:
                 timestamp = timestamp.replace(tzinfo=timezone.utc)
             return int(timestamp.timestamp() * 1_000_000_000)
         return 0
+
+    @staticmethod
+    def _record_sort_time(value: dict[str, Any]) -> int:
+        timestamp = datetime.fromisoformat(str(value["updated_at"]).replace("Z", "+00:00"))
+        return int(timestamp.astimezone(timezone.utc).timestamp() * 1_000_000_000)
 
     @staticmethod
     def _from_value(value: dict[str, Any]) -> ThreadRecord:
