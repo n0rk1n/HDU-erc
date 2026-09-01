@@ -315,6 +315,12 @@ def test_message_and_emotion_feedback_use_owned_graph_state_and_store(app_client
     )
     assert rated.status_code == 200
     assert rated.json() == {"message_id": "ai_feedback", "feedback": "like"}
+    snapshot = app_client.get(
+        f"/api/clients/{client_id}/threads/{thread_id}"
+    ).json()
+    assert next(
+        message for message in snapshot["messages"] if message["id"] == "ai_feedback"
+    )["feedback"] == "like"
     assert app_client.patch(
         f"/api/clients/{client_id}/threads/{thread_id}/messages/ai_feedback/feedback",
         json={"feedback": "dislike"},
@@ -346,6 +352,86 @@ def test_message_and_emotion_feedback_use_owned_graph_state_and_store(app_client
         )
 
     assert app_client.portal.call(stored_feedback)[0]["feedback"] == "accurate"
+
+
+def test_message_feedback_rejects_invalid_value(app_client):
+    payload = bootstrap(app_client)
+    response = app_client.patch(
+        "/api/clients/{}/threads/{}/messages/ai_missing/feedback".format(
+            payload["client_id"], payload["thread"]["thread_id"]
+        ),
+        json={"feedback": "neutral"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_message_feedback_returns_stable_not_found(app_client):
+    payload = bootstrap(app_client)
+    response = app_client.patch(
+        "/api/clients/{}/threads/{}/messages/ai_missing/feedback".format(
+            payload["client_id"], payload["thread"]["thread_id"]
+        ),
+        json={"feedback": "like"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "message_not_found"}
+
+
+def test_message_feedback_checkpoint_failure_has_stable_500(
+    graph_setup, monkeypatch
+):
+    with TestClient(
+        web.create_app(service_factory=lambda: object()),
+        raise_server_exceptions=False,
+    ) as client:
+        payload = bootstrap(client)
+        client_id = payload["client_id"]
+        thread_id = payload["thread"]["thread_id"]
+        runtime = client.app.state.graph_runtime
+
+        async def seed_ai():
+            await runtime.graph.aupdate_state(
+                {"configurable": {"thread_id": thread_id}},
+                {"messages": [AIMessage(id="ai_write", content="回复")]},
+                as_node="turn",
+            )
+
+        client.portal.call(seed_ai)
+
+        async def fail_update(*args, **kwargs):
+            raise OSError("checkpoint write failed")
+
+        monkeypatch.setattr(runtime.graph, "aupdate_state", fail_update)
+        response = client.patch(
+            f"/api/clients/{client_id}/threads/{thread_id}/messages/ai_write/feedback",
+            json={"feedback": "like"},
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "internal_error"}
+
+
+def test_emotion_feedback_store_failure_has_stable_500(graph_setup, monkeypatch):
+    async def fail_append(*args, **kwargs):
+        raise OSError("store write failed")
+
+    monkeypatch.setattr(web, "append_emotion_feedback", fail_append)
+    with TestClient(
+        web.create_app(service_factory=lambda: object()),
+        raise_server_exceptions=False,
+    ) as client:
+        payload = bootstrap(client)
+        response = client.post(
+            "/api/clients/{}/threads/{}/emotion-feedback".format(
+                payload["client_id"], payload["thread"]["thread_id"]
+            ),
+            json={"feedback": "accurate"},
+        )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "internal_error"}
 
 
 def test_persistence_failure_has_stable_500_response(graph_setup, monkeypatch):
