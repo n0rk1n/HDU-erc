@@ -525,6 +525,45 @@ async def test_user_message_event_is_request_scoped_across_failure_interleaving_
         assert state.values["turn_count"] == 3
 
 
+@pytest.mark.asyncio
+async def test_turn_open_atomically_reserves_pending_without_holding_lock(tmp_path):
+    chat, graph = configs(tmp_path)
+    async with open_persistence(graph) as handles:
+        runtime = build_graph_runtime(
+            handles, chat, graph,
+            model_factory=lambda _: (
+                RecordingModel("A completed"), RecordingModel(NORMAL_EMOTION)
+            ),
+            now=lambda: NOW,
+        )
+        record = await runtime.acreate_thread("client-a")
+
+        delayed_a = await runtime.astream_turn(
+            "client-a", record.thread_id, "request-a", "A input"
+        )
+        state = await runtime.aget_state("client-a", record.thread_id)
+        assert state.values["pending_turn"]["request_id"] == "request-a"
+        assert runtime.lock_for(record.thread_id).locked() is False
+
+        with pytest.raises(RuntimeOperationError) as blocked:
+            await runtime.astream_turn(
+                "client-a", record.thread_id, "request-b", "B must not enter"
+            )
+        assert blocked.value.code == "turn_in_progress"
+
+        exact_retry = await runtime.astream_turn(
+            "client-a", record.thread_id, "request-a", "A input"
+        )
+        retry_parts = await consume(exact_retry)
+        assert user_message_events(retry_parts) == []
+        assert runtime.lock_for(record.thread_id).locked() is False
+        await delayed_a.aclose()
+        final = await runtime.aget_state("client-a", record.thread_id)
+        assert [message.id for message in final.values["messages"]] == [
+            "human_request-a", "ai_request-a"
+        ]
+
+
 def _install_web_runtime(monkeypatch, chat, graph, chat_model, emotion_model):
     monkeypatch.setattr(web, "load_config", lambda argv: chat)
     monkeypatch.setattr(web, "load_graph_config", lambda: graph)

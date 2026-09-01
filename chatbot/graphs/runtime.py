@@ -99,18 +99,25 @@ class ConversationRuntime:
         request_id: str,
         message: str,
     ) -> AsyncIterator[Any]:
-        """Prevalidate ownership and open a lock-retaining turn iterator."""
+        """Durably reserve a turn before returning its lock-retaining iterator."""
         graph_input = {
             "operation": "turn",
             "request_id": request_id,
             "input_message": message,
         }
-        await self._preflight_stream(client_id, thread_id, request_id, graph_input)
+        async with self.lock_for(thread_id):
+            await self._require_initialized_thread(client_id, thread_id)
+            user_event = await self._prestage_turn_input(
+                thread_id,
+                request_id,
+                graph_input,
+            )
         return self._astream_locked(
             client_id,
             thread_id,
             request_id,
             graph_input,
+            opened_user_event=user_event,
         )
 
     async def astream_regeneration(
@@ -275,23 +282,24 @@ class ConversationRuntime:
         thread_id: str,
         request_id: str,
         graph_input: dict[str, Any],
+        *,
+        opened_user_event: dict[str, Any] | None = None,
     ) -> AsyncIterator[Any]:
         lock = self.lock_for(thread_id)
         await lock.acquire()
         graph_stream = None
         try:
             await self._require_initialized_thread(client_id, thread_id)
-            user_event = None
             if graph_input.get("operation") == "turn":
-                user_event = await self._prestage_turn_input(
+                await self._validate_prepared_turn(
                     thread_id,
                     request_id,
                     graph_input,
                 )
             elif graph_input.get("operation") == "regenerate":
                 await self._prepare_regeneration(thread_id, request_id, graph_input)
-            if user_event is not None:
-                yield {"type": "custom", "ns": (), "data": user_event}
+            if opened_user_event is not None:
+                yield {"type": "custom", "ns": (), "data": opened_user_event}
             graph_stream = self.graph.astream(
                 graph_input,
                 self._config(thread_id),
@@ -311,6 +319,31 @@ class ConversationRuntime:
                         await close()
             finally:
                 lock.release()
+
+    async def _validate_prepared_turn(
+        self,
+        thread_id: str,
+        request_id: str,
+        graph_input: dict[str, Any],
+    ) -> None:
+        """Revalidate a turn reservation after its iterator reacquires the lock."""
+        snapshot = await self.compiled_graph.aget_state(self._config(thread_id))
+        values = snapshot.values
+        fingerprint = turn_fingerprint(str(graph_input.get("input_message", "")))
+        completed = values.get("processed_requests", {}).get(request_id, {})
+        if completed:
+            if not request_binding_matches(completed, "turn", fingerprint):
+                raise RuntimeOperationError("request_id_conflict")
+            graph_input["request_fingerprint"] = fingerprint
+            return
+
+        pending = values.get("pending_turn")
+        if not isinstance(pending, dict) or pending.get("request_id") != request_id:
+            raise RuntimeOperationError("turn_in_progress")
+        if pending.get("input_fingerprint") != fingerprint:
+            raise RuntimeOperationError("request_id_conflict")
+        graph_input["input_message"] = str(pending.get("content", "")).strip()
+        graph_input["request_fingerprint"] = fingerprint
 
     async def _prestage_turn_input(
         self,

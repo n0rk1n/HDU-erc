@@ -518,7 +518,7 @@ async def test_emotion_failure_cannot_downgrade_explicit_crisis():
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "message",
-    ["我刚刚吞了很多药。", "I'm standing on the bridge and want to die."],
+    ["我服毒了。", "I took too many pills."],
 )
 async def test_current_danger_with_emotion_and_chat_failure_uses_buffered_local_crisis(
     message,
@@ -548,6 +548,9 @@ async def test_current_danger_with_emotion_and_chat_failure_uses_buffered_local_
         if part["type"] == "messages"
         and part["data"][1].get("langgraph_node") == "generate_reply"
     ]
+    assert [
+        call[1]["metadata"]["langgraph_node"] for call in deps.chat_model.calls
+    ] == ["generate_crisis_reply"]
     snapshot = await graph.aget_state(config)
     assert snapshot.values["messages"][-1].additional_kwargs["safety_level"] == "crisis"
 

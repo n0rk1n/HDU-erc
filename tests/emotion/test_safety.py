@@ -142,6 +142,35 @@ def test_contextual_current_danger_avoids_reported_conditional_and_isolated_term
     assert precheck_risk(message)["explicit_crisis"] is False
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I overdosed.",
+        "I just overdosed.",
+        "I took too many pills.",
+        "我刚刚药物过量了。",
+        "我服毒了。",
+        "我刚吃了很多药。",
+    ],
+)
+def test_precheck_risk_recognizes_natural_completed_poisoning_variants(message):
+    assert precheck_risk(message)["explicit_crisis"] is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "他说他服毒了。",
+        "如果有人服毒怎么办？",
+        "This is an overdose prevention article.",
+        "药。",
+        "楼顶。",
+    ],
+)
+def test_completed_poisoning_context_rejects_reported_conditional_and_isolated_terms(message):
+    assert precheck_risk(message)["explicit_crisis"] is False
+
+
 def test_assess_safety_returns_normal_for_ordinary_message():
     result = assess_safety("I am preparing slides.", None)
 

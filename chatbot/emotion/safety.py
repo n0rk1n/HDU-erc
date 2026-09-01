@@ -67,7 +67,10 @@ _CHINESE_EXPLICIT_ACTION = re.compile(
     rf"(?:想(?:要)?|要|准备|打算|决定|计划|马上|今晚|现在|正在|已经|就)"
     rf"[^，。！？\n]{{0,8}}(?:{_CHINESE_ACTION_PATTERN})"
 )
-_GENERAL_DISCUSSION = re.compile(r"讨论|研究|预防|报道|新闻|文章|演示")
+_GENERAL_DISCUSSION = re.compile(
+    r"讨论|研究|预防|报道|新闻|文章|演示|"
+    r"\b(?:prevention|article|report|news|research|discussion)\b"
+)
 _REPORTED_SPEECH = re.compile(
     r"(?:他|她|他们|她们|有人|朋友|家人|同事).{0,8}(?:说|表示|提到)|"
     r"\b(?:he|she|they|someone|my friend|my family|a friend)\s+"
@@ -94,16 +97,18 @@ _ENGLISH_NEGATED_ACTION = re.compile(
     rf"i(?:'m| am)\s+not\s+(?:going|planning|about|trying)\s+to|i\s+will\s+not)"
     rf"\s+(?:{_ENGLISH_ACTION_PATTERN})\b|\bi(?:'m| am)\s+not\s+suicidal\b"
 )
-_CHINESE_CURRENT_POISONING = re.compile(
-    r"我(?!们|的).{0,10}(?:刚刚|刚才|已经|现在|正在).{0,8}"
-    r"(?:吞(?:了|下)?(?:很多|大量)?药|吃(?:了|下)?(?:很多|大量|过量)?药|"
-    r"过量服药|服毒|喝(?:了)?农药)"
+_CHINESE_OTHER_PERSON = re.compile(r"(?:他|她|他们|她们|有人|朋友|家人|同事)")
+_CHINESE_POISONING_ACTION = re.compile(
+    r"(?:药物过量(?:了)?|过量服药(?:了)?|服毒(?:了)?|喝(?:了)?农药|"
+    r"(?:吞|吃|服)(?:了|下)?(?:很多|大量|过量)(?:的)?药)"
 )
-_ENGLISH_CURRENT_POISONING = re.compile(
-    r"\bi\s+(?:(?:just|already)\s+(?:took|swallowed|drank)|"
-    r"have\s+(?:just|already)\s+(?:taken|swallowed|drunk)|"
-    r"am\s+(?:taking|swallowing|drinking))\s+"
-    r"(?:an?\s+overdose|too\s+many\s+pills?|pills?|poison|pesticide)\b"
+_ENGLISH_FIRST_PERSON = re.compile(r"\bi(?:'m|'ve| am| have)?(?=\s|$)")
+_ENGLISH_POISONING_ACTION = re.compile(
+    r"^\s*(?:(?:have\s+)?(?:just\s+|already\s+)?overdosed\b|"
+    r"(?:have\s+)?(?:just\s+|already\s+)?(?:took|taken|swallowed|drank|drunk)\s+"
+    r"(?:an?\s+overdose|too\s+many\s+pills?|pills?|poison|pesticide)\b|"
+    r"(?:am\s+)?(?:taking|swallowing|drinking)\s+"
+    r"(?:an?\s+overdose|too\s+many\s+pills?|pills?|poison|pesticide)\b)"
 )
 _CHINESE_DANGEROUS_LOCATION = re.compile(
     r"我(?!们|的).{0,10}(?:现在|已经|就)?(?:正在|站在|待在|坐在|走在?)"
@@ -169,14 +174,10 @@ def _has_contextual_current_danger(text: str) -> bool:
         _REPORTED_SPEECH.search(unquoted)
         or _CONDITIONAL_CONTEXT.search(unquoted)
         or _GENERAL_DISCUSSION.search(unquoted)
-    ) and any(
-        pattern.search(unquoted)
-        for pattern in (
-            _CHINESE_CURRENT_POISONING,
-            _ENGLISH_CURRENT_POISONING,
-            _CHINESE_DANGEROUS_LOCATION,
-            _ENGLISH_DANGEROUS_LOCATION,
-        )
+    ) and (
+        _has_current_poisoning(unquoted)
+        or _CHINESE_DANGEROUS_LOCATION.search(unquoted)
+        or _ENGLISH_DANGEROUS_LOCATION.search(unquoted)
     ):
         return True
     for clause in _CLAUSE_BOUNDARY.split(unquoted):
@@ -184,17 +185,26 @@ def _has_contextual_current_danger(text: str) -> bool:
             continue
         if _GENERAL_DISCUSSION.search(clause):
             continue
-        if any(
-            pattern.search(clause)
-            for pattern in (
-                _CHINESE_CURRENT_POISONING,
-                _ENGLISH_CURRENT_POISONING,
-                _CHINESE_DANGEROUS_LOCATION,
-                _ENGLISH_DANGEROUS_LOCATION,
-            )
+        if (
+            _has_current_poisoning(clause)
+            or _CHINESE_DANGEROUS_LOCATION.search(clause)
+            or _ENGLISH_DANGEROUS_LOCATION.search(clause)
         ):
             return True
     return False
+
+
+def _has_current_poisoning(clause: str) -> bool:
+    """Compose speaker context with a current/completed poisoning action."""
+    speaker = _ENGLISH_FIRST_PERSON.search(clause)
+    if speaker and _ENGLISH_POISONING_ACTION.search(clause[speaker.end() :]):
+        return True
+
+    if not _CHINESE_POISONING_ACTION.search(clause):
+        return False
+    if _CHINESE_FIRST_PERSON.search(clause):
+        return True
+    return not _CHINESE_OTHER_PERSON.search(clause)
 
 
 def assess_safety(
