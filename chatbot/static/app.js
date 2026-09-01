@@ -30,7 +30,7 @@ const emotionFeedbackChoices = [
 const state = {
   clientId: null, threadId: null, threads: [], activeRun: null,
   navigationEpoch: 0, streamEpoch: 0, navigationBusy: false,
-  authRecovery: null,
+  authRecovery: null, loadedViews: new Map(),
 };
 const profileState = {profile: {}, questions: [], answers: [], questionIndex: 0};
 
@@ -114,7 +114,8 @@ async function recoverIdentity() {
       fetchJson(threadPath("/emotion-timeline?limit=5", clientId, threadId)),
     ]);
     if (navigationIsCurrent(epoch, clientId, threadId)) {
-      renderSnapshot(snapshot); renderTimeline(timeline.timeline || []);
+      const view = {snapshot, timeline: timeline.timeline || []};
+      state.loadedViews.set(threadId, view); applyLoadedView(view);
     }
     if (epoch === state.navigationEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
     return payload;
@@ -233,17 +234,28 @@ async function deleteCurrentThread() {
   if (!state.threadId || state.navigationBusy) return;
   const deletedThread = state.threadId;
   const operationEpoch = ++state.navigationEpoch;
+  let committed = false;
   abortActiveStream();
   state.navigationBusy = true; updateInteractionLocks();
   try {
     await request(threadPath(), {method: "DELETE"});
+    committed = true;
+    state.loadedViews.delete(deletedThread);
     state.threads = state.threads.filter((item) => item.thread_id !== deletedThread);
     if (state.navigationEpoch === operationEpoch && state.threadId === deletedThread) {
       state.threadId = null;
       localStorage.removeItem("hdu_erc_thread_id");
     }
+    if (messagesEl) messagesEl.replaceChildren();
+    if (emotionTimelineEl) emotionTimelineEl.replaceChildren();
+    renderSafety({level: "normal"});
+    renderThreads();
     try { await listThreads(); } catch (error) {
-      showUiError("对话已删除，正在重新同步");
+      if (state.navigationEpoch === operationEpoch && state.threads.length) {
+        state.navigationBusy = false;
+        try { await selectThread(state.threads[0].thread_id); } catch (loadError) { /* explicit empty recovery state remains */ }
+      }
+      showUiError("对话已删除，但列表同步失败，请稍后刷新");
       throw error;
     }
     if (state.navigationEpoch !== operationEpoch) { renderThreads(); return; }
@@ -251,8 +263,11 @@ async function deleteCurrentThread() {
     if (!state.threads.length) { await createThread(); return; }
     await selectThread(state.threads[0].thread_id);
   } catch (error) {
-    if (state.navigationEpoch === operationEpoch && state.threadId === deletedThread) localStorage.setItem("hdu_erc_thread_id", deletedThread);
-    if (!(await handleMutationUnauthorized(error))) showUiError(state.threadId ? "删除对话失败，请重试" : "对话已删除，请刷新以重新同步");
+    if (committed) {
+      showUiError("对话已删除，但列表同步失败，请稍后刷新");
+    } else if (!(await handleMutationUnauthorized(error))) {
+      showUiError("删除对话失败，请重试");
+    }
     throw error;
   } finally {
     if (state.navigationEpoch === operationEpoch) { state.navigationBusy = false; updateInteractionLocks(); }
@@ -270,6 +285,7 @@ async function selectThread(threadId) {
   localStorage.setItem("hdu_erc_thread_id", threadId);
   renderSafety({level: "normal", guidance: ""});
   if (messagesEl) messagesEl.replaceChildren();
+  if (emotionTimelineEl) emotionTimelineEl.replaceChildren();
   renderThreads();
   updateInteractionLocks();
   try {
@@ -279,7 +295,18 @@ async function selectThread(threadId) {
       state.threadId = previousThreadId;
       if (previousThreadId) localStorage.setItem("hdu_erc_thread_id", previousThreadId);
       else localStorage.removeItem("hdu_erc_thread_id");
-      renderThreads(); showUiError("对话切换失败，请重试");
+      renderThreads();
+      const previousView = state.loadedViews.get(previousThreadId);
+      if (previousView) applyLoadedView(previousView);
+      else if (previousThreadId) {
+        try { await loadCurrentThread(epoch, clientId, previousThreadId); }
+        catch (rollbackError) {
+          if (messagesEl) messagesEl.replaceChildren();
+          if (emotionTimelineEl) emotionTimelineEl.replaceChildren();
+          renderSafety({level: "normal"});
+        }
+      }
+      showUiError("对话切换失败，请重试");
     }
     throw error;
   } finally {
@@ -345,6 +372,11 @@ function renderSnapshot(payload) {
   renderSafety({level: persistedSafety});
 }
 
+function applyLoadedView(view) {
+  renderSnapshot(view.snapshot);
+  renderTimeline(view.timeline || []);
+}
+
 function renderEmotionState(emotion) {
   if (!emotionStatusEl) return;
   if (!emotion || !emotion.primary_emotion) {
@@ -381,19 +413,16 @@ function navigationIsCurrent(epoch, clientId, threadId) {
   return epoch === state.navigationEpoch && clientId === state.clientId && threadId === state.threadId;
 }
 
-async function loadEmotionTimeline(epoch = state.navigationEpoch, clientId = state.clientId, threadId = state.threadId) {
-  const payload = await readJson(() => threadPath("/emotion-timeline?limit=5", state.clientId, state.threadId));
-  if (!navigationIsCurrent(epoch, clientId, threadId)) return false;
-  renderTimeline(payload.timeline || []);
-  return true;
-}
-
 async function loadCurrentThread(epoch = state.navigationEpoch, clientId = state.clientId, threadId = state.threadId) {
   if (!clientId || !threadId) return false;
-  const payload = await readJson(() => threadPath("", state.clientId, state.threadId));
+  const [payload, timelinePayload] = await Promise.all([
+    readJson(() => threadPath("", state.clientId, state.threadId)),
+    readJson(() => threadPath("/emotion-timeline?limit=5", state.clientId, state.threadId)),
+  ]);
   if (!navigationIsCurrent(epoch, clientId, threadId)) return false;
-  renderSnapshot(payload);
-  await loadEmotionTimeline(epoch, clientId, threadId);
+  const view = {snapshot: payload, timeline: timelinePayload.timeline || []};
+  state.loadedViews.set(threadId, view);
+  applyLoadedView(view);
   return navigationIsCurrent(epoch, clientId, threadId);
 }
 
@@ -509,6 +538,7 @@ async function streamMessage(message) {
   const navigationEpoch = state.navigationEpoch;
   const optimistic = addMessage("human", message);
   let aiMessage = null;
+  let streamCompleted = false;
   try {
     await runStream(threadPath("/messages:stream"), {message, request_id: crypto.randomUUID()}, {
       user_message(data) {
@@ -528,11 +558,13 @@ async function streamMessage(message) {
       },
       done() {},
     });
+    streamCompleted = true;
     if (streamClient === state.clientId && streamThread === state.threadId) {
-      await loadCurrentThread(navigationEpoch, streamClient, streamThread);
+      try { await loadCurrentThread(navigationEpoch, streamClient, streamThread); }
+      catch (refreshError) { showUiError("回复已完成，但对话刷新失败，请稍后重试"); }
     }
   } catch (error) {
-    if (error.name !== "AbortError" && streamClient === state.clientId && streamThread === state.threadId) {
+    if (!streamCompleted && error.name !== "AbortError" && streamClient === state.clientId && streamThread === state.threadId) {
       if (!aiMessage) aiMessage = addMessage("ai", "");
       aiMessage.bubble.textContent = "发送失败，请稍后重试";
     }
@@ -611,16 +643,19 @@ async function submitRegeneration(wrapper, messageId, reason, controls, status) 
   const bubble = wrapper.children[0];
   const originalContent = bubble.textContent;
   let streamed = "";
+  let streamCompleted = false;
   try {
     await runStream(threadPath(`/messages/${encodeURIComponent(messageId)}/regenerate:stream`), {reason, request_id: crypto.randomUUID()}, {
       token(data) { streamed += data.content; bubble.textContent = streamed; },
       done(data) { bubble.textContent = data.content; wrapper.setAttribute("data-message-id", data.message_id); },
       error(data) { throw new Error(data.error_code || "regeneration_failed"); },
     });
-    await loadCurrentThread();
+    streamCompleted = true;
+    try { await loadCurrentThread(); }
+    catch (refreshError) { status.textContent = "已重新生成，但对话刷新失败"; }
   } catch (error) {
-    bubble.textContent = originalContent;
-    if (error.name !== "AbortError") { buttons.forEach((button) => { button.disabled = false; }); status.textContent = "重新生成失败"; }
+    if (!streamCompleted) bubble.textContent = originalContent;
+    if (!streamCompleted && error.name !== "AbortError") { buttons.forEach((button) => { button.disabled = false; }); status.textContent = "重新生成失败"; }
   }
 }
 
@@ -639,7 +674,13 @@ async function requestProfileDraft() {
 function closeProfilePanel() {
   if (profilePanelEl) profilePanelEl.hidden = true;
   if (profileBackdropEl) profileBackdropEl.hidden = true;
-  if (profileState.previousFocus && profileState.previousFocus.focus) profileState.previousFocus.focus();
+  const previousIsHiddenPrompt = profileState.previousFocus === profilePromptStartEl || profileState.previousFocus === profilePromptSkipEl;
+  const previousIsVisible = profileState.previousFocus && profileState.previousFocus.focus
+    && profileState.previousFocus.hidden !== true && profileState.previousFocus.isConnected !== false
+    && !previousIsHiddenPrompt;
+  const fallback = profileButtonEl && profileButtonEl.hidden !== true ? profileButtonEl : inputEl;
+  if (previousIsVisible) profileState.previousFocus.focus();
+  else if (fallback && fallback.focus) fallback.focus();
   profileState.previousFocus = null;
 }
 function clearProfileBody() { if (profilePanelBodyEl) profilePanelBodyEl.replaceChildren(); }
@@ -661,6 +702,9 @@ async function openProfilePanel() {
 async function startProfileOnboarding() {
   profileState.previousFocus = document.activeElement || null;
   if (profilePromptEl) profilePromptEl.hidden = true; if (profilePanelEl) profilePanelEl.hidden = false; if (profileBackdropEl) profileBackdropEl.hidden = false;
+  if (profileState.previousFocus === profilePromptStartEl || profileState.previousFocus === profilePromptSkipEl) {
+    profileState.previousFocus = profileButtonEl;
+  }
   if (profileCloseEl) profileCloseEl.focus();
   try {
     const payload = await fetchJson("/api/profile/onboarding/questions");

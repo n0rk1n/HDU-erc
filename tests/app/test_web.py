@@ -139,7 +139,7 @@ class Element {
   replaceChildren(...items){this.children=[];items.forEach(c=>this.appendChild(c));}
   addEventListener(n,f){this.listeners[n]=f;} setAttribute(n,v){this.attributes[n]=v;}
   remove(){if(this.parent)this.parent.children=this.parent.children.filter(c=>c!==this);}
-  focus(){} requestSubmit(){} set innerHTML(v){this.children=[];this._html=v;} get innerHTML(){return this._html||"";}
+  focus(){this.focused=true;} requestSubmit(){} set innerHTML(v){this.children=[];this._html=v;} get innerHTML(){return this._html||"";}
 }
 const ids=["messages","chat-form","message-input","send-button","emotion-status","safety-status","emotion-timeline","thread-list","new-thread-button","delete-thread-button"];
 const elements=Object.fromEntries(ids.map(id=>[`#${id}`,new Element(id)]));
@@ -242,6 +242,60 @@ setImmediate(()=>setImmediate(async()=>{try{assert.ok(initialized);const selecti
 ''')
 
 
+def test_static_failed_thread_navigation_restores_atomic_previous_view():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");
+const store=new Map([["hdu_erc_client_id","c"],["hdu_erc_thread_id","home"]]);
+const fetch=async(url,options={})=>{
+ if(url==="/api/clients/c/threads")return response({threads:[{thread_id:"home",title:"H"},{thread_id:"timeline-fails",title:"T"},{thread_id:"snapshot-fails",title:"S"}]});
+ if(url==="/api/clients/c/threads/home")return response({messages:[{role:"ai",content:"HOME",id:"h",safety_level:"crisis",feedback:"like"}],emotion:{primary_emotion:"calm"}});
+ if(url==="/api/clients/c/threads/home/emotion-timeline?limit=5")return response({timeline:[{turn_count:1,primary_emotion:"HOME_EMOTION"}]});
+ if(url==="/api/clients/c/threads/timeline-fails")return response({messages:[{role:"ai",content:"TARGET_PARTIAL",id:"t",safety_level:"normal"}],emotion:null});
+ if(url==="/api/clients/c/threads/timeline-fails/emotion-timeline?limit=5")return response({},500);
+ if(url==="/api/clients/c/threads/snapshot-fails")return response({},500);
+ if(url==="/api/clients/c/threads/snapshot-fails/emotion-timeline?limit=5")return response({timeline:[{primary_emotion:"SHOULD_NOT_RENDER"}]});
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+function assertHome(){assert.equal(store.get("hdu_erc_thread_id"),"home");assert.equal(elements["#messages"].children[0].children[0].textContent,"HOME");assert.ok(elements["#emotion-timeline"].children[0].textContent.includes("HOME_EMOTION"));assert.equal(elements["#safety-status"].hidden,false);assert.ok(elements["#safety-status"].textContent.includes("紧急"));}
+setImmediate(()=>setImmediate(async()=>{try{assertHome();await assert.rejects(context.__HDU_ERC_TEST__.selectThread("timeline-fails"));assertHome();await assert.rejects(context.__HDU_ERC_TEST__.selectThread("snapshot-fails"));assertHome();}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_create_load_failure_keeps_new_catalog_entry_and_restores_old_view():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");const store=new Map([["hdu_erc_client_id","c"],["hdu_erc_thread_id","old"]]);
+const fetch=async(url,options={})=>{
+ if(url==="/api/clients/c/threads"&&!options.method)return response({threads:[{thread_id:"old",title:"旧"}]});
+ if(url==="/api/clients/c/threads"&&options.method==="POST")return response({thread:{thread_id:"new",title:"新"}},201);
+ if(url==="/api/clients/c/threads/old")return response({messages:[{role:"human",content:"旧内容",id:"h"}],emotion:null});
+ if(url==="/api/clients/c/threads/old/emotion-timeline?limit=5")return response({timeline:[{primary_emotion:"旧情绪"}]});
+ if(url==="/api/clients/c/threads/new")return response({},500);
+ if(url==="/api/clients/c/threads/new/emotion-timeline?limit=5")return response({timeline:[]});
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(async()=>{try{await assert.rejects(context.__HDU_ERC_TEST__.createThread());assert.equal(store.get("hdu_erc_thread_id"),"old");assert.equal(elements["#messages"].children[0].children[0].textContent,"旧内容");const ids=elements["#thread-list"].children.map(li=>li.children[0].attributes["data-thread-id"]);assert.deepEqual(ids,["old","new"]);}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
+def test_static_committed_delete_list_failure_never_restores_deleted_thread():
+    _run_node(NODE_DOM + r'''
+const assert=require("assert"),fs=require("fs"),vm=require("vm");const store=new Map([["hdu_erc_client_id","c"],["hdu_erc_thread_id","deleted"]]);let deleted=false;
+const fetch=async(url,options={})=>{
+ if(url==="/api/clients/c/threads"&&!options.method)return deleted?response({},500):response({threads:[{thread_id:"deleted",title:"删"},{thread_id:"remain",title:"留"}]});
+ if(url==="/api/clients/c/threads/deleted"&&options.method==="DELETE"){deleted=true;return response({},204);}
+ if(url==="/api/clients/c/threads/deleted")return response({messages:[{role:"human",content:"DELETED_SECRET",id:"d"}],emotion:null});
+ if(url==="/api/clients/c/threads/deleted/emotion-timeline?limit=5")return response({timeline:[]});
+ if(url==="/api/clients/c/threads/remain")return response({messages:[{role:"human",content:"REMAIN",id:"r"}],emotion:null});
+ if(url==="/api/clients/c/threads/remain/emotion-timeline?limit=5")return response({timeline:[]});
+ throw new Error(`unexpected ${url}`);};
+const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
+vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
+setImmediate(()=>setImmediate(async()=>{try{await assert.rejects(context.__HDU_ERC_TEST__.deleteCurrentThread());assert.equal(store.get("hdu_erc_thread_id"),"remain");assert.equal(elements["#messages"].children[0].children[0].textContent,"REMAIN");const ids=elements["#thread-list"].children.map(li=>li.children[0].attributes["data-thread-id"]);assert.deepEqual(ids,["remain"]);assert.ok(!elements["#messages"].children.map(x=>x.children[0].textContent).join(" ").includes("DELETED"));}catch(e){console.error(e);process.exit(1);}}));
+''')
+
+
 def test_static_navigation_failures_rollback_or_enter_explicit_resync_state():
     _run_node(NODE_DOM + r'''
 const assert=require("assert"),fs=require("fs"),vm=require("vm");
@@ -320,7 +374,7 @@ setImmediate(()=>setImmediate(async()=>{try{
   controls.children[3].listeners.click();const emotionChoices=controls.children[4];await emotionChoices.children[0].listeners.click();const emotionFeedback=calls.find(c=>c.url.endsWith("/emotion-feedback"));assert.equal(emotionFeedback.options.method,"POST");assert.deepEqual(JSON.parse(emotionFeedback.options.body),{message_id:"a1",feedback:"accurate",predicted_emotion:"sad",turn_count:1});assert.ok(calls.some(c=>c.url.endsWith("/emotion-timeline?limit=5")));
   await controls.children[0].listeners.click();const feedback=calls.find(c=>c.url.endsWith("/messages/a1/feedback"));assert.equal(feedback.options.method,"PATCH");assert.deepEqual(JSON.parse(feedback.options.body),{feedback:"like"});
   await elements["#profile-button"].listeners.click();await Promise.resolve();const editForm=elements["#profile-panel-body"].children[0];assert.equal(editForm.className,"profile-form");const preferred=editForm.children[0].children[0];preferred.value="新称呼";await editForm.listeners.submit({preventDefault(){}});const saved=calls.find(c=>c.options.method==="PUT");assert.deepEqual(JSON.parse(saved.options.body),{profile:{preferred_name:"新称呼"}});
-  await elements["#profile-onboarding-start"].listeners.click();const questionForm=elements["#profile-panel-body"].children[0];questionForm.children[0].children[0].value="草稿称呼";await questionForm.listeners.submit({preventDefault(){}});const draft=calls.find(c=>c.url.endsWith("/profile/draft"));assert.equal(draft.options.method,"POST");assert.deepEqual(JSON.parse(draft.options.body),{thread_id:"t",answers:[{key:"preferred_name",answer:"草稿称呼"}]});assert.equal(elements["#profile-panel-body"].children[0].className,"profile-form");
+  context.document.activeElement=elements["#profile-onboarding-start"];await elements["#profile-onboarding-start"].listeners.click();const questionForm=elements["#profile-panel-body"].children[0];questionForm.children[0].children[0].value="草稿称呼";await questionForm.listeners.submit({preventDefault(){}});const draft=calls.find(c=>c.url.endsWith("/profile/draft"));assert.equal(draft.options.method,"POST");assert.deepEqual(JSON.parse(draft.options.body),{thread_id:"t",answers:[{key:"preferred_name",answer:"草稿称呼"}]});assert.equal(elements["#profile-panel-body"].children[0].className,"profile-form");elements["#profile-close"].listeners.click();assert.equal(elements["#profile-button"].focused,true);assert.notEqual(elements["#profile-onboarding-start"].focused,true);
   assert.ok(profileGets>=1);
 }catch(e){console.error(e);process.exit(1);}}));
 ''')
