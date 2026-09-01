@@ -29,6 +29,7 @@ def finalize_turn(
     }
     processed_requests = _newest_requests(
         processed_requests,
+        current_request_id=request_id,
         limit=graph_config.request_history_limit,
     )
     writer(
@@ -40,19 +41,7 @@ def finalize_turn(
     return {
         "processed_requests": processed_requests,
         "thread_meta": {**state.get("thread_meta", {}), "updated_at": completed_at},
-        "input_message": "",
-        "target_message_id": "",
-        "regeneration_reason": "",
-        "profile_answers": [],
-        "risk": {},
-        "profile_context": "",
-        "memory_context": "",
-        "safety_state": {},
-        "response_content": "",
-        "response_message_id": "",
-        "error_code": "",
-        "memory_warning": "",
-        "replay_request": False,
+        **_terminal_cleanup_delta(),
     }
 
 
@@ -60,7 +49,7 @@ def replay_completed_request(
     state: ConversationState,
     runtime,
     writer,
-) -> dict[str, bool]:
+) -> dict[str, Any]:
     """Emit the already completed full response without invoking external dependencies."""
     request_id = state.get("request_id") or runtime.context["request_id"]
     result = state.get("processed_requests", {}).get(request_id, {})
@@ -80,16 +69,44 @@ def replay_completed_request(
             },
         }
     )
-    return {"replay_request": False}
+    return _terminal_cleanup_delta()
+
+
+def _terminal_cleanup_delta() -> dict[str, Any]:
+    return {
+        "operation": "",
+        "request_id": "",
+        "input_message": "",
+        "target_message_id": "",
+        "regeneration_reason": "",
+        "profile_answers": [],
+        "risk": {},
+        "profile_context": "",
+        "memory_context": "",
+        "safety_state": {},
+        "response_content": "",
+        "response_message_id": "",
+        "error_code": "",
+        "memory_warning": "",
+        "replay_request": False,
+    }
 
 
 def _newest_requests(
     processed_requests: dict[str, dict[str, Any]],
     *,
+    current_request_id: str,
     limit: int,
 ) -> dict[str, dict[str, Any]]:
-    newest = sorted(
-        processed_requests.items(),
+    current = processed_requests[current_request_id]
+    remaining = sorted(
+        (
+            item
+            for item in processed_requests.items()
+            if item[0] != current_request_id
+        ),
         key=lambda item: (str(item[1].get("completed_at", "")), item[0]),
-    )[-limit:]
-    return dict(newest)
+    )
+    remaining_limit = max(0, limit - 1)
+    newest_remaining = remaining[-remaining_limit:] if remaining_limit else []
+    return dict([*newest_remaining, (current_request_id, current)])
