@@ -111,6 +111,13 @@ body {
   font-size: 14px;
 }
 
+.app-status {
+  min-height: 20px;
+  margin: 6px 0 0;
+  color: #b42318;
+  font-size: 13px;
+}
+
 .safety-status {
   margin-top: 6px;
   color: #9a3412;

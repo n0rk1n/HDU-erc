@@ -3,6 +3,7 @@ const formEl = document.querySelector("#chat-form");
 const inputEl = document.querySelector("#message-input");
 const sendButtonEl = document.querySelector("#send-button");
 const emotionStatusEl = document.querySelector("#emotion-status");
+const appStatusEl = document.querySelector("#app-status");
 const safetyStatusEl = document.querySelector("#safety-status");
 const emotionTimelineEl = document.querySelector("#emotion-timeline");
 const threadListEl = document.querySelector("#thread-list");
@@ -30,7 +31,7 @@ const emotionFeedbackChoices = [
 const state = {
   clientId: null, threadId: null, threads: [], activeRun: null,
   navigationEpoch: 0, streamEpoch: 0, navigationBusy: false,
-  authRecovery: null, loadedViews: new Map(),
+  authRecovery: null, loadedViews: new Map(), currentView: null,
 };
 const profileState = {profile: {}, questions: [], answers: [], questionIndex: 0};
 
@@ -60,7 +61,7 @@ function updateInteractionLocks() {
 }
 
 function showUiError(message) {
-  if (emotionStatusEl) emotionStatusEl.textContent = message;
+  if (appStatusEl) appStatusEl.textContent = message;
 }
 
 function abortActiveStream() {
@@ -276,6 +277,7 @@ async function deleteCurrentThread() {
 
 async function selectThread(threadId) {
   if (!threadId) return;
+  showUiError("");
   const previousThreadId = state.threadId;
   const clientId = state.clientId;
   const epoch = ++state.navigationEpoch;
@@ -373,8 +375,39 @@ function renderSnapshot(payload) {
 }
 
 function applyLoadedView(view) {
+  state.currentView = cloneView(view);
   renderSnapshot(view.snapshot);
   renderTimeline(view.timeline || []);
+}
+
+function cloneValue(value) {
+  if (Array.isArray(value)) return value.map(cloneValue);
+  if (value && typeof value === "object") {
+    const copy = {};
+    Object.entries(value).forEach(([key, item]) => { copy[key] = cloneValue(item); });
+    return copy;
+  }
+  return value;
+}
+
+function cloneView(view) {
+  if (!view) return {snapshot: {messages: [], emotion: null, metadata: {}}, timeline: []};
+  return cloneValue(view);
+}
+
+function upsertMessage(messages, message) {
+  if (!message || !message.id) return messages;
+  const index = messages.findIndex((item) => item.id === message.id);
+  if (index < 0) messages.push(message);
+  else messages[index] = {...messages[index], ...message};
+  return messages;
+}
+
+function commitSuccessfulView(threadId, view) {
+  const committed = cloneView(view);
+  state.loadedViews.set(threadId, committed);
+  if (state.threadId === threadId) state.currentView = cloneView(committed);
+  return committed;
 }
 
 function renderEmotionState(emotion) {
@@ -536,6 +569,13 @@ async function streamMessage(message) {
   const streamClient = state.clientId;
   const streamThread = state.threadId;
   const navigationEpoch = state.navigationEpoch;
+  const successfulView = cloneView(state.loadedViews.get(streamThread) || state.currentView);
+  let persistedUser = null;
+  let persistedAssistant = null;
+  let persistedSafety = (() => {
+    const latestAi = successfulView.snapshot.messages.slice().reverse().find((item) => item.role === "ai");
+    return latestAi && ["normal", "supportive", "crisis"].includes(latestAi.safety_level) ? latestAi.safety_level : "normal";
+  })();
   const optimistic = addMessage("human", message);
   let aiMessage = null;
   let streamCompleted = false;
@@ -543,11 +583,12 @@ async function streamMessage(message) {
     await runStream(threadPath("/messages:stream"), {message, request_id: crypto.randomUUID()}, {
       user_message(data) {
         optimistic.wrapper.setAttribute("data-message-id", data.message_id);
+        persistedUser = {id: data.message_id, role: "human", content: data.content};
       },
       emotion_start() { emotionStatusEl.textContent = "情感状态：正在分析情绪…"; },
-      emotion_done(data) { renderEmotionState(data.state); },
+      emotion_done(data) { successfulView.snapshot.emotion = cloneValue(data.state); renderEmotionState(data.state); },
       emotion_error() { emotionStatusEl.textContent = "情感状态：情感分析失败，本轮继续回复"; },
-      safety(data) { renderSafety(data); },
+      safety(data) { persistedSafety = data.level; renderSafety(data); },
       token(data) {
         if (!aiMessage) aiMessage = addMessage("ai", "");
         aiMessage.bubble.textContent += data.content;
@@ -556,12 +597,26 @@ async function streamMessage(message) {
       error(data) {
         throw new Error(data.error_code || "stream_failed");
       },
-      done() {},
+      done(data) {
+        const emotionState = successfulView.snapshot.emotion;
+        persistedAssistant = {
+          id: data.message_id, role: "ai", content: data.content,
+          safety_level: persistedSafety,
+          emotion_state: emotionState ? cloneValue(emotionState) : null,
+          predicted_emotion: emotionState && emotionState.primary_emotion ? emotionState.primary_emotion : "",
+        };
+      },
     });
     streamCompleted = true;
+    if (persistedUser) upsertMessage(successfulView.snapshot.messages, persistedUser);
+    if (persistedAssistant) upsertMessage(successfulView.snapshot.messages, persistedAssistant);
+    const committedView = commitSuccessfulView(streamThread, successfulView);
     if (streamClient === state.clientId && streamThread === state.threadId) {
       try { await loadCurrentThread(navigationEpoch, streamClient, streamThread); }
-      catch (refreshError) { showUiError("回复已完成，但对话刷新失败，请稍后重试"); }
+      catch (refreshError) {
+        applyLoadedView(committedView);
+        showUiError("回复已完成，但对话刷新失败，请稍后重试");
+      }
     }
   } catch (error) {
     if (!streamCompleted && error.name !== "AbortError" && streamClient === state.clientId && streamThread === state.threadId) {
@@ -642,17 +697,34 @@ async function submitRegeneration(wrapper, messageId, reason, controls, status) 
   const buttons = allButtons(controls); buttons.forEach((button) => { button.disabled = true; });
   const bubble = wrapper.children[0];
   const originalContent = bubble.textContent;
+  const regenerationClient = state.clientId;
+  const regenerationThread = state.threadId;
+  const regenerationNavigationEpoch = state.navigationEpoch;
+  const regenerationView = cloneView(state.loadedViews.get(regenerationThread) || state.currentView);
+  const originalMessage = regenerationView.snapshot.messages.find((message) => message.id === messageId) || {};
+  let regeneratedMessage = null;
   let streamed = "";
   let streamCompleted = false;
   try {
     await runStream(threadPath(`/messages/${encodeURIComponent(messageId)}/regenerate:stream`), {reason, request_id: crypto.randomUUID()}, {
       token(data) { streamed += data.content; bubble.textContent = streamed; },
-      done(data) { bubble.textContent = data.content; wrapper.setAttribute("data-message-id", data.message_id); },
+      done(data) {
+        bubble.textContent = data.content; wrapper.setAttribute("data-message-id", data.message_id);
+        regeneratedMessage = {
+          ...originalMessage, id: data.message_id, role: "ai", content: data.content,
+          original_content: originalMessage.original_content != null ? originalMessage.original_content : originalMessage.content,
+          regeneration_reason: data.reason || reason, regenerated: true,
+        };
+      },
       error(data) { throw new Error(data.error_code || "regeneration_failed"); },
     });
     streamCompleted = true;
-    try { await loadCurrentThread(); }
-    catch (refreshError) { status.textContent = "已重新生成，但对话刷新失败"; }
+    if (regeneratedMessage) upsertMessage(regenerationView.snapshot.messages, regeneratedMessage);
+    const committedView = commitSuccessfulView(regenerationThread, regenerationView);
+    if (state.clientId === regenerationClient && state.threadId === regenerationThread) {
+      try { await loadCurrentThread(regenerationNavigationEpoch, regenerationClient, regenerationThread); }
+      catch (refreshError) { applyLoadedView(committedView); status.textContent = "已重新生成，但对话刷新失败"; }
+    }
   } catch (error) {
     if (!streamCompleted) bubble.textContent = originalContent;
     if (!streamCompleted && error.name !== "AbortError") { buttons.forEach((button) => { button.disabled = false; }); status.textContent = "重新生成失败"; }
@@ -735,7 +807,7 @@ async function initialize() {
   try {
     await initializeIdentity(); renderThreads(); await loadCurrentThread(); maybeShowProfilePrompt();
   } catch (error) {
-    if (emotionStatusEl) emotionStatusEl.textContent = "加载失败，请刷新重试";
+    showUiError("加载失败，请刷新重试");
   } finally { updateInteractionLocks(); }
 }
 
