@@ -3,6 +3,8 @@ from pathlib import Path
 import pytest
 
 import chatbot.profile.repository as profile
+from chatbot.core.config import GraphConfig
+from chatbot.persistence.runtime import open_persistence
 from chatbot.core.runtime_store import RuntimeStore
 from chatbot.profile import load_profile, format_profile, save_profile
 from chatbot.profile.onboarding import MAX_PROFILE_VALUE_LENGTH
@@ -89,6 +91,23 @@ def test_save_profile_sanitizes_direct_call_input(profile_file):
         "preferred_name": "小明",
         "response_style": "x" * MAX_PROFILE_VALUE_LENGTH,
     }
+
+
+@pytest.mark.asyncio
+async def test_profile_is_shared_only_inside_client_namespace(tmp_path):
+    config = GraphConfig(
+        checkpoint_db_path=str(tmp_path / "checkpoints.sqlite3"),
+        store_db_path=str(tmp_path / "store.sqlite3"),
+        timeline_limit=50,
+        request_history_limit=64,
+        strict_msgpack=True,
+        client_id_signing_secret="a" * 32,
+    )
+    async with open_persistence(config) as handles:
+        await save_profile(handles.store, "client-a", {"response_style": "简短"})
+
+        assert await load_profile(handles.store, "client-a") == {"response_style": "简短"}
+        assert await load_profile(handles.store, "client-b") == {}
 
 
 def test_format_profile_empty():
