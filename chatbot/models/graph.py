@@ -48,6 +48,7 @@ class ProfileAnswer(TypedDict):
 class RequestResult(TypedDict, total=False):
     status: RequestStatus
     response_message_id: str
+    content: str
     error_code: str
     completed_at: str
 
