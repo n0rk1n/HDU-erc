@@ -28,7 +28,11 @@ class RuntimeOperationError(ValueError):
 
 
 class ConversationRuntime:
-    """Own one compiled graph and serialize mutations within each thread."""
+    """Own one graph and serialize thread work plus client catalog reconciliation.
+
+    Methods needing both lock domains acquire the thread lock before the catalog
+    lock. Catalog-only methods never call a thread-locking method.
+    """
 
     def __init__(
         self,
@@ -47,6 +51,7 @@ class ConversationRuntime:
             dependencies.memory_repository if dependencies is not None else None
         )
         self._thread_locks: dict[str, asyncio.Lock] = {}
+        self._catalog_locks: dict[str, asyncio.Lock] = {}
 
     async def acreate_thread(
         self,
@@ -55,23 +60,32 @@ class ConversationRuntime:
         title: str = "新对话",
     ) -> ThreadRecord:
         """Create a directory record and its initial checkpoint atomically enough to roll back."""
-        record = await self.thread_repository.create(client_id, title=title)
-        try:
-            await self.graph.aupdate_state(
-                self._config(record.thread_id),
-                {
-                    "thread_meta": {
-                        "thread_id": record.thread_id,
-                        "title": record.title,
-                        "created_at": record.created_at,
-                        "updated_at": record.updated_at,
-                    }
-                },
+        async with self._catalog_lock_for(client_id):
+            record = await self.thread_repository.create(client_id, title=title)
+            try:
+                await self.graph.aupdate_state(
+                    self._config(record.thread_id),
+                    {
+                        "thread_meta": {
+                            "thread_id": record.thread_id,
+                            "title": record.title,
+                            "created_at": record.created_at,
+                            "updated_at": record.updated_at,
+                        }
+                    },
+                )
+            except Exception:
+                await self.thread_repository.delete_record(client_id, record.thread_id)
+                raise
+            return record
+
+    async def alist_threads(self, client_id: str) -> list[ThreadRecord]:
+        """List a client catalog after reconciling it with initialized checkpoints."""
+        async with self._catalog_lock_for(client_id):
+            return await self.thread_repository.list(
+                client_id,
+                exists=self._checkpoint_exists,
             )
-        except Exception:
-            await self.thread_repository.delete_record(client_id, record.thread_id)
-            raise
-        return record
 
     async def astream_turn(
         self,
@@ -80,8 +94,9 @@ class ConversationRuntime:
         request_id: str,
         message: str,
     ) -> AsyncIterator[Any]:
-        """Stream one complete turn while retaining the thread lock through cancellation."""
-        async for part in self._astream_locked(
+        """Prevalidate ownership and open a lock-retaining turn iterator."""
+        await self._require_thread(client_id, thread_id)
+        return self._astream_locked(
             client_id,
             thread_id,
             request_id,
@@ -90,8 +105,7 @@ class ConversationRuntime:
                 "request_id": request_id,
                 "input_message": message,
             },
-        ):
-            yield part
+        )
 
     async def astream_regeneration(
         self,
@@ -101,8 +115,9 @@ class ConversationRuntime:
         message_id: str,
         reason: str,
     ) -> AsyncIterator[Any]:
-        """Stream one same-ID regeneration under the thread mutation lock."""
-        async for part in self._astream_locked(
+        """Prevalidate ownership and open a lock-retaining regeneration iterator."""
+        await self._require_thread(client_id, thread_id)
+        return self._astream_locked(
             client_id,
             thread_id,
             request_id,
@@ -112,8 +127,7 @@ class ConversationRuntime:
                 "target_message_id": message_id,
                 "regeneration_reason": reason,
             },
-        ):
-            yield part
+        )
 
     async def ainvoke_profile_draft(
         self,
@@ -123,22 +137,24 @@ class ConversationRuntime:
         answers: list[ProfileAnswer],
     ) -> dict[str, str]:
         """Produce an unpersisted profile proposal for an owned thread."""
-        await self._require_thread(client_id, thread_id)
-        result = await self.graph.ainvoke(
-            {
-                "operation": "onboard",
-                "request_id": request_id,
-                "profile_answers": answers,
-            },
-            self._config(thread_id),
-            context=self._context(client_id, request_id),
-        )
-        return dict(result.get("profile_draft", {}))
+        async with self.lock_for(thread_id):
+            await self._require_thread(client_id, thread_id)
+            result = await self.graph.ainvoke(
+                {
+                    "operation": "onboard",
+                    "request_id": request_id,
+                    "profile_answers": answers,
+                },
+                self._config(thread_id),
+                context=self._context(client_id, request_id),
+            )
+            return dict(result.get("profile_draft", {}))
 
     async def aget_state(self, client_id: str, thread_id: str) -> StateSnapshot:
         """Return the current official StateSnapshot for an owned thread."""
-        await self._require_thread(client_id, thread_id)
-        return await self.graph.aget_state(self._config(thread_id))
+        async with self.lock_for(thread_id):
+            await self._require_thread(client_id, thread_id)
+            return await self.graph.aget_state(self._config(thread_id))
 
     async def aupdate_message_feedback(
         self,
@@ -195,7 +211,8 @@ class ConversationRuntime:
             except Exception as exc:
                 raise RuntimeOperationError("thread_delete_failed") from exc
             try:
-                await self.thread_repository.delete_record(client_id, thread_id)
+                async with self._catalog_lock_for(client_id):
+                    await self.thread_repository.delete_record(client_id, thread_id)
             except Exception as exc:
                 raise RuntimeOperationError("thread_delete_failed") from exc
         finally:
@@ -207,6 +224,13 @@ class ConversationRuntime:
         if lock is None:
             lock = asyncio.Lock()
             self._thread_locks[thread_id] = lock
+        return lock
+
+    def _catalog_lock_for(self, client_id: str) -> asyncio.Lock:
+        lock = self._catalog_locks.get(client_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._catalog_locks[client_id] = lock
         return lock
 
     async def _astream_locked(

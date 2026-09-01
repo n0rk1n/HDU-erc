@@ -18,6 +18,16 @@ from chatbot.graphs.state import ConversationState
 from chatbot.models.graph import GraphContext, SafetyDecision
 
 
+APPLICATION_AUDIT_FIELDS = (
+    "feedback",
+    "turn_count",
+    "emotion_state",
+    "predicted_emotion",
+    "safety_level",
+    "safety_note",
+)
+
+
 class RegenerationError(ValueError):
     """Stable domain failure raised by the regeneration child graph."""
 
@@ -146,14 +156,16 @@ async def generate_variant(
     except Exception as exc:
         raise RegenerationError("generation_failed") from exc
     target = _eligible_target_message(state)
+    original_audit = _original_application_audit(target)
     metadata = {
-        **_model_additional_kwargs(result),
-        **target.additional_kwargs,
+        **original_audit,
         "feedback": None,
         "original_content": _message_text(target),
+        "original_audit": original_audit,
         "regeneration_reason": state["regeneration_reason"],
         "regenerated_at": _utc_timestamp(deps.now()),
         "regenerated": True,
+        **_model_additional_kwargs(result),
     }
     replacement = AIMessage(
         id=target.id,
@@ -303,6 +315,14 @@ def _complete_content(result: Any) -> str:
 def _model_additional_kwargs(result: Any) -> dict[str, Any]:
     value = getattr(result, "additional_kwargs", {})
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _original_application_audit(target: AIMessage) -> dict[str, Any]:
+    return {
+        key: target.additional_kwargs[key]
+        for key in APPLICATION_AUDIT_FIELDS
+        if key in target.additional_kwargs
+    }
 
 
 def _model_response_metadata(result: Any) -> dict[str, Any]:

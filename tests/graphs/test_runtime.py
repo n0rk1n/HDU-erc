@@ -92,6 +92,36 @@ class CancellingChatModel:
             raise
 
 
+class GatedDeleteSaver(InMemorySaver):
+    def __init__(self) -> None:
+        super().__init__()
+        self.delete_started = asyncio.Event()
+        self.allow_delete = asyncio.Event()
+
+    async def adelete_thread(self, thread_id: str) -> None:
+        self.delete_started.set()
+        await self.allow_delete.wait()
+        await super().adelete_thread(thread_id)
+
+
+class GatedUpdateGraph:
+    def __init__(self, graph: Any) -> None:
+        self.graph = graph
+        self.update_calls = 0
+        self.update_started = asyncio.Event()
+        self.allow_update = asyncio.Event()
+
+    async def aupdate_state(self, *args, **kwargs):
+        self.update_calls += 1
+        if self.update_calls == 1:
+            self.update_started.set()
+            await self.allow_update.wait()
+        return await self.graph.aupdate_state(*args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self.graph, name)
+
+
 def configs(tmp_path=None) -> tuple[ChatConfig, GraphConfig]:
     llm = LlmConfig(provider="test", api_key="test", model="test", temperature=0.0)
     graph = GraphConfig(
@@ -113,8 +143,9 @@ def memory_runtime(
     *,
     chat_model: Any | None = None,
     emotion_model: Any | None = None,
+    saver: InMemorySaver | None = None,
 ) -> tuple[ConversationRuntime, InMemorySaver, InMemoryStore]:
-    saver = InMemorySaver()
+    saver = saver or InMemorySaver()
     store = InMemoryStore()
     chat_config, graph_config = configs()
     runtime = build_graph_runtime(
@@ -132,6 +163,136 @@ def memory_runtime(
 
 async def consume(stream) -> list[Any]:
     return [part async for part in stream]
+
+
+async def open_and_consume(stream_awaitable) -> list[Any]:
+    return await consume(await stream_awaitable)
+
+
+@pytest.mark.asyncio
+async def test_stream_open_prevalidates_ownership_before_returning_iterator():
+    """Catches ownership errors being deferred until HTTP streaming has begun."""
+    runtime, _, _ = memory_runtime()
+    record = await runtime.acreate_thread("client-a")
+
+    with pytest.raises(RuntimeOperationError) as turn_error:
+        await runtime.astream_turn("client-b", record.thread_id, "turn-1", "你好")
+    with pytest.raises(RuntimeOperationError) as regeneration_error:
+        await runtime.astream_regeneration(
+            "client-b", record.thread_id, "regen-1", "ai-missing", "其他"
+        )
+
+    assert turn_error.value.code == "thread_not_found"
+    assert regeneration_error.value.code == "thread_not_found"
+
+
+@pytest.mark.asyncio
+async def test_stream_revalidates_if_thread_deleted_after_preflight():
+    """Catches a pre-opened stream resurrecting a thread deleted before iteration."""
+    runtime, saver, _ = memory_runtime()
+    record = await runtime.acreate_thread("client-a")
+    stream = await runtime.astream_turn(
+        "client-a", record.thread_id, "turn-1", "不应写入"
+    )
+
+    await runtime.adelete_thread("client-a", record.thread_id)
+
+    with pytest.raises(RuntimeOperationError) as exc_info:
+        await consume(stream)
+    assert exc_info.value.code == "thread_not_found"
+    assert await saver.aget_tuple(thread_config(record.thread_id)) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["profile", "read"])
+async def test_delete_serializes_checkpoint_reads_and_profile_writes(operation):
+    """Catches checkpoint reads or profile writes racing a same-thread deletion."""
+    saver = GatedDeleteSaver()
+    runtime, _, _ = memory_runtime(saver=saver)
+    record = await runtime.acreate_thread("client-a")
+    delete_task = asyncio.create_task(
+        runtime.adelete_thread("client-a", record.thread_id)
+    )
+    await asyncio.wait_for(saver.delete_started.wait(), timeout=2)
+
+    if operation == "profile":
+        operation_task = asyncio.create_task(
+            runtime.ainvoke_profile_draft(
+                "client-a",
+                record.thread_id,
+                "profile-1",
+                [{"key": "response_style", "answer": "简短"}],
+            )
+        )
+    else:
+        operation_task = asyncio.create_task(
+            runtime.aget_state("client-a", record.thread_id)
+        )
+    await asyncio.sleep(0)
+
+    assert operation_task.done() is False
+    saver.allow_delete.set()
+    await delete_task
+    with pytest.raises(RuntimeOperationError) as exc_info:
+        await operation_task
+
+    assert exc_info.value.code == "thread_not_found"
+    assert await saver.aget_tuple(thread_config(record.thread_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_thread_listing_waits_for_initial_checkpoint_before_reconciliation():
+    """Catches reconciliation deleting a Store record while creation initializes Saver."""
+    base, saver, _ = memory_runtime()
+    gated_graph = GatedUpdateGraph(base.graph)
+    runtime = ConversationRuntime(
+        gated_graph,
+        base.thread_repository,
+        saver,
+        dependencies=base.dependencies,
+    )
+    create_task = asyncio.create_task(
+        runtime.acreate_thread("client-a", title="初始化中")
+    )
+    await asyncio.wait_for(gated_graph.update_started.wait(), timeout=2)
+    pending_records = await runtime.thread_repository.list("client-a")
+    assert len(pending_records) == 1
+
+    list_task = asyncio.create_task(runtime.alist_threads("client-a"))
+    await asyncio.sleep(0)
+    assert list_task.done() is False
+
+    gated_graph.allow_update.set()
+    created = await create_task
+    listed = await list_task
+
+    assert [record.thread_id for record in listed] == [created.thread_id]
+    assert await runtime.thread_repository.owns("client-a", created.thread_id) is True
+    assert await saver.aget_tuple(thread_config(created.thread_id)) is not None
+
+
+@pytest.mark.asyncio
+async def test_catalog_initialization_for_different_clients_remains_concurrent():
+    """Catches one client's catalog initialization globally blocking another client."""
+    base, saver, _ = memory_runtime()
+    gated_graph = GatedUpdateGraph(base.graph)
+    runtime = ConversationRuntime(
+        gated_graph,
+        base.thread_repository,
+        saver,
+        dependencies=base.dependencies,
+    )
+    first_client = asyncio.create_task(runtime.acreate_thread("client-a"))
+    await asyncio.wait_for(gated_graph.update_started.wait(), timeout=2)
+
+    second = await asyncio.wait_for(
+        runtime.acreate_thread("client-b"),
+        timeout=2,
+    )
+
+    assert await runtime.thread_repository.owns("client-b", second.thread_id) is True
+    gated_graph.allow_update.set()
+    await first_client
 
 
 @pytest.mark.asyncio
@@ -156,9 +317,11 @@ async def test_build_runtime_constructs_models_once_and_compiles_parent_once():
 
     record = await runtime.acreate_thread("client-a")
     first_parts = await consume(
-        runtime.astream_turn("client-a", record.thread_id, "req-1", "你好")
+        await runtime.astream_turn("client-a", record.thread_id, "req-1", "你好")
     )
-    await consume(runtime.astream_turn("client-a", record.thread_id, "req-2", "再见"))
+    await consume(
+        await runtime.astream_turn("client-a", record.thread_id, "req-2", "再见")
+    )
 
     assert calls == [chat_config]
     assert first_parts
@@ -176,9 +339,7 @@ async def test_create_thread_initializes_checkpoint_and_rolls_back_on_failure():
 
     checkpoint = await saver.aget_tuple(thread_config(record.thread_id))
     snapshot = await runtime.aget_state("client-a", record.thread_id)
-    reconciled = await runtime.thread_repository.list(
-        "client-a", exists=runtime._checkpoint_exists
-    )
+    reconciled = await runtime.alist_threads("client-a")
     assert checkpoint is not None
     assert [item.thread_id for item in reconciled] == [record.thread_id]
     assert snapshot.values["thread_meta"] == {
@@ -211,14 +372,20 @@ async def test_runtime_serializes_same_thread_and_allows_other_thread():
     model.thread_b = record_b.thread_id
 
     first_a = asyncio.create_task(
-        consume(runtime.astream_turn("client-a", record_a.thread_id, "req-a1", "A1"))
+        open_and_consume(
+            runtime.astream_turn("client-a", record_a.thread_id, "req-a1", "A1")
+        )
     )
     await asyncio.wait_for(model.first_a_entered.wait(), timeout=2)
     second_a = asyncio.create_task(
-        consume(runtime.astream_turn("client-a", record_a.thread_id, "req-a2", "A2"))
+        open_and_consume(
+            runtime.astream_turn("client-a", record_a.thread_id, "req-a2", "A2")
+        )
     )
     first_b = asyncio.create_task(
-        consume(runtime.astream_turn("client-a", record_b.thread_id, "req-b1", "B1"))
+        open_and_consume(
+            runtime.astream_turn("client-a", record_b.thread_id, "req-b1", "B1")
+        )
     )
     await asyncio.wait_for(model.b_entered.wait(), timeout=2)
     await asyncio.sleep(0)
@@ -242,7 +409,9 @@ async def test_cancelled_stream_releases_thread_lock():
     runtime, _, _ = memory_runtime(chat_model=model)
     record = await runtime.acreate_thread("client-a")
     consumer = asyncio.create_task(
-        consume(runtime.astream_turn("client-a", record.thread_id, "req-1", "你好"))
+        open_and_consume(
+            runtime.astream_turn("client-a", record.thread_id, "req-1", "你好")
+        )
     )
     await asyncio.wait_for(model.entered.wait(), timeout=2)
     assert runtime.lock_for(record.thread_id).locked() is True
@@ -264,12 +433,10 @@ async def test_runtime_rejects_unowned_thread_for_read_stream_and_profile_draft(
     with pytest.raises(RuntimeOperationError) as read_error:
         await runtime.aget_state("client-b", record.thread_id)
     with pytest.raises(RuntimeOperationError) as turn_error:
-        await consume(runtime.astream_turn("client-b", record.thread_id, "req-1", "你好"))
+        await runtime.astream_turn("client-b", record.thread_id, "req-1", "你好")
     with pytest.raises(RuntimeOperationError) as regeneration_error:
-        await consume(
-            runtime.astream_regeneration(
-                "client-b", record.thread_id, "regen-1", "ai-missing", "其他"
-            )
+        await runtime.astream_regeneration(
+            "client-b", record.thread_id, "regen-1", "ai-missing", "其他"
         )
     with pytest.raises(RuntimeOperationError) as profile_error:
         await runtime.ainvoke_profile_draft(
@@ -359,24 +526,26 @@ async def test_runtime_regeneration_replays_retry_and_preserves_conflict_code():
     chat_model = StaticModel("回复")
     runtime, _, _ = memory_runtime(chat_model=chat_model)
     record = await runtime.acreate_thread("client-a")
-    await consume(runtime.astream_turn("client-a", record.thread_id, "turn-1", "你好"))
+    await consume(
+        await runtime.astream_turn("client-a", record.thread_id, "turn-1", "你好")
+    )
     snapshot = await runtime.aget_state("client-a", record.thread_id)
     target_id = snapshot.values["messages"][-1].id
 
     first = await consume(
-        runtime.astream_regeneration(
+        await runtime.astream_regeneration(
             "client-a", record.thread_id, "regen-1", target_id, "其他"
         )
     )
     calls_after_first = chat_model.calls
     replay = await consume(
-        runtime.astream_regeneration(
+        await runtime.astream_regeneration(
             "client-a", record.thread_id, "regen-1", target_id, "其他"
         )
     )
     with pytest.raises(RegenerationError) as exc_info:
         await consume(
-            runtime.astream_regeneration(
+            await runtime.astream_regeneration(
                 "client-a", record.thread_id, "regen-2", target_id, "其他"
             )
         )
@@ -468,7 +637,9 @@ async def test_runtime_restores_thread_after_persistence_reopen(tmp_path):
         )
         record = await runtime.acreate_thread("client-a")
         thread_id = record.thread_id
-        await consume(runtime.astream_turn("client-a", thread_id, "req-1", "你好"))
+        await consume(
+            await runtime.astream_turn("client-a", thread_id, "req-1", "你好")
+        )
 
     async with open_persistence(graph_config) as handles:
         reopened = build_graph_runtime(

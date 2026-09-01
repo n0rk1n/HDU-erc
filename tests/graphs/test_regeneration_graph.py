@@ -195,6 +195,17 @@ async def test_regeneration_replaces_same_message_id_and_preserves_original_meta
         "safety_level": "supportive",
         "safety_note": "keep-supportive",
         "original_content": "旧回复",
+        "original_audit": {
+            "feedback": "dislike",
+            "turn_count": 2,
+            "emotion_state": {
+                "primary_emotion": "anxious",
+                "confidence": 0.8,
+            },
+            "predicted_emotion": "anxious",
+            "safety_level": "supportive",
+            "safety_note": "keep-supportive",
+        },
         "regeneration_reason": "不准确",
         "regenerated_at": "2026-09-01T12:30:00+00:00",
         "regenerated": True,
@@ -532,6 +543,8 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
     graph = await compile_graph(make_deps(model, RecordingMemoryRepository()), store)
     state = regeneration_input()
     original = next(message for message in state["messages"] if message.id == "ai-target")
+    original.additional_kwargs["provider_trace"] = "stale-trace"
+    original.additional_kwargs["legacy_provider_only"] = "stale-only"
     original.response_metadata = {"model_name": "old-model", "finish_reason": "length"}
     original.usage_metadata = {
         "input_tokens": 100,
@@ -556,4 +569,16 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
     }
     assert replacement.name == "new-assistant"
     assert replacement.additional_kwargs["provider_trace"] == "fresh-trace"
+    assert "legacy_provider_only" not in replacement.additional_kwargs
     assert replacement.additional_kwargs["original_content"] == "旧回复"
+    assert replacement.additional_kwargs["original_audit"] == {
+        "feedback": "dislike",
+        "turn_count": 2,
+        "emotion_state": {
+            "primary_emotion": "anxious",
+            "confidence": 0.8,
+        },
+        "predicted_emotion": "anxious",
+        "safety_level": "supportive",
+        "safety_note": "keep-supportive",
+    }
