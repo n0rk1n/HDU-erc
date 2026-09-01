@@ -2429,3 +2429,68 @@ def test_static_app_js_is_served():
 
     assert response.status_code == 200
     assert "javascript" in response.headers["content-type"]
+
+
+def test_superseded_global_routes_are_removed():
+    app = create_app(service_factory=lambda: FakeService())
+    client = TestClient(app)
+
+    requests = [
+        ("get", "/api/history", None),
+        ("get", "/api/session", None),
+        ("get", "/api/profile", None),
+        ("put", "/api/profile", {"profile": {}}),
+        ("post", "/api/profile/onboarding/draft", {"answers": []}),
+        ("get", "/api/emotion/timeline", None),
+        ("post", "/api/messages/ai_1/feedback", {"feedback": "like"}),
+        ("post", "/api/emotion/feedback", {"feedback": "accurate"}),
+        ("post", "/api/messages/ai_1/regenerate", {"reason": "其他"}),
+    ]
+
+    for method, path, payload in requests:
+        response = getattr(client, method)(path, json=payload) if payload is not None else getattr(client, method)(path)
+        assert response.status_code == 404, path
+
+
+# These assertions targeted the removed global persistence API. Keep their source
+# temporarily for Task 13's legacy-file deletion, but do not collect contracts that
+# now directly contradict the client/thread-scoped API above.
+_SUPERSEDED_ROUTE_TESTS = {
+    "test_session_endpoint_returns_messages_and_latest_emotion",
+    "test_session_endpoint_matches_emotion_after_restart_turn_count",
+    "test_session_endpoint_matches_emotion_from_stored_dialogue_context",
+    "test_session_endpoint_does_not_fall_back_when_latest_emotion_mismatches",
+    "test_session_endpoint_returns_null_emotion",
+    "test_profile_endpoint_returns_profile",
+    "test_profile_endpoint_reports_empty",
+    "test_save_profile_filters_fields_and_refreshes_chain",
+    "test_save_profile_accepts_raw_unknown_fields",
+    "test_save_profile_returns_500_when_write_fails",
+    "test_profile_onboarding_draft_endpoint",
+    "test_profile_onboarding_draft_accepts_raw_answer_values",
+    "test_profile_onboarding_draft_uses_fallback_without_runtime_chat_llm",
+    "test_profile_onboarding_draft_uses_fallback_when_runtime_chat_llm_has_no_invoke",
+    "test_emotion_timeline_endpoint_returns_recent_states",
+    "test_emotion_timeline_endpoint_ignores_stale_states",
+    "test_session_endpoint_preserves_message_feedback_metadata",
+    "test_session_endpoint_preserves_regeneration_metadata",
+    "test_session_endpoint_returns_null_for_stale_emotion",
+    "test_session_endpoint_returns_null_for_replaced_history",
+    "test_session_endpoint_returns_null_for_substring_collision",
+    "test_session_endpoint_requires_exact_dialogue_context",
+    "test_session_endpoint_checks_full_emotion_prompt_window",
+    "test_history_endpoint_returns_recent_structured_messages",
+    "test_history_endpoint_filters_roles_before_limiting",
+    "test_feedback_endpoint_records_like",
+    "test_feedback_endpoint_records_already_rated",
+    "test_feedback_endpoint_returns_not_found",
+    "test_feedback_endpoint_rejects_non_ai_message",
+    "test_feedback_endpoint_rejects_invalid_feedback",
+    "test_feedback_endpoint_returns_write_failure",
+    "test_emotion_feedback_endpoint_saves_feedback",
+    "test_regenerate_endpoint_returns_new_message",
+    "test_regenerate_endpoint_maps_history_errors",
+    "test_regenerate_endpoint_maps_generation_exception_to_500",
+}
+for _test_name in _SUPERSEDED_ROUTE_TESTS:
+    globals()[_test_name].__test__ = False

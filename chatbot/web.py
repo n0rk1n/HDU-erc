@@ -1,18 +1,23 @@
 """FastAPI Web 入口 —— 提供聊天页面、历史接口和 SSE 流式聊天接口。"""
 
+import base64
+import hashlib
+import hmac
 import json
+import secrets
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from chatbot.chat_service import ChatEvent, ChatService
-from chatbot.core.config import load_config
+from chatbot.core.config import load_config, load_graph_config
 from chatbot.emotion import load_analysis_records, successful_emotion_snapshot
 from chatbot.emotion.feedback import append_emotion_feedback
 from chatbot.emotion.state import EmotionState, timeline_from_records
@@ -24,6 +29,7 @@ from chatbot.core.history import (
 from chatbot.memory.sqlite import build_memory_provider
 from chatbot.core.llm import build_chain, init_session_history
 from chatbot.main import build_runtime_llms
+from chatbot.graphs.runtime import ConversationRuntime, RuntimeOperationError, build_graph_runtime
 from chatbot.memory import load_memory_config
 from chatbot.memory.consolidation import load_memory_consolidation_config
 from chatbot.profile import format_profile, load_profile, save_profile
@@ -33,6 +39,7 @@ from chatbot.profile.onboarding import (
     fallback_profile_draft,
     sanitize_profile,
 )
+from chatbot.persistence import open_persistence
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -67,7 +74,12 @@ class ProfileOnboardingAnswer(BaseModel):
 
 
 class ProfileDraftRequest(BaseModel):
+    thread_id: str
     answers: list[ProfileOnboardingAnswer]
+
+
+class ThreadCreateRequest(BaseModel):
+    title: str = "新对话"
 
 
 def _request_payload(request: BaseModel) -> dict:
@@ -278,14 +290,113 @@ def _session_snapshot(limit: int) -> dict:
     }
 
 
+def _issue_client_id(secret: str) -> str:
+    payload = secrets.token_bytes(32)
+    signature = hmac.digest(secret.encode("utf-8"), payload, hashlib.sha256)
+    token = base64.urlsafe_b64encode(payload + signature).rstrip(b"=").decode("ascii")
+    return f"c_{token}"
+
+
+def _validate_client_id(client_id: str, secret: str) -> str:
+    if not client_id.startswith("c_"):
+        raise HTTPException(status_code=401, detail="invalid_client_id")
+    encoded = client_id[2:]
+    try:
+        raw = base64.b64decode(
+            encoded + "=" * (-len(encoded) % 4),
+            altchars=b"-_",
+            validate=True,
+        )
+    except (ValueError, base64.binascii.Error) as exc:
+        raise HTTPException(status_code=401, detail="invalid_client_id") from exc
+    canonical = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    if not hmac.compare_digest(encoded, canonical) or len(raw) != 64:
+        raise HTTPException(status_code=401, detail="invalid_client_id")
+    payload, supplied = raw[:32], raw[32:]
+    expected = hmac.digest(secret.encode("utf-8"), payload, hashlib.sha256)
+    if not hmac.compare_digest(supplied, expected):
+        raise HTTPException(status_code=401, detail="invalid_client_id")
+    return client_id
+
+
+def _thread_record(record) -> dict[str, str]:
+    return {
+        "thread_id": record.thread_id,
+        "title": record.title,
+        "created_at": record.created_at,
+        "updated_at": record.updated_at,
+    }
+
+
+def _graph_message(message) -> dict[str, Any]:
+    output: dict[str, Any] = {
+        "role": getattr(message, "type", ""),
+        "content": getattr(message, "content", ""),
+    }
+    if getattr(message, "id", None):
+        output["id"] = message.id
+    metadata = getattr(message, "additional_kwargs", {})
+    for key in (
+        "feedback",
+        "regeneration",
+        "regenerated_from",
+        "turn_count",
+        "emotion_state",
+        "predicted_emotion",
+        "safety_level",
+        "original_content",
+        "original_audit",
+        "regeneration_reason",
+        "regenerated_at",
+        "regenerated",
+    ):
+        if key in metadata:
+            output[key] = metadata[key]
+    return output
+
+
+def _thread_snapshot(snapshot) -> dict[str, Any]:
+    values = snapshot.values
+    return {
+        "messages": [_graph_message(message) for message in values.get("messages", [])],
+        "emotion": values.get("emotion_state"),
+        "emotion_timeline": values.get("emotion_timeline", []),
+        "metadata": values.get("thread_meta", {}),
+    }
+
+
 def create_app(service_factory: Callable[[], ChatService] = build_service) -> FastAPI:
-    app = FastAPI(title="Emotion Recognition Chatbot")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        graph_config = load_graph_config()
+        chat_config = load_config([])
+        async with open_persistence(graph_config) as handles:
+            app.state.graph_config = graph_config
+            app.state.graph_store = handles.store
+            app.state.graph_runtime = build_graph_runtime(
+                handles, chat_config, graph_config
+            )
+            app.state.chat_streams = {}
+            yield
+
+    app = FastAPI(title="Emotion Recognition Chatbot", lifespan=lifespan)
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-    @app.on_event("startup")
-    def startup() -> None:
-        app.state.chat_service = service_factory()
-        app.state.chat_streams = {}
+    @app.exception_handler(RuntimeOperationError)
+    async def runtime_error_handler(request: Request, exc: RuntimeOperationError):
+        if exc.code in {"thread_not_found", "message_not_found"}:
+            status_code = 404
+        elif exc.code in {"already_rated", "already_regenerated"}:
+            status_code = 409
+        elif exc.code in {"invalid_feedback", "invalid_input"}:
+            status_code = 422
+        else:
+            status_code = 500
+        return JSONResponse(status_code=status_code, content={"detail": exc.code})
+
+    @app.exception_handler(Exception)
+    async def internal_error_handler(request: Request, exc: Exception):
+        return JSONResponse(status_code=500, content={"detail": "internal_error"})
 
     def get_service() -> ChatService:
         service = getattr(app.state, "chat_service", None)
@@ -301,118 +412,127 @@ def create_app(service_factory: Callable[[], ChatService] = build_service) -> Fa
             app.state.chat_streams = streams
         return streams
 
+    def graph_runtime() -> ConversationRuntime:
+        runtime = getattr(app.state, "graph_runtime", None)
+        if runtime is None:
+            raise HTTPException(status_code=500, detail="graph_runtime_unavailable")
+        return runtime
+
+    def authenticated_client(client_id: str) -> str:
+        graph_config = getattr(app.state, "graph_config", None)
+        if graph_config is None:
+            raise HTTPException(status_code=500, detail="graph_runtime_unavailable")
+        return _validate_client_id(client_id, graph_config.client_id_signing_secret)
+
     @app.get("/")
     def index():
         return FileResponse(STATIC_DIR / "index.html", media_type="text/html")
 
-    @app.get("/api/history")
-    def history(limit: int = Query(default=10, gt=0, le=100)):
-        return {"messages": _recent_messages(limit)}
+    @app.post("/api/clients/bootstrap", status_code=201)
+    async def bootstrap_client():
+        graph_config = app.state.graph_config
+        client_id = _issue_client_id(graph_config.client_id_signing_secret)
+        record = await graph_runtime().acreate_thread(client_id)
+        return {"client_id": client_id, "thread": _thread_record(record)}
 
-    @app.get("/api/session")
-    def session(limit: int = Query(default=10, gt=0, le=100)):
-        return _session_snapshot(limit)
+    @app.get("/api/clients/{client_id}/threads")
+    async def list_threads(client_id: str):
+        authenticated_client(client_id)
+        records = await graph_runtime().alist_threads(client_id)
+        return {"threads": [_thread_record(record) for record in records]}
 
-    @app.get("/api/profile")
-    def profile():
-        profile_data = load_profile()
-        return {"profile": profile_data, "is_empty": not bool(profile_data)}
+    @app.post("/api/clients/{client_id}/threads", status_code=201)
+    async def create_thread(client_id: str, request: ThreadCreateRequest):
+        authenticated_client(client_id)
+        record = await graph_runtime().acreate_thread(
+            client_id, title=request.title.strip() or "新对话"
+        )
+        return {"thread": _thread_record(record)}
 
-    @app.put("/api/profile")
-    def update_profile(
-        request: ProfileRequest,
-        service: ChatService = Depends(get_service),
-    ):
+    @app.get("/api/clients/{client_id}/threads/{thread_id}")
+    async def get_thread(client_id: str, thread_id: str):
+        authenticated_client(client_id)
+        snapshot = await graph_runtime().aget_state(client_id, thread_id)
+        return _thread_snapshot(snapshot)
+
+    @app.delete("/api/clients/{client_id}/threads/{thread_id}", status_code=204)
+    async def delete_thread(client_id: str, thread_id: str):
+        authenticated_client(client_id)
+        await graph_runtime().adelete_thread(client_id, thread_id)
+        return Response(status_code=204)
+
+    @app.get("/api/clients/{client_id}/profile")
+    async def get_profile(client_id: str):
+        authenticated_client(client_id)
+        profile = await load_profile(app.state.graph_store, client_id)
+        return {"profile": profile, "is_empty": not bool(profile)}
+
+    @app.put("/api/clients/{client_id}/profile")
+    async def update_profile(client_id: str, request: ProfileRequest):
+        authenticated_client(client_id)
         cleaned = sanitize_profile(request.profile)
-        if not save_profile(cleaned):
-            raise HTTPException(status_code=500, detail="Could not save profile.")
-        _refresh_service_profile(service)
+        await save_profile(app.state.graph_store, client_id, cleaned)
         return {"status": "saved", "profile": cleaned}
+
+    @app.post("/api/clients/{client_id}/profile/draft")
+    async def profile_draft(client_id: str, request: ProfileDraftRequest):
+        authenticated_client(client_id)
+        answers = [_request_payload(answer) for answer in request.answers]
+        draft = await graph_runtime().ainvoke_profile_draft(
+            client_id, request.thread_id, uuid4().hex, answers
+        )
+        return {"draft": draft}
+
+    @app.patch(
+        "/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback"
+    )
+    async def message_feedback(
+        client_id: str,
+        thread_id: str,
+        message_id: str,
+        request: FeedbackRequest,
+    ):
+        authenticated_client(client_id)
+        message = await graph_runtime().aupdate_message_feedback(
+            client_id, thread_id, message_id, request.feedback
+        )
+        return {"message_id": message.id, "feedback": request.feedback}
+
+    @app.post(
+        "/api/clients/{client_id}/threads/{thread_id}/emotion-feedback",
+        status_code=201,
+    )
+    async def emotion_feedback(
+        client_id: str,
+        thread_id: str,
+        request: EmotionFeedbackRequest,
+    ):
+        authenticated_client(client_id)
+        await graph_runtime().aget_state(client_id, thread_id)
+        try:
+            record = await append_emotion_feedback(
+                app.state.graph_store,
+                client_id,
+                thread_id,
+                _request_payload(request),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid_emotion_feedback") from exc
+        return {"status": "saved", "feedback": record}
+
+    @app.get("/api/clients/{client_id}/threads/{thread_id}/emotion-timeline")
+    async def emotion_timeline(
+        client_id: str,
+        thread_id: str,
+        limit: int = Query(default=10, gt=0, le=50),
+    ):
+        authenticated_client(client_id)
+        snapshot = await graph_runtime().aget_state(client_id, thread_id)
+        return {"timeline": snapshot.values.get("emotion_timeline", [])[-limit:]}
 
     @app.get("/api/profile/onboarding/questions")
     def profile_onboarding_questions():
         return {"questions": ONBOARDING_QUESTIONS}
-
-    @app.post("/api/profile/onboarding/draft")
-    def profile_onboarding_draft(
-        request: ProfileDraftRequest,
-        service: ChatService = Depends(get_service),
-    ):
-        answers = [_request_payload(answer) for answer in request.answers]
-        runtime_chat_llm = _service_chat_llm(service)
-        if runtime_chat_llm is None:
-            return {"draft": fallback_profile_draft(answers)}
-        return {"draft": draft_profile(runtime_chat_llm, answers)}
-
-    @app.get("/api/emotion/timeline")
-    def emotion_timeline(limit: int = Query(default=10, gt=0, le=50)):
-        return {"timeline": _emotion_timeline_for_records(load_history(), limit)}
-
-    @app.post("/api/messages/{message_id}/feedback")
-    def message_feedback(message_id: str, request: FeedbackRequest):
-        result = record_message_feedback(message_id, request.feedback)
-        if result.status in {"updated", "already_rated"}:
-            return {
-                "status": result.status,
-                "message_id": message_id,
-                "feedback": result.feedback,
-            }
-        if result.status == "not_found":
-            raise HTTPException(status_code=404, detail="Message not found.")
-        if result.status == "not_ai":
-            raise HTTPException(
-                status_code=400,
-                detail="Feedback is only supported for AI messages.",
-            )
-        if result.status == "write_failed":
-            raise HTTPException(status_code=500, detail="Could not save feedback.")
-        raise HTTPException(status_code=400, detail="Invalid feedback.")
-
-    @app.post("/api/emotion/feedback")
-    def emotion_feedback(request: EmotionFeedbackRequest):
-        try:
-            record = append_emotion_feedback(_request_payload(request))
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return {"status": "saved", "feedback": record}
-
-    @app.post("/api/messages/{message_id}/regenerate")
-    def regenerate_message(
-        message_id: str,
-        request: RegenerateRequest,
-        service: ChatService = Depends(get_service),
-    ):
-        if request.reason not in REGENERATION_REASONS:
-            raise HTTPException(status_code=400, detail="Invalid regeneration reason.")
-
-        try:
-            result = service.regenerate_reply(message_id, request.reason)
-        except Exception:
-            raise HTTPException(status_code=500, detail="Could not regenerate message.")
-        if result.status == "updated":
-            return {
-                "status": "regenerated",
-                "original_message_id": message_id,
-                "message_id": result.message_id,
-                "content": result.content,
-                "reason": result.reason,
-            }
-        if result.status == "not_found":
-            raise HTTPException(status_code=404, detail="Message not found.")
-        if result.status == "not_ai":
-            raise HTTPException(
-                status_code=400,
-                detail="Regeneration is only supported for AI messages.",
-            )
-        if result.status == "invalid_reason":
-            raise HTTPException(status_code=400, detail="Invalid regeneration reason.")
-        if result.status == "already_regenerated":
-            raise HTTPException(status_code=409, detail="Message already regenerated.")
-        if result.status == "missing_prompt":
-            raise HTTPException(status_code=400, detail="Original prompt is unavailable.")
-        if result.status in {"write_failed", "generation_failed"}:
-            raise HTTPException(status_code=500, detail="Could not regenerate message.")
-        raise HTTPException(status_code=500, detail="Could not regenerate message.")
 
     @app.post("/api/chat/streams")
     def create_chat_stream(request: ChatStreamRequest):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
+from time import time_ns
 from typing import Any
 from uuid import uuid4
 
@@ -48,16 +49,24 @@ class ThreadRepository:
             if len(page) < 1_000:
                 break
             offset += len(page)
-        records = [self._from_value(item.value) for item in items]
+        records = [
+            (self._from_value(item.value), item.value.get("_sort_key", ""))
+            for item in items
+        ]
         if exists is not None:
             retained = []
-            for record in records:
+            for record, sort_key in records:
                 if await exists(record.thread_id):
-                    retained.append(record)
+                    retained.append((record, sort_key))
                 else:
                     await self.delete_record(client_id, record.thread_id)
             records = retained
-        return sorted(records, key=lambda record: record.updated_at, reverse=True)
+        ordered = sorted(
+            records,
+            key=lambda item: (item[0].updated_at, item[1]),
+            reverse=True,
+        )
+        return [record for record, _ in ordered]
 
     async def owns(self, client_id: str, thread_id: str) -> bool:
         return await self._store.aget(self._namespace(client_id), thread_id) is not None
@@ -95,6 +104,7 @@ class ThreadRepository:
             "title": record.title,
             "created_at": record.created_at,
             "updated_at": record.updated_at,
+            "_sort_key": str(time_ns()),
         }
 
     @staticmethod
