@@ -138,7 +138,7 @@ class ConversationRuntime:
     ) -> dict[str, str]:
         """Produce an unpersisted profile proposal for an owned thread."""
         async with self.lock_for(thread_id):
-            await self._require_thread(client_id, thread_id)
+            await self._require_initialized_thread(client_id, thread_id)
             result = await self.graph.ainvoke(
                 {
                     "operation": "onboard",
@@ -153,7 +153,7 @@ class ConversationRuntime:
     async def aget_state(self, client_id: str, thread_id: str) -> StateSnapshot:
         """Return the current official StateSnapshot for an owned thread."""
         async with self.lock_for(thread_id):
-            await self._require_thread(client_id, thread_id)
+            await self._require_initialized_thread(client_id, thread_id)
             return await self.graph.aget_state(self._config(thread_id))
 
     async def aupdate_message_feedback(
@@ -167,7 +167,7 @@ class ConversationRuntime:
         lock = self.lock_for(thread_id)
         await lock.acquire()
         try:
-            await self._require_thread(client_id, thread_id)
+            await self._require_initialized_thread(client_id, thread_id)
             if feedback not in {"like", "dislike"}:
                 raise RuntimeOperationError("invalid_feedback")
             snapshot = await self.graph.aget_state(self._config(thread_id))
@@ -243,7 +243,7 @@ class ConversationRuntime:
         lock = self.lock_for(thread_id)
         await lock.acquire()
         try:
-            await self._require_thread(client_id, thread_id)
+            await self._require_initialized_thread(client_id, thread_id)
             async for part in self.graph.astream(
                 graph_input,
                 self._config(thread_id),
@@ -259,6 +259,15 @@ class ConversationRuntime:
 
     async def _require_thread(self, client_id: str, thread_id: str) -> None:
         if not await self.thread_repository.owns(client_id, thread_id):
+            raise RuntimeOperationError("thread_not_found")
+
+    async def _require_initialized_thread(
+        self,
+        client_id: str,
+        thread_id: str,
+    ) -> None:
+        await self._require_thread(client_id, thread_id)
+        if not await self._checkpoint_exists(thread_id):
             raise RuntimeOperationError("thread_not_found")
 
     async def _checkpoint_exists(self, thread_id: str) -> bool:

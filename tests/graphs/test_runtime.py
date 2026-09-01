@@ -104,6 +104,21 @@ class GatedDeleteSaver(InMemorySaver):
         await super().adelete_thread(thread_id)
 
 
+class FirstCheckpointReadGatedSaver(InMemorySaver):
+    def __init__(self) -> None:
+        super().__init__()
+        self.read_calls = 0
+        self.first_read_started = asyncio.Event()
+        self.allow_first_read = asyncio.Event()
+
+    async def aget_tuple(self, config):
+        self.read_calls += 1
+        if self.read_calls == 1:
+            self.first_read_started.set()
+            await self.allow_first_read.wait()
+        return await super().aget_tuple(config)
+
+
 class GatedUpdateGraph:
     def __init__(self, graph: Any) -> None:
         self.graph = graph
@@ -201,6 +216,56 @@ async def test_stream_revalidates_if_thread_deleted_after_preflight():
         await consume(stream)
     assert exc_info.value.code == "thread_not_found"
     assert await saver.aget_tuple(thread_config(record.thread_id)) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("operation", ["state", "feedback", "stream"])
+async def test_stale_store_record_is_rejected_by_checkpoint_operations(operation):
+    """Catches checkpoint operations accepting an owned record with no checkpoint."""
+    runtime, saver, _ = memory_runtime()
+    stale = await runtime.thread_repository.create("client-a", title="stale")
+
+    with pytest.raises(RuntimeOperationError) as exc_info:
+        if operation == "state":
+            await runtime.aget_state("client-a", stale.thread_id)
+        elif operation == "feedback":
+            await runtime.aupdate_message_feedback(
+                "client-a", stale.thread_id, "ai-missing", "like"
+            )
+        else:
+            stream = await runtime.astream_turn(
+                "client-a", stale.thread_id, "turn-1", "不应写入"
+            )
+            await consume(stream)
+
+    assert exc_info.value.code == "thread_not_found"
+    assert await saver.aget_tuple(thread_config(stale.thread_id)) is None
+
+
+@pytest.mark.asyncio
+async def test_profile_cannot_recreate_checkpoint_during_stale_reconciliation():
+    """Catches profile drafting recreating Saver state after stale catalog cleanup."""
+    saver = FirstCheckpointReadGatedSaver()
+    runtime, _, _ = memory_runtime(saver=saver)
+    stale = await runtime.thread_repository.create("client-a", title="stale")
+    profile_task = asyncio.create_task(
+        runtime.ainvoke_profile_draft(
+            "client-a",
+            stale.thread_id,
+            "profile-1",
+            [{"key": "response_style", "answer": "简短"}],
+        )
+    )
+    await asyncio.wait_for(saver.first_read_started.wait(), timeout=2)
+
+    assert await runtime.alist_threads("client-a") == []
+    assert await runtime.thread_repository.owns("client-a", stale.thread_id) is False
+    saver.allow_first_read.set()
+
+    with pytest.raises(RuntimeOperationError) as exc_info:
+        await profile_task
+    assert exc_info.value.code == "thread_not_found"
+    assert await saver.aget_tuple(thread_config(stale.thread_id)) is None
 
 
 @pytest.mark.asyncio

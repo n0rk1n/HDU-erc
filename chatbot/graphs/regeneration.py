@@ -159,13 +159,13 @@ async def generate_variant(
     original_audit = _original_application_audit(target)
     metadata = {
         **original_audit,
+        **_model_additional_kwargs(result),
         "feedback": None,
         "original_content": _message_text(target),
         "original_audit": original_audit,
         "regeneration_reason": state["regeneration_reason"],
         "regenerated_at": _utc_timestamp(deps.now()),
         "regenerated": True,
-        **_model_additional_kwargs(result),
     }
     replacement = AIMessage(
         id=target.id,

@@ -534,7 +534,15 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
     model = RecordingModel(
         result=AIMessage(
             content="新回复",
-            additional_kwargs={"provider_trace": "fresh-trace"},
+            additional_kwargs={
+                "provider_trace": "fresh-trace",
+                "feedback": "like",
+                "original_content": "provider-spoof",
+                "original_audit": {"provider": "spoof"},
+                "regeneration_reason": "provider-spoof",
+                "regenerated_at": "provider-spoof",
+                "regenerated": False,
+            },
             response_metadata={"model_name": "new-model", "finish_reason": "stop"},
             usage_metadata={"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
             name="new-assistant",
@@ -570,6 +578,7 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
     assert replacement.name == "new-assistant"
     assert replacement.additional_kwargs["provider_trace"] == "fresh-trace"
     assert "legacy_provider_only" not in replacement.additional_kwargs
+    assert replacement.additional_kwargs["feedback"] is None
     assert replacement.additional_kwargs["original_content"] == "旧回复"
     assert replacement.additional_kwargs["original_audit"] == {
         "feedback": "dislike",
@@ -582,3 +591,8 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
         "safety_level": "supportive",
         "safety_note": "keep-supportive",
     }
+    assert replacement.additional_kwargs["regeneration_reason"] == "不准确"
+    assert replacement.additional_kwargs["regenerated_at"] == (
+        "2026-09-01T12:30:00+00:00"
+    )
+    assert replacement.additional_kwargs["regenerated"] is True
