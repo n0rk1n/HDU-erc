@@ -483,6 +483,70 @@ async def test_task_creation_failure_finalizes_reserved_turn_for_failed_replay(
 
 
 @pytest.mark.asyncio
+async def test_second_cancellation_during_initialization_cleanup_releases_user_lock(
+    database, monkeypatch
+) -> None:
+    """Catches cleanup cancellation skipping detach and per-user lock release."""
+    identity = await _resolved(database, "cleanup-cancel")
+    messages = MessageRepository(database)
+
+    class CleanupBlockingMessages:
+        def __init__(self) -> None:
+            self.cleanup_started = asyncio.Event()
+            self.block_cleanup = True
+
+        def __getattr__(self, name: str):
+            return getattr(messages, name)
+
+        async def find_assistant(self, conversation_id: str, request_id: str):
+            if self.block_cleanup:
+                self.cleanup_started.set()
+                await asyncio.Event().wait()
+            return await messages.find_assistant(conversation_id, request_id)
+
+    blocking_messages = CleanupBlockingMessages()
+    graph = ScriptedGraph(messages)
+    coordinator = TurnCoordinator(
+        conversations=ConversationRepository(database),
+        messages=blocking_messages,
+        graph=graph,
+    )
+    original_create_task = asyncio.create_task
+    failed_once = False
+
+    def fail_first_producer(coroutine, **kwargs: object):
+        nonlocal failed_once
+        if not failed_once and str(kwargs.get("name", "")).startswith("chat-turn-"):
+            failed_once = True
+            coroutine.close()
+            raise RuntimeError("private task factory failure")
+        return original_create_task(coroutine, **kwargs)
+
+    monkeypatch.setattr(asyncio, "create_task", fail_first_producer)
+    request_id = str(uuid4())
+    opening = original_create_task(
+        coordinator.open_stream(identity.user.id, request_id, "first")
+    )
+    await asyncio.wait_for(blocking_messages.cleanup_started.wait(), timeout=1)
+
+    opening.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await opening
+
+    interrupted = await messages.find_assistant(identity.conversation.id, request_id)
+    assert interrupted is not None
+    assert interrupted.status == "pending"
+
+    blocking_messages.block_cleanup = False
+    next_request = str(uuid4())
+    events = await _collect(
+        await coordinator.open_stream(identity.user.id, next_request, "second")
+    )
+    assert events[-1].name == "done"
+    assert len(graph.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_shutdown_waits_for_inflight_turn(database) -> None:
     """Catches graceful shutdown cancelling work that completes within its deadline."""
     identity = await _resolved(database, "shutdown-wait")

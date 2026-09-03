@@ -156,30 +156,41 @@ class TurnCoordinator:
                 except BaseException:
                     producer.close()
                     raise
+
+                def task_done(completed: asyncio.Task[None]) -> None:
+                    self._turn_done(user_id, request_id, user_lock, completed)
+
+                task.add_done_callback(task_done)
                 self._tasks.add(task)
                 self._active_requests[user_id] = request_id
-                task.add_done_callback(
-                    lambda completed, uid=user_id, lock=user_lock: self._turn_done(
-                        uid, lock, completed
-                    )
-                )
                 return subscription
             except BaseException as error:
-                if task is not None:
-                    task.cancel()
-                    await asyncio.gather(task, return_exceptions=True)
-                    self._tasks.discard(task)
-                self._active_requests.pop(user_id, None)
-                if turn is not None:
-                    try:
+                cleanup_error: BaseException | None = None
+                try:
+                    if task is not None:
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+                    if turn is not None:
                         await self._fail_reserved_turn(
                             turn, "process_interrupted", "generation interrupted"
                         )
-                    except Exception:
-                        pass
-                if subscription is not None:
-                    subscription.detach()
-                self._release_unused_lock(user_id, user_lock)
+                except BaseException as failure:
+                    cleanup_error = failure
+                finally:
+                    if task is not None:
+                        self._tasks.discard(task)
+                    active_request = self._active_requests.get(user_id)
+                    if active_request is None or active_request == request_id:
+                        if active_request == request_id:
+                            self._active_requests.pop(user_id, None)
+                        self._release_unused_lock(user_id, user_lock)
+                    if subscription is not None:
+                        subscription.detach()
+
+                if isinstance(cleanup_error, asyncio.CancelledError):
+                    raise cleanup_error
+                if cleanup_error is not None and not isinstance(cleanup_error, Exception):
+                    raise cleanup_error
                 if isinstance(error, (asyncio.CancelledError, DomainError)):
                     raise
                 if isinstance(error, Exception):
@@ -316,17 +327,23 @@ class TurnCoordinator:
             raise DatabaseError() from None
 
     def _release_unused_lock(self, user_id: int, user_lock: asyncio.Lock) -> None:
+        if self._locks.get(user_id) is not user_lock:
+            return
         if user_lock.locked():
             user_lock.release()
-        if self._locks.get(user_id) is user_lock:
-            self._locks.pop(user_id, None)
+        self._locks.pop(user_id, None)
 
     def _turn_done(
-        self, user_id: int, user_lock: asyncio.Lock, task: asyncio.Task[None]
+        self,
+        user_id: int,
+        request_id: str,
+        user_lock: asyncio.Lock,
+        task: asyncio.Task[None],
     ) -> None:
         self._tasks.discard(task)
-        self._active_requests.pop(user_id, None)
-        self._release_unused_lock(user_id, user_lock)
+        if self._active_requests.get(user_id) == request_id:
+            self._active_requests.pop(user_id, None)
+            self._release_unused_lock(user_id, user_lock)
         try:
             task.exception()
         except asyncio.CancelledError:
