@@ -90,10 +90,17 @@ def _prompt_text(prompt: list[tuple[str, str]]) -> str:
     return "\n".join(content for _, content in prompt)
 
 
-def test_web_exports_lazy_fastapi_app_without_requiring_credentials() -> None:
+def test_web_exports_lazy_fastapi_app_without_requiring_credentials(tmp_path) -> None:
     """Catches the documented ASGI import constructing config/model before lifespan."""
     environment = os.environ.copy()
     environment.pop("LLM_API_KEY", None)
+    repository_root = Path(__file__).resolve().parents[2]
+    inherited_pythonpath = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        item
+        for item in (str(repository_root), inherited_pythonpath)
+        if item is not None
+    )
     result = subprocess.run(
         [
             sys.executable,
@@ -106,6 +113,7 @@ def test_web_exports_lazy_fastapi_app_without_requiring_credentials() -> None:
                 "assert isinstance(main_app, FastAPI)"
             ),
         ],
+        cwd=tmp_path,
         env=environment,
         capture_output=True,
         text=True,

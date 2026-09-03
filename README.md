@@ -31,14 +31,17 @@
 
 ## 安装与启动
 
-需要 Python 3.10 或更高版本。本项目本机验收使用 Python 3.12：
+需要 Python 3.10 或更高版本。先确认准备使用的解释器版本，再创建虚拟环境：
 
 ```bash
-python3.12 -m venv .venv
+python3 --version
+python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
 .venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
 ```
+
+`python3 --version` 必须显示 3.10、3.11、3.12 或更高版本。如果系统默认 `python3` 过旧，请把上述 `python3` 替换为实际的 Python 3.10+ 可执行文件；例如 Apple Silicon Homebrew 安装的 3.12 通常可用 `/opt/homebrew/bin/python3.12 -m venv .venv`。本项目当前本机验收使用 Python 3.12。
 
 编辑 `.env`，至少填写模型服务的 `LLM_API_KEY`，并按供应商设置 `LLM_MODEL` 和可选的 `LLM_BASE_URL`。随后以单 worker 启动：
 
