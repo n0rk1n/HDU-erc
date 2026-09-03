@@ -77,7 +77,7 @@
 
 ### 测试代码
 
-- `tests/project/test_archive.py`：归档路径集合和新版隔离。
+- `tests/project/test_archive.py`：归档路径集合；最终验收时增加新版隔离检查。
 - `tests/conftest.py`：临时数据库、确定性假模型和应用工厂共享夹具。
 - `tests/core/test_config.py`：配置默认值、校验与密钥表示。
 - `tests/db/test_schema.py`：DDL、PRAGMA、约束和重启。
@@ -128,12 +128,6 @@ def test_every_baseline_file_exists_under_archive():
     )
     missing = [path for path in output.splitlines() if not (ARCHIVE / path).is_file()]
     assert missing == []
-
-
-def test_new_runtime_does_not_import_archive():
-    sources = list(Path("chatbot").rglob("*.py"))
-    offenders = [path for path in sources if "archive." in path.read_text()]
-    assert offenders == []
 ```
 
 - [ ] **Step 2: 运行测试并确认归档尚未完成**
@@ -195,7 +189,7 @@ Run: `.venv/bin/python -m pip install -r requirements.txt`
 
 Run: `.venv/bin/python -m pytest tests/project/test_archive.py -v`
 
-Expected: PASS；归档缺失列表为空，新版源代码没有归档导入。
+Expected: PASS；归档缺失列表为空。
 
 - [ ] **Step 7: 核对移动范围并提交**
 
@@ -705,7 +699,7 @@ builder.add_edge("finalize_turn", END)
 
 - [ ] **Step 6: 验证 SQLite Checkpoint 隔离**
 
-增加集成测试：两个 UUID `thread_id` 分别运行后，`checkpoints` 中均有记录；`graph.aget_state()` 返回各自状态；数据库中的 checkpoint BLOB 不包含 API Key 或完整历史消息数组。
+增加集成测试：两个 UUID `thread_id` 分别运行后，`checkpoints` 中均有记录；`graph.aget_state()` 返回各自状态；两个 snapshot 的 `values` 键集合都严格等于 `TurnState` 字段集合，且 `repr(snapshot.values)` 不包含 API Key 或完整历史消息数组。
 
 Run: `.venv/bin/python -m pytest tests/graph/test_turn_graph.py -v`
 
@@ -978,6 +972,7 @@ git commit -m "feat: add multi-user streaming chat interface"
 - Create: `README.md`
 - Modify: `.env.example`
 - Modify: `archive/emotion-aware-chatbot-v1/ARCHIVE.md`
+- Modify: `tests/project/test_archive.py`
 
 **Interfaces:**
 - Consumes: 完整应用及所有公开接口。
@@ -999,6 +994,16 @@ def test_two_users_keep_history_and_context_isolated(app_factory, fake_model):
 - [ ] **Step 2: 写同一数据库重启验收测试**
 
 第一次应用生命周期创建用户并完成消息；关闭后使用同一 SQLite 路径创建第二个应用，断言用户 ID、默认对话、完整消息、reasoning、trace 和正常 Checkpoint 均存在。另一个用例预置 `streaming` 助手消息，重启后断言其为 `failed/process_interrupted` 且对应线程 Checkpoint 已重置。
+
+在 `tests/project/test_archive.py` 增加非空源文件扫描，确保新版不导入归档：
+
+```python
+def test_new_runtime_does_not_import_archive():
+    sources = list(Path("chatbot").rglob("*.py"))
+    assert sources
+    offenders = [path for path in sources if "archive." in path.read_text()]
+    assert offenders == []
+```
 
 - [ ] **Step 3: 写显式真实模型冒烟测试**
 
@@ -1049,7 +1054,7 @@ Run: `git status --short`
 
 Run: `git diff --check`
 
-Run: `git ls-files | rg '(^|/)(\.env|__pycache__|\.pytest_cache|.*\.sqlite3)'`
+Run: `git ls-files | rg '(^|/)\.env$|(^|/)__pycache__/|(^|/)\.pytest_cache/|\.sqlite3($|[-.])'`
 
 Expected: 工作树只含本任务预期变更；diff 无空白错误；密钥、缓存和 SQLite 运行文件搜索无输出。
 
@@ -1060,7 +1065,7 @@ Expected: 离线套件全部通过。
 - [ ] **Step 8: 提交验收与文档**
 
 ```bash
-git add README.md .env.example archive/emotion-aware-chatbot-v1/ARCHIVE.md tests/app
+git add README.md .env.example archive/emotion-aware-chatbot-v1/ARCHIVE.md tests/app tests/project/test_archive.py
 git commit -m "docs: complete chatbot rebuild verification"
 ```
 
