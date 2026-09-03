@@ -11,24 +11,26 @@ SCHEMA_VERSION = 1
 
 DDL_STATEMENTS = (
     """
+    -- 用户表：保存可登录或发起对话的用户身份
     CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        identifier TEXT COLLATE BINARY NOT NULL UNIQUE,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  -- 用户自增主键
+        identifier TEXT COLLATE BINARY NOT NULL UNIQUE,  -- 区分大小写的用户唯一标识
+        created_at TEXT NOT NULL,  -- 用户创建时间，ISO 8601 格式
+        updated_at TEXT NOT NULL,  -- 用户最后更新时间，ISO 8601 格式
         CHECK (length(identifier) BETWEEN 1 AND 128)
     )
     """,
     """
+    -- 会话表：保存用户的独立对话线程及其生命周期状态
     CREATE TABLE conversations (
-        id TEXT PRIMARY KEY,
-        user_id INTEGER NOT NULL,
-        thread_id TEXT NOT NULL UNIQUE,
-        is_default INTEGER NOT NULL DEFAULT 1,
-        title TEXT NOT NULL DEFAULT '新对话',
-        status TEXT NOT NULL DEFAULT 'active',
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
+        id TEXT PRIMARY KEY,  -- 会话唯一标识
+        user_id INTEGER NOT NULL,  -- 会话所属用户 ID
+        thread_id TEXT NOT NULL UNIQUE,  -- LangGraph 使用的唯一线程标识
+        is_default INTEGER NOT NULL DEFAULT 1,  -- 是否为用户默认会话：1 是，0 否
+        title TEXT NOT NULL DEFAULT '新对话',  -- 会话标题
+        status TEXT NOT NULL DEFAULT 'active',  -- 会话状态：active 或 archived
+        created_at TEXT NOT NULL,  -- 会话创建时间，ISO 8601 格式
+        updated_at TEXT NOT NULL,  -- 会话最后更新时间，ISO 8601 格式
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         CHECK (is_default IN (0, 1)),
         CHECK (status IN ('active', 'archived'))
@@ -44,30 +46,31 @@ DDL_STATEMENTS = (
         ON conversations(user_id, updated_at DESC)
     """,
     """
+    -- 消息表：保存会话消息、模型调用审计信息及处理结果
     CREATE TABLE messages (
-        id TEXT PRIMARY KEY,
-        conversation_id TEXT NOT NULL,
-        request_id TEXT NOT NULL,
-        sequence_no INTEGER NOT NULL,
-        role TEXT NOT NULL,
-        status TEXT NOT NULL,
-        content TEXT NOT NULL DEFAULT '',
-        reasoning_content TEXT,
-        trace_json TEXT NOT NULL DEFAULT '{"schema_version":1,"events":[]}',
-        prompt_json TEXT,
-        provider TEXT,
-        model TEXT,
-        parameters_json TEXT,
-        input_tokens INTEGER,
-        output_tokens INTEGER,
-        total_tokens INTEGER,
-        latency_ms INTEGER,
-        finish_reason TEXT,
-        error_code TEXT,
-        error_message TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        completed_at TEXT,
+        id TEXT PRIMARY KEY,  -- 消息唯一标识
+        conversation_id TEXT NOT NULL,  -- 消息所属会话 ID
+        request_id TEXT NOT NULL,  -- 产生该消息的请求唯一标识
+        sequence_no INTEGER NOT NULL,  -- 消息在会话内的递增序号
+        role TEXT NOT NULL,  -- 消息角色：user 或 assistant
+        status TEXT NOT NULL,  -- 处理状态：pending、streaming、completed 或 failed
+        content TEXT NOT NULL DEFAULT '',  -- 最终回复或用户输入正文
+        reasoning_content TEXT,  -- 模型返回的推理内容
+        trace_json TEXT NOT NULL DEFAULT '{"schema_version":1,"events":[]}',  -- 流式事件轨迹 JSON
+        prompt_json TEXT,  -- 发送给模型的提示词快照 JSON
+        provider TEXT,  -- 模型服务提供商
+        model TEXT,  -- 模型名称
+        parameters_json TEXT,  -- 模型调用参数快照 JSON
+        input_tokens INTEGER,  -- 输入 token 数
+        output_tokens INTEGER,  -- 输出 token 数
+        total_tokens INTEGER,  -- 总 token 数
+        latency_ms INTEGER,  -- 模型调用耗时，单位毫秒
+        finish_reason TEXT,  -- 模型停止生成的原因
+        error_code TEXT,  -- 处理失败时的错误码
+        error_message TEXT,  -- 处理失败时的错误信息
+        created_at TEXT NOT NULL,  -- 消息创建时间，ISO 8601 格式
+        updated_at TEXT NOT NULL,  -- 消息最后更新时间，ISO 8601 格式
+        completed_at TEXT,  -- 消息完成时间，ISO 8601 格式
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
         UNIQUE (conversation_id, sequence_no),
         UNIQUE (conversation_id, request_id, role),
