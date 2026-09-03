@@ -171,7 +171,11 @@ def _error_response(status: int, code: str, message: str) -> JSONResponse:
     )
 
 
+app = create_app()
+
+
 __all__ = [
+    "app",
     "create_app",
     "format_sse",
     "stream_subscription",
