@@ -17,6 +17,7 @@
   let activeSession = null;
   let streamController = null;
   let identityController = null;
+  let reconciliationController = null;
   let generation = 0;
   let temporaryAssistant = null;
 
@@ -55,36 +56,50 @@
     setSending(false);
   }
 
+  function applyMessage(item, message) {
+    const state = typeof message.status === "string" ? message.status : "completed";
+    const body = item.querySelector("p");
+    const detail = item.querySelector("small");
+
+    item.dataset.state = state;
+    if (typeof message.id === "string") item.dataset.messageId = message.id;
+    if (Number.isInteger(message.sequence_no)) item.dataset.sequence = String(message.sequence_no);
+    body.textContent = typeof message.content === "string" ? message.content : "";
+    detail.textContent = state === "failed" ? "生成未完成" : "";
+  }
+
   function createMessage(message) {
     const item = document.createElement("li");
     const article = document.createElement("article");
     const body = document.createElement("p");
     const detail = document.createElement("small");
     const role = message.role === "user" ? "user" : "assistant";
-    const state = typeof message.status === "string" ? message.status : "completed";
 
     item.className = `message message--${role}`;
-    item.dataset.state = state;
-    if (Number.isInteger(message.sequence_no)) {
-      item.dataset.sequence = String(message.sequence_no);
-    }
     article.setAttribute("aria-label", role === "user" ? "用户消息" : "助手消息");
-    body.textContent = typeof message.content === "string" ? message.content : "";
-    detail.textContent = state === "failed" ? "生成未完成" : "";
     article.append(body, detail);
     item.append(article);
+    applyMessage(item, message);
     return item;
   }
 
-  function appendMessage(message) {
-    const item = createMessage(message);
+  function placeMessage(item) {
     const sequence = Number(item.dataset.sequence);
-    const siblings = [...messageList.children];
+    if (!Number.isInteger(sequence)) {
+      messageList.append(item);
+      return;
+    }
+    const siblings = [...messageList.children].filter((sibling) => sibling !== item);
     const following = siblings.find((sibling) => {
       const siblingSequence = Number(sibling.dataset.sequence);
       return !Number.isInteger(siblingSequence) || siblingSequence > sequence;
     });
-    messageList.insertBefore(item, following || null);
+    messageList.insertBefore(item, following ?? null);
+  }
+
+  function appendMessage(message) {
+    const item = createMessage(message);
+    placeMessage(item);
     return item;
   }
 
@@ -106,41 +121,100 @@
     );
   }
 
-  async function loadHistory(expectedGeneration = generation) {
+  async function loadHistory(expectedGeneration = generation, signal) {
     const session = activeSession;
     if (!session) return;
-    const response = await fetch(`/api/users/${session.user_id}/messages`);
+    const response = await fetch(`/api/users/${session.user_id}/messages`, { signal });
     if (!response.ok) throw new Error("history unavailable");
     const payload = await response.json();
     if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
     renderHistory(payload.messages);
+    return Array.isArray(payload.messages) ? payload.messages : [];
   }
 
-  function scheduleHistoryRefresh(expectedGeneration, expectedUserId) {
-    window.setTimeout(() => {
-      if (!sessionIsCurrent(expectedGeneration, expectedUserId)) return;
-      loadHistory(expectedGeneration).catch(() => {
-        if (sessionIsCurrent(expectedGeneration, expectedUserId)) {
-          setStatus(chatStatus, "连接中断，暂时无法同步消息。", "failed");
+  function waitForDelay(milliseconds, signal) {
+    return new Promise((resolve) => {
+      if (signal.aborted) {
+        resolve(false);
+        return;
+      }
+      const stop = () => resolve(false);
+      signal.addEventListener("abort", stop, { once: true });
+      window.setTimeout(() => {
+        signal.removeEventListener("abort", stop);
+        resolve(!signal.aborted);
+      }, milliseconds);
+    });
+  }
+
+  function findTerminalAssistant(messages, requestId) {
+    return messages.find(
+      (message) =>
+        message &&
+        message.role === "assistant" &&
+        message.request_id === requestId &&
+        (message.status === "completed" || message.status === "failed")
+    );
+  }
+
+  async function reconcileHistory(expectedGeneration, expectedUserId, requestId) {
+    reconciliationController?.abort();
+    const controller = new AbortController();
+    reconciliationController = controller;
+    let delay = 300;
+    try {
+      while (!controller.signal.aborted && sessionIsCurrent(expectedGeneration, expectedUserId)) {
+        const shouldContinue = await waitForDelay(delay, controller.signal);
+        if (!shouldContinue || !sessionIsCurrent(expectedGeneration, expectedUserId)) return;
+        try {
+          const messages = await loadHistory(expectedGeneration, controller.signal);
+          if (!sessionIsCurrent(expectedGeneration, expectedUserId)) return;
+          const terminalAssistant = findTerminalAssistant(messages ?? [], requestId);
+          if (terminalAssistant) {
+            if (terminalAssistant.status === "failed") {
+              setStatus(chatStatus, "回复未能完成。", "failed");
+            } else {
+              setStatus(chatStatus, "回复已同步。", "completed");
+            }
+            setSending(false);
+            return;
+          }
+          setStatus(chatStatus, "连接中断，仍在同步已保存的消息。", "pending");
+        } catch {
+          if (!controller.signal.aborted && sessionIsCurrent(expectedGeneration, expectedUserId)) {
+            setStatus(chatStatus, "连接中断，仍在同步已保存的消息。", "failed");
+          }
         }
-      });
-    }, 300);
+        delay = Math.min(delay * 2, 3000);
+      }
+    } finally {
+      if (reconciliationController === controller) reconciliationController = null;
+    }
   }
 
-  function ensureTemporaryAssistant() {
+  function ensureTemporaryAssistant(message = {}) {
     if (!temporaryAssistant) {
-      temporaryAssistant = appendMessage({ role: "assistant", status: "streaming", content: "" });
+      temporaryAssistant = appendMessage({
+        id: message.assistant_message_id,
+        role: "assistant",
+        status: "streaming",
+        content: "",
+      });
     }
     return temporaryAssistant;
   }
 
-  function updateTemporaryAssistant(content, state) {
+  function updateTemporaryAssistant(message) {
     const item = ensureTemporaryAssistant();
-    item.dataset.state = state;
-    const body = item.querySelector("p");
-    const detail = item.querySelector("small");
-    body.textContent = content;
-    detail.textContent = state === "failed" ? "生成未完成" : "";
+    applyMessage(item, message);
+    placeMessage(item);
+  }
+
+  function removeTemporaryAssistant() {
+    if (temporaryAssistant?.parentNode) {
+      temporaryAssistant.parentNode.removeChild(temporaryAssistant);
+    }
+    temporaryAssistant = null;
   }
 
   function parseFrame(frame) {
@@ -172,11 +246,12 @@
 
   function handleStreamEvent(event) {
     if (event.name === "run_started") {
-      ensureTemporaryAssistant();
+      ensureTemporaryAssistant(event.data ?? {});
       setStatus(chatStatus, "正在生成回复…", "streaming");
     } else if (event.name === "user_message") {
       if (event.data && Number.isInteger(event.data.sequence_no)) {
         appendMessage({
+          id: event.data.id,
           role: "user",
           status: "completed",
           content: event.data.content,
@@ -190,18 +265,20 @@
       setStatus(chatStatus, "正在生成回复…", "streaming");
     } else if (event.name === "done" && event.data && event.data.message) {
       const message = event.data.message;
-      updateTemporaryAssistant(typeof message.content === "string" ? message.content : "", "completed");
+      updateTemporaryAssistant({
+        id: message.id,
+        role: "assistant",
+        sequence_no: message.sequence_no,
+        status: message.status,
+        content: message.content,
+      });
       setStatus(chatStatus, "回复已完成。", "completed");
       temporaryAssistant = null;
-      return true;
+      return "done";
     } else if (event.name === "error") {
-      updateTemporaryAssistant(
-        temporaryAssistant ? temporaryAssistant.querySelector("p").textContent : "",
-        "failed"
-      );
-      setStatus(chatStatus, "回复未能完成，请稍后再试。", "failed");
-      temporaryAssistant = null;
-      return true;
+      removeTemporaryAssistant();
+      setStatus(chatStatus, "回复未能完成，正在同步已保存的消息。", "failed");
+      return "reconcile";
     }
     return false;
   }
@@ -210,6 +287,7 @@
     const session = activeSession;
     if (!session || !content.trim()) return;
     const expectedGeneration = generation;
+    const requestId = crypto.randomUUID();
     const controller = new AbortController();
     streamController = controller;
     setSending(true);
@@ -219,7 +297,7 @@
       const response = await fetch(`/api/users/${session.user_id}/messages:stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-        body: JSON.stringify({ request_id: crypto.randomUUID(), content }),
+        body: JSON.stringify({ request_id: requestId, content }),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error("stream unavailable");
@@ -231,12 +309,12 @@
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         buffer = consumeFrames(buffer, (event) => {
-          terminal = handleStreamEvent(event) || terminal;
+          terminal = handleStreamEvent(event) === "done" || terminal;
         });
       }
       buffer += decoder.decode();
       consumeFrames(buffer, (event) => {
-        terminal = handleStreamEvent(event) || terminal;
+        terminal = handleStreamEvent(event) === "done" || terminal;
       });
     } catch {
       if (sessionIsCurrent(expectedGeneration, session.user_id) && !controller.signal.aborted) {
@@ -245,8 +323,11 @@
     } finally {
       if (streamController === controller) streamController = null;
       if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
-      setSending(false);
-      if (!terminal) scheduleHistoryRefresh(expectedGeneration, session.user_id);
+      if (terminal) {
+        setSending(false);
+      } else if (!controller.signal.aborted) {
+        void reconcileHistory(expectedGeneration, session.user_id, requestId);
+      }
     }
   }
 
@@ -276,9 +357,16 @@
       currentIdentifier.textContent = activeSession.identifier;
       clearChat();
       showChatView();
-      await loadHistory(expectedGeneration);
-      if (sessionIsCurrent(expectedGeneration, activeSession.user_id)) {
-        setStatus(chatStatus, "可以开始聊天。", "completed");
+      try {
+        await loadHistory(expectedGeneration);
+        if (sessionIsCurrent(expectedGeneration, activeSession.user_id)) {
+          setStatus(chatStatus, "可以开始聊天。", "completed");
+        }
+      } catch {
+        if (sessionIsCurrent(expectedGeneration, activeSession.user_id)) {
+          setStatus(chatStatus, "历史加载失败，请切换用户后重试。", "failed");
+          setSending(true);
+        }
       }
     } catch {
       if (!controller.signal.aborted && expectedGeneration === generation) {
@@ -305,14 +393,19 @@
     generation += 1;
     streamController?.abort();
     identityController?.abort();
+    reconciliationController?.abort();
     streamController = null;
     identityController = null;
+    reconciliationController = null;
     activeSession = null;
     clearChat();
     setStatus(identityStatus, "");
     showIdentityView();
   });
 
-  window.addEventListener("pagehide", () => streamController?.abort());
+  window.addEventListener("pagehide", () => {
+    streamController?.abort();
+    reconciliationController?.abort();
+  });
   showIdentityView();
 })();

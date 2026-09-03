@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import subprocess
 from collections.abc import AsyncIterator, Sequence
 from html.parser import HTMLParser
+from pathlib import Path
+from textwrap import dedent
 
 import pytest
 from fastapi.testclient import TestClient
@@ -319,3 +322,264 @@ def test_chat_script_has_the_minimal_safe_post_sse_contract(
         'setStatus(chatStatus, "回复已完成。", "completed");\n'
         "      temporaryAssistant = null;"
     ) in source
+
+
+def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -> None:
+    """Catches a one-shot recovery, unsequenced done DOM, or a hidden initial-load error."""
+    script_path = Path(__file__).parents[2] / "chatbot" / "static" / "app.js"
+    harness = dedent(
+        r'''
+        const assert = require("node:assert/strict");
+        const crypto = require("node:crypto");
+        const fs = require("node:fs");
+        const vm = require("node:vm");
+
+        class Element {
+          constructor(tag = "div") {
+            this.tagName = tag;
+            this.children = [];
+            this.dataset = {};
+            this.listeners = new Map();
+            this.parentNode = null;
+            this.textContent = "";
+            this.value = "";
+            this.disabled = false;
+            this.hidden = false;
+          }
+          append(...nodes) {
+            for (const node of nodes) {
+              if (!(node instanceof Element)) continue;
+              if (node.parentNode) node.parentNode.removeChild(node);
+              node.parentNode = this;
+              this.children.push(node);
+            }
+          }
+          replaceChildren(...nodes) {
+            for (const child of this.children) child.parentNode = null;
+            this.children = [];
+            this.append(...nodes);
+          }
+          removeChild(node) {
+            const index = this.children.indexOf(node);
+            if (index >= 0) this.children.splice(index, 1);
+            node.parentNode = null;
+          }
+          insertBefore(node, reference) {
+            if (node.parentNode) node.parentNode.removeChild(node);
+            node.parentNode = this;
+            const index = reference ? this.children.indexOf(reference) : -1;
+            if (index < 0) this.children.push(node);
+            else this.children.splice(index, 0, node);
+          }
+          querySelector(selector) {
+            for (const child of this.children) {
+              if (child.tagName === selector) return child;
+              const nested = child.querySelector(selector);
+              if (nested) return nested;
+            }
+            return null;
+          }
+          setAttribute() {}
+          addEventListener(name, listener) { this.listeners.set(name, listener); }
+          dispatch(name) {
+            return this.listeners.get(name)({ preventDefault() {} });
+          }
+          focus() {}
+        }
+
+        function makeDocument() {
+          const ids = [
+            "identity-view", "identity-form", "identifier-input", "identity-status",
+            "chat-view", "current-identifier", "switch-user", "message-list",
+            "chat-status", "message-form", "message-input", "send-message",
+          ];
+          const nodes = Object.fromEntries(ids.map((id) => [id, new Element()]));
+          return {
+            nodes,
+            querySelector(selector) { return nodes[selector.slice(1)]; },
+            createElement(tag) { return new Element(tag); },
+          };
+        }
+
+        function sse(events) {
+          const text = events.map(({ name, data }) =>
+            `event: ${name}\r\ndata: ${JSON.stringify(data)}\r\n\r\n`
+          ).join("");
+          const chunks = [text.slice(0, 11), text.slice(11, 29), text.slice(29)];
+          return {
+            ok: true,
+            body: {
+              getReader() {
+                let index = 0;
+                return { read: async () => index < chunks.length
+                  ? { value: Buffer.from(chunks[index++]), done: false }
+                  : { value: undefined, done: true } };
+              },
+            },
+          };
+        }
+
+        async function settle(rounds = 12) {
+          for (let index = 0; index < rounds; index += 1) await Promise.resolve();
+        }
+
+        async function boot(fetch) {
+          const document = makeDocument();
+          const timers = [];
+          const context = {
+            AbortController,
+            Buffer,
+            TextDecoder,
+            crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000001" },
+            document,
+            fetch,
+            window: {
+              addEventListener() {},
+              setTimeout(callback) { timers.push(callback); return timers.length; },
+            },
+          };
+          vm.runInNewContext(fs.readFileSync(process.argv[1], "utf8"), context, { filename: "app.js" });
+          return { document, timers };
+        }
+
+        async function enter(app) {
+          app.document.nodes["identifier-input"].value = "alice";
+          await app.document.nodes["identity-form"].dispatch("submit");
+          await settle();
+        }
+
+        async function runSlowRecovery() {
+          let historyReads = 0;
+          let posts = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              historyReads += 1;
+              const assistant = historyReads === 1 ? [] : historyReads === 2
+                ? [{ id: "user-1", role: "user", status: "completed", sequence_no: 1, content: "hello" }, { id: "assistant-1", request_id: "00000000-0000-4000-8000-000000000001", role: "assistant", status: "streaming", sequence_no: 2, content: "partial" }]
+                : [{ id: "user-1", role: "user", status: "completed", sequence_no: 1, content: "hello" }, { id: "assistant-1", request_id: "00000000-0000-4000-8000-000000000001", role: "assistant", status: "completed", sequence_no: 2, content: "final" }];
+              return { ok: true, json: async () => ({ messages: assistant }) };
+            }
+            if (url.endsWith(":stream")) {
+              posts += 1;
+              return sse([
+                { name: "run_started", data: {} },
+                { name: "user_message", data: { id: "user-1", sequence_no: 1, content: "hello" } },
+                { name: "token", data: { content: "partial" } },
+                { name: "error", data: { code: "model_error", message: "model generation failed" } },
+              ]);
+            }
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "hello";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle();
+          assert.equal(app.document.nodes["message-input"].disabled, true, "recovery keeps sending disabled");
+          for (let index = 0; index < 8; index += 1) {
+            await settle(20);
+            const timer = app.timers.shift();
+            if (timer) timer();
+          }
+          const messages = app.document.nodes["message-list"].children;
+          assert.equal(posts, 1, "recovery never reposts");
+          assert.deepEqual(messages.map((item) => item.dataset.sequence), ["1", "2"]);
+          assert.equal(messages[1].dataset.state, "completed");
+          assert.equal(messages[1].querySelector("p").textContent, "final");
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+        }
+
+        async function runTwoTurns() {
+          let turn = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) return { ok: true, json: async () => ({ messages: [] }) };
+            if (url.endsWith(":stream")) {
+              turn += 1;
+              const userSequence = turn * 2 - 1;
+              const assistantSequence = userSequence + 1;
+              return sse([
+                { name: "run_started", data: {} },
+                { name: "user_message", data: { id: `user-${turn}`, sequence_no: userSequence, content: `question ${turn}` } },
+                { name: "token", data: { content: "draft" } },
+                { name: "done", data: { message: { id: `assistant-${turn}`, sequence_no: assistantSequence, status: "completed", content: `answer ${turn}` } } },
+              ]);
+            }
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          for (const content of ["question 1", "question 2"]) {
+            app.document.nodes["message-input"].value = content;
+            app.document.nodes["message-form"].dispatch("submit");
+            await settle(40);
+          }
+          const messages = app.document.nodes["message-list"].children;
+          assert.deepEqual(messages.map((item) => item.dataset.sequence), ["1", "2", "3", "4"]);
+          assert.deepEqual(messages.map((item) => item.dataset.messageId), ["user-1", "assistant-1", "user-2", "assistant-2"]);
+          assert.deepEqual(messages.map((item) => item.dataset.state), ["completed", "completed", "completed", "completed"]);
+          assert.deepEqual(messages.map((item) => item.querySelector("p").textContent), ["question 1", "answer 1", "question 2", "answer 2"]);
+        }
+
+        async function runFailedRecovery() {
+          let historyReads = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              historyReads += 1;
+              const messages = historyReads === 1 ? [] : [
+                { id: "user-1", role: "user", status: "completed", sequence_no: 1, content: "hello" },
+                { id: "assistant-1", request_id: "00000000-0000-4000-8000-000000000001", role: "assistant", status: "failed", sequence_no: 2, content: "partial" },
+              ];
+              return { ok: true, json: async () => ({ messages }) };
+            }
+            if (url.endsWith(":stream")) return sse([
+              { name: "run_started", data: {} },
+              { name: "user_message", data: { id: "user-1", sequence_no: 1, content: "hello" } },
+              { name: "error", data: { code: "model_error", message: "model generation failed" } },
+            ]);
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "hello";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(20);
+          app.timers.shift()();
+          await settle(20);
+          assert.equal(app.document.nodes["message-list"].children[1].dataset.state, "failed");
+          assert.equal(app.document.nodes["chat-status"].dataset.state, "failed");
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+        }
+
+        async function runInitialHistoryFailure() {
+          const app = await boot(async (url) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages")) throw new Error("offline");
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          assert.equal(app.document.nodes["chat-view"].hidden, false);
+          assert.equal(app.document.nodes["message-input"].disabled, true);
+          assert.equal(app.document.nodes["send-message"].disabled, true);
+          assert.equal(app.document.nodes["switch-user"].disabled, false);
+          assert.equal(app.document.nodes["chat-status"].dataset.state, "failed");
+          assert.match(app.document.nodes["chat-status"].textContent, /历史加载失败/);
+        }
+
+        Promise.resolve()
+          .then(runSlowRecovery)
+          .then(runTwoTurns)
+          .then(runFailedRecovery)
+          .then(runInitialHistoryFailure)
+          .then(() => process.stdout.write("frontend scenarios passed\n"))
+          .catch((error) => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });
+        '''
+    )
+    completed = subprocess.run(
+        ["node", "-e", harness, str(script_path)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout == "frontend scenarios passed\n"
