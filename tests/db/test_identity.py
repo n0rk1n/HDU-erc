@@ -81,6 +81,27 @@ async def test_resolve_rejects_invalid_identifiers_with_stable_domain_error(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("identifier", ["\x00", "alice\x00example"])
+async def test_resolve_rejects_nul_identifiers_without_creating_records(
+    identity_service: IdentityService, database, identifier: str
+) -> None:
+    """Catches NUL values bypassing Python length checks and leaking SQLite constraint errors."""
+    with pytest.raises(InvalidIdentifier) as error:
+        await identity_service.resolve(identifier)
+
+    assert error.value.code == "invalid_identifier"
+    assert error.value.http_status == 422
+    async with database.connect() as connection:
+        user_count = (await (await connection.execute("SELECT count(*) FROM users")).fetchone())[0]
+        conversation_count = (
+            await (await connection.execute("SELECT count(*) FROM conversations")).fetchone()
+        )[0]
+
+    assert user_count == 0
+    assert conversation_count == 0
+
+
+@pytest.mark.asyncio
 async def test_default_conversation_uses_distinct_uuid4_ids_and_keeps_future_nondefaults(
     identity_service: IdentityService, database
 ) -> None:

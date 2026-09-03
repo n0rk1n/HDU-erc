@@ -14,7 +14,7 @@ def normalize_identifier(identifier: str) -> str:
     if not isinstance(identifier, str):
         raise InvalidIdentifier()
     normalized = identifier.strip()
-    if not 1 <= len(normalized) <= 128:
+    if "\x00" in normalized or not 1 <= len(normalized) <= 128:
         raise InvalidIdentifier()
     return normalized
 
