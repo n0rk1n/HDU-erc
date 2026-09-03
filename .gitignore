@@ -1,9 +1,9 @@
-.claude
-.idea
-__pycache__
-EICL
-docs
 .env
-.worktrees
-data/records
-data/config/prompts.json
+.venv/
+.idea/
+.pytest_cache/
+__pycache__/
+*.pyc
+.worktrees/
+.superpowers/
+data/*.sqlite3*
