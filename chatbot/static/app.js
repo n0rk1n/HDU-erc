@@ -138,9 +138,14 @@
         resolve(false);
         return;
       }
-      const stop = () => resolve(false);
+      let timerId;
+      const stop = () => {
+        window.clearTimeout(timerId);
+        signal.removeEventListener("abort", stop);
+        resolve(false);
+      };
       signal.addEventListener("abort", stop, { once: true });
-      window.setTimeout(() => {
+      timerId = window.setTimeout(() => {
         signal.removeEventListener("abort", stop);
         resolve(!signal.aborted);
       }, milliseconds);
@@ -283,6 +288,25 @@
     return false;
   }
 
+  async function rejectedRequestMessage(response) {
+    try {
+      const payload = await response.json();
+      const code = payload?.error?.code;
+      if (code === "turn_in_progress") {
+        return "当前用户已有消息正在生成，请等待完成后再试。";
+      }
+      if (code === "invalid_identifier_or_message") {
+        return "消息格式无效，请检查后重试。";
+      }
+      if (code === "user_not_found") {
+        return "当前用户不可用，请切换用户后重试。";
+      }
+    } catch {
+      // The server rejected the request but did not provide a parseable public error.
+    }
+    return "暂时无法发送消息，请稍后再试。";
+  }
+
   async function sendMessage(content) {
     const session = activeSession;
     if (!session || !content.trim()) return;
@@ -292,6 +316,9 @@
     streamController = controller;
     setSending(true);
     setStatus(chatStatus, "正在发送消息…", "pending");
+    let requestAccepted = false;
+    let streamStarted = false;
+    let rejectedBeforeStream = false;
     let terminal = false;
     try {
       const response = await fetch(`/api/users/${session.user_id}/messages:stream`, {
@@ -300,8 +327,15 @@
         body: JSON.stringify({ request_id: requestId, content }),
         signal: controller.signal,
       });
-      if (!response.ok || !response.body) throw new Error("stream unavailable");
+      if (!response.ok) {
+        rejectedBeforeStream = true;
+        setStatus(chatStatus, await rejectedRequestMessage(response), "failed");
+        return;
+      }
+      requestAccepted = true;
+      if (!response.body) throw new Error("stream unavailable");
       const reader = response.body.getReader();
+      streamStarted = true;
       const decoder = new TextDecoder();
       let buffer = "";
       while (true) {
@@ -325,7 +359,10 @@
       if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
       if (terminal) {
         setSending(false);
-      } else if (!controller.signal.aborted) {
+      } else if (rejectedBeforeStream) {
+        removeTemporaryAssistant();
+        setSending(false);
+      } else if (!controller.signal.aborted && (requestAccepted || !streamStarted)) {
         void reconcileHistory(expectedGeneration, session.user_id, requestId);
       }
     }

@@ -426,6 +426,22 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
         async function boot(fetch) {
           const document = makeDocument();
           const timers = [];
+          const listeners = new Map();
+          let nextTimerId = 1;
+          const window = {
+            addEventListener(name, listener) { listeners.set(name, listener); },
+            dispatch(name) { return listeners.get(name)?.(); },
+            setTimeout(callback) {
+              callback.timerId = nextTimerId;
+              nextTimerId += 1;
+              timers.push(callback);
+              return callback.timerId;
+            },
+            clearTimeout(timerId) {
+              const index = timers.findIndex((callback) => callback.timerId === timerId);
+              if (index >= 0) timers.splice(index, 1);
+            },
+          };
           const context = {
             AbortController,
             Buffer,
@@ -433,13 +449,10 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
             crypto: { randomUUID: () => "00000000-0000-4000-8000-000000000001" },
             document,
             fetch,
-            window: {
-              addEventListener() {},
-              setTimeout(callback) { timers.push(callback); return timers.length; },
-            },
+            window,
           };
           vm.runInNewContext(fs.readFileSync(process.argv[1], "utf8"), context, { filename: "app.js" });
-          return { document, timers };
+          return { document, timers, window };
         }
 
         async function enter(app) {
@@ -550,6 +563,102 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.equal(app.document.nodes["message-input"].disabled, false);
         }
 
+        async function runRejectedPost() {
+          let historyReads = 0;
+          let posts = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              historyReads += 1;
+              return { ok: true, json: async () => ({ messages: [
+                { id: "existing", role: "assistant", status: "completed", sequence_no: 2, content: "existing history" },
+              ] }) };
+            }
+            if (url.endsWith(":stream")) {
+              posts += 1;
+              return { ok: false, json: async () => ({ error: { code: "turn_in_progress", message: "untrusted internal detail" } }) };
+            }
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "hello";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(20);
+          for (let index = 0; index < 4; index += 1) {
+            const timer = app.timers.shift();
+            if (timer) timer();
+            await settle(20);
+          }
+          assert.equal(posts, 1);
+          assert.equal(historyReads, 1, "header rejection does not poll an unaccepted request id");
+          assert.equal(app.document.nodes["message-list"].children.length, 1);
+          assert.equal(app.document.nodes["message-list"].children[0].querySelector("p").textContent, "existing history");
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+          assert.equal(app.document.nodes["send-message"].disabled, false);
+          assert.equal(app.document.nodes["switch-user"].disabled, false);
+          assert.equal(app.document.nodes["chat-status"].dataset.state, "failed");
+          assert.match(app.document.nodes["chat-status"].textContent, /已有消息正在生成/);
+          assert.doesNotMatch(app.document.nodes["chat-status"].textContent, /untrusted internal detail/);
+        }
+
+        async function runSwitchIgnoresLateHistory() {
+          let resolveLateHistory;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              if (!resolveLateHistory) return { ok: true, json: async () => ({ messages: [] }) };
+              return new Promise((resolve) => { resolveLateHistory = resolve; });
+            }
+            if (url.endsWith(":stream")) return sse([
+              { name: "run_started", data: {} },
+              { name: "user_message", data: { id: "user-1", sequence_no: 1, content: "hello" } },
+            ]);
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          resolveLateHistory = () => {};
+          app.document.nodes["message-input"].value = "hello";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(20);
+          app.timers.shift()();
+          await settle(20);
+          app.document.nodes["switch-user"].dispatch("click");
+          resolveLateHistory({ ok: true, json: async () => ({ messages: [
+            { id: "old", role: "assistant", status: "completed", sequence_no: 2, content: "old user history" },
+          ] }) });
+          await settle(20);
+          assert.equal(app.document.nodes["identity-view"].hidden, false);
+          assert.equal(app.document.nodes["chat-view"].hidden, true);
+          assert.equal(app.document.nodes["message-list"].children.length, 0);
+          assert.equal(app.timers.length, 0);
+        }
+
+        async function runPagehideStopsPolling() {
+          let historyReads = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              historyReads += 1;
+              return { ok: true, json: async () => ({ messages: [] }) };
+            }
+            if (url.endsWith(":stream")) return sse([
+              { name: "run_started", data: {} },
+              { name: "user_message", data: { id: "user-1", sequence_no: 1, content: "hello" } },
+            ]);
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "hello";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(20);
+          assert.equal(app.timers.length, 1);
+          app.window.dispatch("pagehide");
+          await settle(20);
+          assert.equal(app.timers.length, 0);
+          assert.equal(historyReads, 1);
+          assert.notEqual(app.document.nodes["chat-status"].dataset.state, "failed");
+        }
+
         async function runInitialHistoryFailure() {
           const app = await boot(async (url) => {
             if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
@@ -569,6 +678,9 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           .then(runSlowRecovery)
           .then(runTwoTurns)
           .then(runFailedRecovery)
+          .then(runRejectedPost)
+          .then(runSwitchIgnoresLateHistory)
+          .then(runPagehideStopsPolling)
           .then(runInitialHistoryFailure)
           .then(() => process.stdout.write("frontend scenarios passed\n"))
           .catch((error) => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });
