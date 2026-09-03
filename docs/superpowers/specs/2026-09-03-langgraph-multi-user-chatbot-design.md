@@ -604,3 +604,12 @@ SQLITE_DB_PATH=data/chatbot.sqlite3
 - 调试界面：如以后展示 reasoning 或 trace，必须新增受保护接口和访问控制，不能直接扩展普通消息接口。
 
 这些能力均不在首期预建空模块，待需求明确后按独立设计实施。
+
+## 16. 参考资料
+
+- [LangGraph SQLite Saver 源码与内部表 DDL](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-sqlite/langgraph/checkpoint/sqlite/__init__.py)
+- [LangGraph AsyncSqliteSaver 源码与适用边界](https://github.com/langchain-ai/langgraph/blob/main/libs/checkpoint-sqlite/langgraph/checkpoint/sqlite/aio.py)
+- [LangGraph Checkpointer 与 super-step 持久化说明](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/checkpointers.mdx)
+- [LangGraph 持久化故障排查与 Checkpoint 增长说明](https://github.com/langchain-ai/docs/blob/main/src/oss/langgraph/persistence.mdx)
+
+实现时必须以最终锁定的发布版本为准重新核对这些资料；不能假定 `main` 分支源码与安装包永久一致。
