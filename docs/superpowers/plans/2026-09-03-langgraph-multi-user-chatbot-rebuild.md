@@ -113,7 +113,7 @@
 
 - [ ] **Step 1: 使用旧基线依赖建立测试运行器**
 
-Run: `python3 -m venv .venv`
+Run: `/opt/homebrew/bin/python3.12 -m venv .venv`
 
 Run: `.venv/bin/python -m pip install -r requirements.txt`
 
