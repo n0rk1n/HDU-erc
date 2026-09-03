@@ -601,6 +601,66 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.doesNotMatch(app.document.nodes["chat-status"].textContent, /untrusted internal detail/);
         }
 
+        async function runDelayedRejectedPostDoesNotOverwriteNewUser() {
+          let resolveRejectedJson;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") {
+              const identifier = JSON.parse(options.body).identifier;
+              return { ok: true, json: async () => ({ user: { id: identifier === "bob" ? 2 : 1, identifier } }) };
+            }
+            if (url.endsWith("/messages") && !options.method) {
+              const messages = url.includes("/2/")
+                ? [{ id: "bob-history", role: "assistant", status: "completed", sequence_no: 2, content: "bob history" }]
+                : [];
+              return { ok: true, json: async () => ({ messages }) };
+            }
+            if (url.endsWith(":stream")) return {
+              ok: false,
+              json: () => new Promise((resolve) => { resolveRejectedJson = resolve; }),
+            };
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "alice message";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(20);
+          app.document.nodes["switch-user"].dispatch("click");
+          app.document.nodes["identifier-input"].value = "bob";
+          await app.document.nodes["identity-form"].dispatch("submit");
+          await settle(20);
+          resolveRejectedJson({ error: { code: "turn_in_progress", message: "old response" } });
+          await settle(20);
+          assert.equal(app.document.nodes["chat-view"].hidden, false);
+          assert.equal(app.document.nodes["current-identifier"].textContent, "bob");
+          assert.equal(app.document.nodes["chat-status"].textContent, "可以开始聊天。");
+          assert.equal(app.document.nodes["chat-status"].dataset.state, "completed");
+          assert.equal(app.document.nodes["message-list"].children[0].querySelector("p").textContent, "bob history");
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+        }
+
+        async function runDelayedRejectedPostDoesNotDisplayAfterPagehide() {
+          let resolveRejectedJson;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) return { ok: true, json: async () => ({ messages: [] }) };
+            if (url.endsWith(":stream")) return {
+              ok: false,
+              json: () => new Promise((resolve) => { resolveRejectedJson = resolve; }),
+            };
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "hello";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(20);
+          app.window.dispatch("pagehide");
+          resolveRejectedJson({ error: { code: "turn_in_progress", message: "old response" } });
+          await settle(20);
+          assert.equal(app.document.nodes["chat-status"].textContent, "正在发送消息…");
+          assert.equal(app.document.nodes["chat-status"].dataset.state, "pending");
+          assert.equal(app.timers.length, 0);
+        }
+
         async function runSwitchIgnoresLateHistory() {
           let resolveLateHistory;
           const app = await boot(async (url, options = {}) => {
@@ -679,6 +739,8 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           .then(runTwoTurns)
           .then(runFailedRecovery)
           .then(runRejectedPost)
+          .then(runDelayedRejectedPostDoesNotOverwriteNewUser)
+          .then(runDelayedRejectedPostDoesNotDisplayAfterPagehide)
           .then(runSwitchIgnoresLateHistory)
           .then(runPagehideStopsPolling)
           .then(runInitialHistoryFailure)

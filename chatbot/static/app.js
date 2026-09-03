@@ -121,6 +121,13 @@
     );
   }
 
+  function sendIsCurrent(controller, expectedGeneration, expectedUserId) {
+    return (
+      !controller.signal.aborted &&
+      sessionIsCurrent(expectedGeneration, expectedUserId)
+    );
+  }
+
   async function loadHistory(expectedGeneration = generation, signal) {
     const session = activeSession;
     if (!session) return;
@@ -327,9 +334,12 @@
         body: JSON.stringify({ request_id: requestId, content }),
         signal: controller.signal,
       });
+      if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
       if (!response.ok) {
+        const message = await rejectedRequestMessage(response);
+        if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
         rejectedBeforeStream = true;
-        setStatus(chatStatus, await rejectedRequestMessage(response), "failed");
+        setStatus(chatStatus, message, "failed");
         return;
       }
       requestAccepted = true;
@@ -340,6 +350,7 @@
       let buffer = "";
       while (true) {
         const { value, done } = await reader.read();
+        if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
         buffer = consumeFrames(buffer, (event) => {
@@ -351,12 +362,12 @@
         terminal = handleStreamEvent(event) === "done" || terminal;
       });
     } catch {
-      if (sessionIsCurrent(expectedGeneration, session.user_id) && !controller.signal.aborted) {
+      if (sendIsCurrent(controller, expectedGeneration, session.user_id)) {
         setStatus(chatStatus, "连接中断，正在同步已保存的消息。", "failed");
       }
     } finally {
       if (streamController === controller) streamController = null;
-      if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
+      if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
       if (terminal) {
         setSending(false);
       } else if (rejectedBeforeStream) {
