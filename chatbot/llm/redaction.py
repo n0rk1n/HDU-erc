@@ -27,10 +27,10 @@ def redact_secrets(value: object) -> JSONValue:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            return _UNSERIALIZABLE
         redacted: dict[str, JSONValue] = {}
         for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError("JSON object keys must be strings")
             redacted[key] = (
                 REDACTED
                 if _normalize_key(key) in _SENSITIVE_KEYS

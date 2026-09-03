@@ -56,3 +56,15 @@ def test_redaction_never_serializes_secret_value_objects() -> None:
         "password": "[REDACTED]",
         "certificate": "[REDACTED]",
     }
+
+
+def test_redaction_replaces_only_mapping_with_non_string_key() -> None:
+    value = {
+        "safe": "kept",
+        "nested": {1: "must-not-leak", "also": "discarded-with-mapping"},
+    }
+
+    assert redact_secrets(value) == {
+        "safe": "kept",
+        "nested": "[UNSERIALIZABLE]",
+    }

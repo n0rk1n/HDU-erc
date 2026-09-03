@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
 
@@ -147,6 +148,25 @@ def test_parse_chunk_extracts_only_standard_text_content_blocks() -> None:
 
     assert delta.content == "正文一正文二"
     assert delta.reasoning == ""
+
+
+def test_parse_chunk_safely_replaces_metadata_mapping_with_non_string_key() -> None:
+    chunk = AIMessageChunk(
+        content="答案",
+        response_metadata={
+            "provider": "compatible",
+            "nested": {1: "must-not-leak"},
+        },
+    )
+
+    delta = parse_ai_message_chunk(chunk)
+
+    assert delta.response_metadata == {
+        "provider": "compatible",
+        "nested": "[UNSERIALIZABLE]",
+    }
+    serialized = json.dumps(delta.response_metadata)
+    assert "must-not-leak" not in serialized
 
 
 @pytest.mark.parametrize(
