@@ -720,6 +720,7 @@ button:disabled {
 
 .message-form textarea {
   display: block;
+  height: 3.1rem;
   min-height: 3.1rem;
   max-height: 14rem;
   padding: 0.2rem 0.35rem 0.5rem;
@@ -729,7 +730,8 @@ button:disabled {
   background: transparent;
   box-shadow: none;
   line-height: 1.55;
-  resize: vertical;
+  overflow-y: auto;
+  resize: none;
 }
 
 .message-form textarea:focus-visible {

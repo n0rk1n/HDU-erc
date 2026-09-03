@@ -48,10 +48,20 @@
     switchUserButton.disabled = false;
   }
 
+  function resizeMessageInput() {
+    messageInput.style.height = "auto";
+    messageInput.style.height = `${messageInput.scrollHeight}px`;
+  }
+
+  function resetMessageInput() {
+    messageInput.value = "";
+    messageInput.style.height = "";
+  }
+
   function clearChat() {
     messageList.replaceChildren();
     temporaryAssistant = null;
-    messageInput.value = "";
+    resetMessageInput();
     setStatus(chatStatus, "");
     setSending(false);
   }
@@ -461,8 +471,16 @@
       setStatus(chatStatus, "请输入消息。", "failed");
       return;
     }
-    messageInput.value = "";
+    resetMessageInput();
     void sendMessage(content);
+  });
+
+  messageInput.addEventListener("input", resizeMessageInput);
+
+  messageInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+    event.preventDefault();
+    if (!messageInput.disabled) messageForm.requestSubmit();
   });
 
   switchUserButton.addEventListener("click", () => {

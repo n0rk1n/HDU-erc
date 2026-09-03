@@ -345,6 +345,8 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
             this.value = "";
             this.disabled = false;
             this.hidden = false;
+            this.scrollHeight = 0;
+            this.style = {};
           }
           append(...nodes) {
             for (const node of nodes) {
@@ -381,9 +383,10 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           }
           setAttribute() {}
           addEventListener(name, listener) { this.listeners.set(name, listener); }
-          dispatch(name) {
-            return this.listeners.get(name)({ preventDefault() {} });
+          dispatch(name, event = {}) {
+            return this.listeners.get(name)?.({ preventDefault() {}, ...event });
           }
+          requestSubmit() { return this.dispatch("submit"); }
           focus() {}
         }
 
@@ -802,6 +805,54 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.match(app.document.nodes["chat-status"].textContent, /历史加载失败/);
         }
 
+        async function runComposerKeyboardAndAutoResize() {
+          let posts = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) return { ok: true, json: async () => ({ messages: [] }) };
+            if (url.endsWith(":stream")) {
+              posts += 1;
+              return sse([
+                { name: "run_started", data: {} },
+                { name: "user_message", data: { id: "user-keyboard", sequence_no: 1, content: "line 1" } },
+                { name: "done", data: { message: { id: "assistant-keyboard", sequence_no: 2, status: "completed", content: "done" } } },
+              ]);
+            }
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          const input = app.document.nodes["message-input"];
+          input.value = "line 1\nline 2\nline 3";
+          input.scrollHeight = 96;
+          input.dispatch("input");
+          assert.equal(input.style.height, "96px", "typing grows the composer to its content height");
+
+          let shiftEnterPrevented = false;
+          input.dispatch("keydown", {
+            key: "Enter",
+            shiftKey: true,
+            isComposing: false,
+            preventDefault() { shiftEnterPrevented = true; },
+          });
+          await settle();
+          assert.equal(shiftEnterPrevented, false, "Shift+Enter keeps the newline behavior");
+          assert.equal(posts, 0);
+
+          input.value = "line 1";
+          let enterPrevented = false;
+          input.dispatch("keydown", {
+            key: "Enter",
+            shiftKey: false,
+            isComposing: false,
+            preventDefault() { enterPrevented = true; },
+          });
+          await settle(40);
+          assert.equal(enterPrevented, true, "Enter prevents a newline before sending");
+          assert.equal(posts, 1);
+          assert.equal(input.value, "");
+          assert.equal(input.style.height, "", "sending restores the default composer height");
+        }
+
         Promise.resolve()
           .then(runSlowRecovery)
           .then(runTwoTurns)
@@ -814,6 +865,7 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           .then(runSwitchBackToStreamingHistoryReconcilesWithoutPost)
           .then(runBfcachePageshowRestoresStreamingHistoryWithoutPost)
           .then(runInitialHistoryFailure)
+          .then(runComposerKeyboardAndAutoResize)
           .then(() => process.stdout.write("frontend scenarios passed\n"))
           .catch((error) => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });
         '''
