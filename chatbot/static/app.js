@@ -169,6 +169,31 @@
     );
   }
 
+  function findActiveAssistant(messages) {
+    return messages
+      .filter(
+        (message) =>
+          message &&
+          message.role === "assistant" &&
+          typeof message.request_id === "string" &&
+          (message.status === "pending" || message.status === "streaming")
+      )
+      .sort((left, right) => right.sequence_no - left.sequence_no)[0];
+  }
+
+  function resumeActiveHistory(messages, expectedGeneration, expectedUserId) {
+    const activeAssistant = findActiveAssistant(messages);
+    if (!activeAssistant) return false;
+    setSending(true);
+    setStatus(chatStatus, "消息仍在生成，正在同步已保存的内容。", "pending");
+    void reconcileHistory(
+      expectedGeneration,
+      expectedUserId,
+      activeAssistant.request_id
+    );
+    return true;
+  }
+
   async function reconcileHistory(expectedGeneration, expectedUserId, requestId) {
     reconciliationController?.abort();
     const controller = new AbortController();
@@ -406,9 +431,12 @@
       clearChat();
       showChatView();
       try {
-        await loadHistory(expectedGeneration);
+        const messages = await loadHistory(expectedGeneration, controller.signal);
         if (sessionIsCurrent(expectedGeneration, activeSession.user_id)) {
-          setStatus(chatStatus, "可以开始聊天。", "completed");
+          if (!resumeActiveHistory(messages ?? [], expectedGeneration, activeSession.user_id)) {
+            setSending(false);
+            setStatus(chatStatus, "可以开始聊天。", "completed");
+          }
         }
       } catch {
         if (sessionIsCurrent(expectedGeneration, activeSession.user_id)) {
@@ -452,8 +480,40 @@
   });
 
   window.addEventListener("pagehide", () => {
+    generation += 1;
     streamController?.abort();
+    identityController?.abort();
     reconciliationController?.abort();
+    streamController = null;
+    identityController = null;
+    reconciliationController = null;
+  });
+
+  window.addEventListener("pageshow", () => {
+    const session = activeSession;
+    if (!session) return;
+    streamController?.abort();
+    identityController?.abort();
+    reconciliationController?.abort();
+    streamController = null;
+    identityController = null;
+    reconciliationController = null;
+    const expectedGeneration = ++generation;
+    setSending(true);
+    setStatus(chatStatus, "正在恢复消息状态…", "pending");
+    void loadHistory(expectedGeneration)
+      .then((messages) => {
+        if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
+        if (!resumeActiveHistory(messages ?? [], expectedGeneration, session.user_id)) {
+          setSending(false);
+          setStatus(chatStatus, "消息状态已恢复。", "completed");
+        }
+      })
+      .catch(() => {
+        if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
+        setStatus(chatStatus, "历史加载失败，请切换用户后重试。", "failed");
+        setSending(true);
+      });
   });
   showIdentityView();
 })();

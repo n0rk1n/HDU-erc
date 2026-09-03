@@ -430,7 +430,7 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           let nextTimerId = 1;
           const window = {
             addEventListener(name, listener) { listeners.set(name, listener); },
-            dispatch(name) { return listeners.get(name)?.(); },
+            dispatch(name, event = {}) { return listeners.get(name)?.(event); },
             setTimeout(callback) {
               callback.timerId = nextTimerId;
               nextTimerId += 1;
@@ -719,6 +719,74 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.notEqual(app.document.nodes["chat-status"].dataset.state, "failed");
         }
 
+        async function runSwitchBackToStreamingHistoryReconcilesWithoutPost() {
+          let historyReads = 0;
+          let posts = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              historyReads += 1;
+              const messages = historyReads === 1 ? [] : historyReads === 2 ? [
+                { id: "user-active", request_id: "active-request", role: "user", status: "completed", sequence_no: 1, content: "question" },
+                { id: "assistant-active", request_id: "active-request", role: "assistant", status: "streaming", sequence_no: 2, content: "partial" },
+              ] : [
+                { id: "user-active", request_id: "active-request", role: "user", status: "completed", sequence_no: 1, content: "question" },
+                { id: "assistant-active", request_id: "active-request", role: "assistant", status: "completed", sequence_no: 2, content: "final" },
+              ];
+              return { ok: true, json: async () => ({ messages }) };
+            }
+            if (url.endsWith(":stream")) { posts += 1; throw new Error("must not post"); }
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          app.document.nodes["switch-user"].dispatch("click");
+          await enter(app);
+          assert.equal(app.document.nodes["message-input"].disabled, true, "streaming history keeps send disabled");
+          assert.equal(app.timers.length, 1, "streaming history starts one reconciliation timer");
+          app.timers.shift()();
+          await settle(30);
+          const assistant = app.document.nodes["message-list"].children[1];
+          assert.equal(posts, 0, "history recovery never creates a new turn");
+          assert.equal(assistant.dataset.state, "completed");
+          assert.equal(assistant.querySelector("p").textContent, "final");
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+          assert.equal(app.timers.length, 0);
+        }
+
+        async function runBfcachePageshowRestoresStreamingHistoryWithoutPost() {
+          let historyReads = 0;
+          let posts = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages") && !options.method) {
+              historyReads += 1;
+              const terminal = historyReads >= 3;
+              return { ok: true, json: async () => ({ messages: [
+                { id: "user-bfcache", request_id: "bfcache-request", role: "user", status: "completed", sequence_no: 1, content: "question" },
+                { id: "assistant-bfcache", request_id: "bfcache-request", role: "assistant", status: terminal ? "completed" : "streaming", sequence_no: 2, content: terminal ? "final" : "partial" },
+              ] }) };
+            }
+            if (url.endsWith(":stream")) { posts += 1; throw new Error("must not post"); }
+            throw new Error(`unexpected ${url}`);
+          });
+          await enter(app);
+          assert.equal(app.timers.length, 1);
+          app.window.dispatch("pagehide", { persisted: true });
+          await settle(20);
+          assert.equal(app.timers.length, 0, "pagehide removes the old reconciliation timer");
+          app.window.dispatch("pageshow", { persisted: true });
+          await settle(30);
+          assert.equal(app.timers.length, 1, "pageshow creates only one fresh timer");
+          app.timers.shift()();
+          await settle(30);
+          const assistant = app.document.nodes["message-list"].children[1];
+          assert.equal(posts, 0);
+          assert.equal(assistant.dataset.state, "completed");
+          assert.equal(assistant.querySelector("p").textContent, "final");
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+          assert.equal(app.timers.length, 0);
+        }
+
         async function runInitialHistoryFailure() {
           const app = await boot(async (url) => {
             if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
@@ -743,6 +811,8 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           .then(runDelayedRejectedPostDoesNotDisplayAfterPagehide)
           .then(runSwitchIgnoresLateHistory)
           .then(runPagehideStopsPolling)
+          .then(runSwitchBackToStreamingHistoryReconcilesWithoutPost)
+          .then(runBfcachePageshowRestoresStreamingHistoryWithoutPost)
           .then(runInitialHistoryFailure)
           .then(() => process.stdout.write("frontend scenarios passed\n"))
           .catch((error) => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime, timedelta
@@ -13,17 +14,21 @@ import pytest_asyncio
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph.state import CompiledStateGraph
+from langgraph.runtime import Runtime
 
 from chatbot.core.errors import InvalidMessageState
 from chatbot.db.messages import MessageRepository
 from chatbot.graph import (
+    EventPublisher,
     NodeDependencies,
     TurnContext,
     TurnState,
     build_turn_graph,
     compile_turn_graph,
 )
+from chatbot.graph.nodes import TurnNodes
 from chatbot.llm.types import ModelDelta, TokenUsage
+from chatbot.services.events import TurnSubscription
 from chatbot.services.identity import IdentityService
 
 
@@ -54,10 +59,11 @@ class RecordingPublisher:
         self.events: list[tuple[str, dict[str, object]]] = []
         self.fail = fail
 
-    async def publish(self, name: str, data: dict[str, object]) -> None:
+    async def publish(self, name: str, data: dict[str, object]) -> bool:
         if self.fail:
             raise RuntimeError("publisher-secret")
         self.events.append((name, data))
+        return True
 
 
 class DeterministicModel:
@@ -133,6 +139,38 @@ class FailingFlushMessages(RecordingMessages):
         raise RuntimeError("database write failed")
 
 
+class FirstFlushFailsMessages(RecordingMessages):
+    def __init__(self, wrapped: MessageRepository) -> None:
+        super().__init__(wrapped)
+        self.attempts = 0
+
+    async def flush_partial(self, assistant_message_id: str, **facts: object):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise RuntimeError("database-secret first flush failed")
+        return await self.wrapped.flush_partial(assistant_message_id, **facts)
+
+
+class FailureWriteFailsMessages(RecordingMessages):
+    async def fail_assistant(self, assistant_message_id: str, **facts: object):
+        raise RuntimeError("database-secret failure write failed")
+
+
+class CompletionFailsMessages(RecordingMessages):
+    async def complete_assistant(self, assistant_message_id: str, **facts: object):
+        raise RuntimeError("database-secret completion failed")
+
+
+class CancelledModel(DeterministicModel):
+    async def stream(
+        self, prompt: Sequence[BaseMessage]
+    ) -> AsyncIterator[ModelDelta]:
+        self.calls += 1
+        self.prompts.append(prompt)
+        yield ModelDelta(content="取消前正文", reasoning="取消前依据")
+        raise asyncio.CancelledError
+
+
 @pytest_asyncio.fixture
 async def messages(database) -> MessageRepository:
     return MessageRepository(database)
@@ -154,7 +192,7 @@ async def _reserved_context(
     database,
     messages: MessageRepository,
     identifier: str,
-    publisher: RecordingPublisher | None = None,
+    publisher: EventPublisher | None = None,
 ) -> tuple[TurnContext, dict[str, object]]:
     conversation = (await IdentityService(database).resolve(identifier)).conversation
     request_id = str(uuid4())
@@ -347,6 +385,84 @@ async def test_generate_persists_versioned_prompt_redacted_model_facts_and_null_
     }
     assert "sk-test-secret" not in serialized
     assert "provider-secret" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_graph_never_persists_extended_credentials_or_authenticated_urls(
+    database, messages, saver
+) -> None:
+    """Catches secrets reaching Message business columns or trace through model facts."""
+    context, state = await _reserved_context(database, messages, "credential-audit")
+    model = DeterministicModel(
+        [
+            ModelDelta(
+                content="安全回答",
+                usage=TokenUsage(input_tokens=9, output_tokens=4, total_tokens=13),
+                response_metadata={
+                    "PASSWORD": "metadata-password-secret",
+                    "nested": {"client-secret": "metadata-client-secret"},
+                    "token_usage": {"total_tokens": 13},
+                },
+            )
+        ]
+    )
+    model.parameters = {
+        "model": "test-model",
+        "passwd": "parameter-password-secret",
+        "X_API_KEY": "parameter-api-secret",
+        "refresh_token": "parameter-refresh-secret",
+        "private-key": "parameter-private-secret",
+        "base_url": (
+            "https://user:parameter-url-secret@example.invalid/v1"
+            "?client_secret=query-secret&region=cn"
+        ),
+        "token_usage": 13,
+    }
+    graph = compile_turn_graph(NodeDependencies(messages=messages, model=model), saver)
+
+    await graph.ainvoke(state, _config(context), context=context)
+
+    assistant = await messages.find_assistant(context.conversation_id, context.request_id)
+    assert assistant is not None
+    parameters = json.loads(assistant.parameters_json or "null")
+    trace = json.loads(assistant.trace_json)
+    assert parameters == {
+        "model": "test-model",
+        "passwd": "[REDACTED]",
+        "X_API_KEY": "[REDACTED]",
+        "refresh_token": "[REDACTED]",
+        "private-key": "[REDACTED]",
+        "base_url": (
+            "https://example.invalid/v1?client_secret=[REDACTED]&region=cn"
+        ),
+        "token_usage": 13,
+    }
+    assert trace["model_calls"][0]["response_metadata"] == {
+        "PASSWORD": "[REDACTED]",
+        "nested": {"client-secret": "[REDACTED]"},
+        "token_usage": {"total_tokens": 13},
+    }
+    serialized_business_facts = "|".join(
+        value
+        for value in (
+            assistant.trace_json,
+            assistant.prompt_json,
+            assistant.parameters_json,
+            assistant.error_message,
+        )
+        if value is not None
+    )
+    for secret in (
+        "metadata-password-secret",
+        "metadata-client-secret",
+        "parameter-password-secret",
+        "parameter-api-secret",
+        "parameter-refresh-secret",
+        "parameter-private-secret",
+        "parameter-url-secret",
+        "query-secret",
+    ):
+        assert secret not in serialized_business_facts
 
 
 @pytest.mark.asyncio
@@ -583,7 +699,7 @@ async def test_model_failure_is_stable_retains_partials_and_is_idempotent(
 
 
 @pytest.mark.asyncio
-async def test_database_flush_failure_is_not_misreported_as_model_failure(
+async def test_database_flush_failure_reaches_stable_failed_terminal_state(
     database, messages, saver
 ) -> None:
     """Catches a business-store outage being swallowed and finalized as model_error."""
@@ -593,13 +709,144 @@ async def test_database_flush_failure_is_not_misreported_as_model_failure(
         NodeDependencies(messages=FailingFlushMessages(messages), model=model), saver
     )
 
-    with pytest.raises(RuntimeError, match="database write failed"):
-        await graph.ainvoke(state, _config(context), context=context)
+    result = await graph.ainvoke(state, _config(context), context=context)
 
     assistant = await messages.find_assistant(context.conversation_id, context.request_id)
     assert assistant is not None
-    assert assistant.status == "streaming"
-    assert assistant.error_code is None
+    assert result["phase"] == "failed"
+    assert result["error_code"] == "database_error"
+    assert assistant.status == "failed"
+    assert assistant.error_code == "database_error"
+
+
+@pytest.mark.asyncio
+async def test_flush_failure_best_effort_persists_all_run_facts_and_clears_memory(
+    database, messages
+) -> None:
+    """Catches infrastructure failure losing received facts or retaining process secrets."""
+    context, state = await _reserved_context(database, messages, "flush-facts")
+    wrapped = FirstFlushFailsMessages(messages)
+    model = DeterministicModel(
+        [
+            ModelDelta(
+                content="已接收正文",
+                reasoning="已接收依据",
+                usage=TokenUsage(input_tokens=11, output_tokens=5, total_tokens=16),
+                finish_reason="stop",
+                response_metadata={"client_secret": "metadata-secret", "request_id": "safe"},
+            )
+        ]
+    )
+    model.parameters = {
+        "model": "test-model",
+        "password": "parameter-secret",
+        "temperature": 0.2,
+    }
+    nodes = TurnNodes(
+        NodeDependencies(
+            messages=wrapped,
+            model=model,
+            flush_character_threshold=1,
+        )
+    )
+    runtime = Runtime(context=context)
+
+    prepared = {**state, **(await nodes.prepare_turn(state, runtime))}
+    result = await nodes.generate_response(prepared, runtime)
+
+    assistant = await messages.find_assistant(context.conversation_id, context.request_id)
+    assert assistant is not None
+    assert result == {"phase": "failed", "error_code": "database_error"}
+    assert assistant.status == "failed"
+    assert assistant.error_code == "database_error"
+    assert assistant.error_message == "database operation failed"
+    assert assistant.content == "已接收正文"
+    assert assistant.reasoning_content == "已接收依据"
+    assert json.loads(assistant.prompt_json or "null")[-1] == {
+        "role": "user",
+        "content": "来自 flush-facts 的问题",
+    }
+    assert json.loads(assistant.parameters_json or "null") == {
+        "model": "test-model",
+        "password": "[REDACTED]",
+        "temperature": 0.2,
+    }
+    assert (assistant.input_tokens, assistant.output_tokens, assistant.total_tokens) == (
+        11,
+        5,
+        16,
+    )
+    trace = json.loads(assistant.trace_json)
+    assert trace["model_calls"][0]["response_metadata"] == {
+        "client_secret": "[REDACTED]",
+        "request_id": "safe",
+    }
+    assert trace["errors"][-1] == {
+        "code": "database_error",
+        "message": "database operation failed",
+    }
+    assert context.assistant_message_id not in nodes._runs
+    assert "database-secret" not in "|".join(
+        filter(None, (assistant.trace_json, assistant.prompt_json, assistant.parameters_json, assistant.error_message))
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancellation_propagates_and_clears_run_facts_even_if_failure_write_fails(
+    database, messages
+) -> None:
+    """Catches cancellation being swallowed or _RunFacts surviving failed cleanup."""
+    context, state = await _reserved_context(database, messages, "cancel-cleanup")
+    nodes = TurnNodes(
+        NodeDependencies(
+            messages=FailureWriteFailsMessages(messages),
+            model=CancelledModel([]),
+        )
+    )
+    runtime = Runtime(context=context)
+    prepared = {**state, **(await nodes.prepare_turn(state, runtime))}
+
+    with pytest.raises(asyncio.CancelledError):
+        await nodes.generate_response(prepared, runtime)
+
+    assert context.assistant_message_id not in nodes._runs
+
+
+@pytest.mark.asyncio
+async def test_completion_write_failure_uses_graph_facts_for_failed_terminal_state(
+    database, messages
+) -> None:
+    """Catches final business transaction failure falling back to partial-only facts."""
+    context, state = await _reserved_context(database, messages, "complete-facts")
+    model = DeterministicModel(
+        [
+            ModelDelta(
+                content="完成前正文",
+                reasoning="完成前依据",
+                usage=TokenUsage(input_tokens=6, output_tokens=3, total_tokens=9),
+                response_metadata={"private_key": "metadata-secret"},
+            )
+        ]
+    )
+    nodes = TurnNodes(
+        NodeDependencies(messages=CompletionFailsMessages(messages), model=model)
+    )
+    runtime = Runtime(context=context)
+    prepared = {**state, **(await nodes.prepare_turn(state, runtime))}
+    generated = {**prepared, **(await nodes.generate_response(prepared, runtime))}
+
+    result = await nodes.finalize_turn(generated, runtime)
+
+    assistant = await messages.find_assistant(context.conversation_id, context.request_id)
+    assert assistant is not None
+    assert result == {"phase": "failed", "error_code": "database_error"}
+    assert assistant.status == "failed"
+    assert assistant.content == "完成前正文"
+    assert assistant.reasoning_content == "完成前依据"
+    assert json.loads(assistant.prompt_json or "null")[-1]["content"] == "来自 complete-facts 的问题"
+    assert (assistant.input_tokens, assistant.output_tokens, assistant.total_tokens) == (6, 3, 9)
+    assert "metadata-secret" not in assistant.trace_json
+    assert context.assistant_message_id not in nodes._runs
 
 
 @pytest.mark.asyncio
@@ -672,6 +919,34 @@ async def test_publisher_failure_is_observable_but_does_not_break_business_compl
     ]
     assert trace["stream"]["client_disconnected"] is True
     assert "publisher-secret" not in assistant.trace_json
+
+
+@pytest.mark.asyncio
+async def test_real_subscription_overflow_sets_client_disconnected_without_breaking_completion(
+    database, messages, saver
+) -> None:
+    """Catches real queue detachment being absent from the persisted stream trace."""
+    subscription = TurnSubscription(queue_capacity=1)
+    assert await subscription.publish("run_started", {"request_id": "occupied"}) is True
+    context, state = await _reserved_context(
+        database, messages, "real-overflow", subscription
+    )
+    graph = compile_turn_graph(
+        NodeDependencies(
+            messages=messages,
+            model=DeterministicModel([ModelDelta(content="后台仍完成")]),
+        ),
+        saver,
+    )
+
+    result = await graph.ainvoke(state, _config(context), context=context)
+
+    assistant = await messages.find_assistant(context.conversation_id, context.request_id)
+    assert assistant is not None
+    assert result["phase"] == "completed"
+    assert assistant.status == "completed"
+    assert assistant.content == "后台仍完成"
+    assert json.loads(assistant.trace_json)["stream"]["client_disconnected"] is True
 
 
 @pytest.mark.asyncio

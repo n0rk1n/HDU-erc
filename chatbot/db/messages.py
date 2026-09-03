@@ -250,6 +250,17 @@ class MessageRepository:
                 ),
             )
             _require_single_update(cursor)
+            conversation_cursor = await connection.execute(
+                """
+                UPDATE conversations
+                SET updated_at = ?
+                WHERE id = (
+                    SELECT conversation_id FROM messages WHERE id = ?
+                )
+                """,
+                (now, assistant_message_id),
+            )
+            _require_single_update(conversation_cursor)
             return await self._select_message_by_id(connection, assistant_message_id)
 
     async def fail_assistant(

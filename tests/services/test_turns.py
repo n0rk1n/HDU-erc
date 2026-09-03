@@ -659,3 +659,18 @@ def test_event_subscription_rejects_nonpositive_capacity() -> None:
     """Catches invalid queue bounds silently creating blocking/unbounded queues."""
     with pytest.raises(ValueError, match="queue_capacity"):
         TurnSubscription(queue_capacity=0)
+
+
+@pytest.mark.asyncio
+async def test_event_subscription_reports_delivery_and_real_overflow_detachment() -> None:
+    """Catches overflow silently looking like a delivered display event."""
+    subscription = TurnSubscription(queue_capacity=1)
+
+    first = await subscription.publish("run_started", {"request_id": "request-1"})
+    overflow = await subscription.publish("token", {"content": "not-delivered"})
+    after_detach = await subscription.publish("token", {"content": "also-not-delivered"})
+
+    assert first is True
+    assert overflow is False
+    assert after_detach is False
+    assert [event async for event in subscription.events()] == []

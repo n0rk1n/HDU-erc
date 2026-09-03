@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
@@ -10,7 +11,7 @@ from uuid import uuid4
 from langchain_core.messages import BaseMessage
 from langgraph.runtime import Runtime
 
-from chatbot.core.errors import InvalidMessageState
+from chatbot.core.errors import DatabaseError, InvalidMessageState
 from chatbot.db.models import Message, ReservedTurn
 from chatbot.graph.dependencies import NodeDependencies
 from chatbot.graph.state import TurnContext, TurnState
@@ -81,6 +82,40 @@ class TurnNodes:
     async def generate_response(
         self, state: TurnState, runtime: Runtime[TurnContext]
     ) -> TurnState:
+        assistant_id = runtime.context.assistant_message_id
+        try:
+            return await self._generate_response_active(state, runtime)
+        except asyncio.CancelledError:
+            facts = self._runs.get(assistant_id)
+            try:
+                if facts is not None:
+                    self._record_infrastructure_failure(facts, "process_interrupted")
+                    await self._fail_with_facts(
+                        assistant_id, facts, error_code="process_interrupted"
+                    )
+            except BaseException:
+                pass
+            finally:
+                self._runs.pop(assistant_id, None)
+            raise
+        except Exception:
+            facts = self._runs.get(assistant_id)
+            try:
+                if facts is None:
+                    raise DatabaseError()
+                self._record_infrastructure_failure(facts, "database_error")
+                await self._fail_with_facts(
+                    assistant_id, facts, error_code="database_error"
+                )
+                return {"phase": "failed", "error_code": "database_error"}
+            except Exception:
+                raise DatabaseError() from None
+            finally:
+                self._runs.pop(assistant_id, None)
+
+    async def _generate_response_active(
+        self, state: TurnState, runtime: Runtime[TurnContext]
+    ) -> TurnState:
         turn = await self._load_valid_turn(state, runtime.context)
         assistant = turn.assistant
         terminal = _terminal_update(assistant)
@@ -143,9 +178,11 @@ class TurnNodes:
                 facts.first_token_ms = _duration_ms(started_at, now)
             if delta.content and not facts.publish_failed:
                 try:
-                    await runtime.context.publisher.publish(
+                    delivered = await runtime.context.publisher.publish(
                         "token", {"content": delta.content}
                     )
+                    if delivered is False:
+                        facts.publish_failed = True
                 except Exception:
                     facts.publish_failed = True
                     _trace_errors(facts.trace).append(
@@ -195,6 +232,60 @@ class TurnNodes:
             "error_code": error_code,
         }
 
+    def _record_infrastructure_failure(
+        self, facts: _RunFacts, error_code: str, *, node_name: str = "generate_response"
+    ) -> None:
+        ended_at = self.dependencies.clock()
+        facts.finish_reason = "error"
+        _set_stream_trace(facts)
+        calls = facts.trace.get("model_calls")
+        if not isinstance(calls, list) or not calls:
+            _append_model_call(facts)
+        _trace_errors(facts.trace).append(
+            {"code": error_code, "message": _safe_error_message(error_code)}
+        )
+        nodes = facts.trace.get("nodes")
+        matching_node = next(
+            (
+                node
+                for node in reversed(nodes if isinstance(nodes, list) else [])
+                if isinstance(node, dict) and node.get("name") == node_name
+            ),
+            None,
+        )
+        if matching_node is not None:
+            matching_node["status"] = "failed"
+        else:
+            _append_node(
+                facts.trace,
+                node_name,
+                "failed",
+                facts.started_at,
+                ended_at,
+            )
+
+    async def _fail_with_facts(
+        self, assistant_id: str, facts: _RunFacts, *, error_code: str
+    ) -> None:
+        usage = facts.usage or TokenUsage()
+        await self.dependencies.messages.fail_assistant(
+            assistant_id,
+            error_code=error_code,
+            error_message=_safe_error_message(error_code),
+            content=facts.content,
+            reasoning_content=facts.reasoning or None,
+            trace=facts.trace,
+            prompt=facts.prompt,
+            provider=facts.provider,
+            model=facts.model,
+            parameters=facts.parameters,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            latency_ms=_duration_ms(facts.started_at, self.dependencies.clock()),
+            finish_reason=facts.finish_reason,
+        )
+
     async def finalize_turn(
         self, state: TurnState, runtime: Runtime[TurnContext]
     ) -> TurnState:
@@ -217,13 +308,15 @@ class TurnNodes:
         started_at = self.dependencies.clock()
         ended_at = self.dependencies.clock()
         _append_node(facts.trace, "finalize_turn", "completed", started_at, ended_at)
-        if state.get("error_code"):
-            error_code = cast(str, state["error_code"])
+        try:
+            if state.get("error_code"):
+                error_code = cast(str, state["error_code"])
+                await self._fail_with_facts(assistant.id, facts, error_code=error_code)
+                return {"phase": "failed", "error_code": error_code}
+
             usage = facts.usage or TokenUsage()
-            await self.dependencies.messages.fail_assistant(
+            await self.dependencies.messages.complete_assistant(
                 assistant.id,
-                error_code=error_code,
-                error_message=_safe_error_message(error_code),
                 content=facts.content,
                 reasoning_content=facts.reasoning or None,
                 trace=facts.trace,
@@ -237,27 +330,31 @@ class TurnNodes:
                 latency_ms=_duration_ms(facts.started_at, ended_at),
                 finish_reason=facts.finish_reason,
             )
+            return {"phase": "completed", "error_code": None}
+        except asyncio.CancelledError:
+            try:
+                self._record_infrastructure_failure(
+                    facts, "process_interrupted", node_name="finalize_turn"
+                )
+                await self._fail_with_facts(
+                    assistant.id, facts, error_code="process_interrupted"
+                )
+            except BaseException:
+                pass
+            raise
+        except Exception:
+            try:
+                self._record_infrastructure_failure(
+                    facts, "database_error", node_name="finalize_turn"
+                )
+                await self._fail_with_facts(
+                    assistant.id, facts, error_code="database_error"
+                )
+                return {"phase": "failed", "error_code": "database_error"}
+            except Exception:
+                raise DatabaseError() from None
+        finally:
             self._runs.pop(assistant.id, None)
-            return {"phase": "failed", "error_code": error_code}
-
-        usage = facts.usage or TokenUsage()
-        await self.dependencies.messages.complete_assistant(
-            assistant.id,
-            content=facts.content,
-            reasoning_content=facts.reasoning or None,
-            trace=facts.trace,
-            prompt=facts.prompt,
-            provider=facts.provider,
-            model=facts.model,
-            parameters=facts.parameters,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            total_tokens=usage.total_tokens,
-            latency_ms=_duration_ms(facts.started_at, ended_at),
-            finish_reason=facts.finish_reason,
-        )
-        self._runs.pop(assistant.id, None)
-        return {"phase": "completed", "error_code": None}
 
     async def _load_valid_turn(
         self, state: TurnState, context: TurnContext
@@ -439,4 +536,6 @@ def _safe_error_message(error_code: str) -> str:
         return "model generation failed"
     if error_code == "process_interrupted":
         return "generation interrupted"
+    if error_code == "database_error":
+        return "database operation failed"
     return "turn failed"

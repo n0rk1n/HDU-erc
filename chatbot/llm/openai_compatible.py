@@ -56,7 +56,7 @@ class OpenAICompatibleChatModel:
         return {
             "provider": self.provider,
             "model": self._model,
-            "base_url": self._base_url,
+            "base_url": _safe_base_url(self._base_url),
             "temperature": self._temperature,
             "timeout": self._timeout,
             "streaming": True,
@@ -74,7 +74,7 @@ class OpenAICompatibleChatModel:
     def __repr__(self) -> str:
         return (
             f"{type(self).__name__}(model={self._model!r}, "
-            f"base_url={self._base_url!r}, temperature={self._temperature!r}, "
+            f"base_url={_safe_base_url(self._base_url)!r}, temperature={self._temperature!r}, "
             f"timeout={self._timeout!r}, streaming=True)"
         )
 
@@ -164,3 +164,13 @@ def _optional_int(value: object) -> int | None:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _safe_base_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    redacted = redact_secrets({"base_url": value})
+    if not isinstance(redacted, dict):
+        return "[REDACTED]"
+    safe = redacted.get("base_url")
+    return safe if isinstance(safe, str) else "[REDACTED]"

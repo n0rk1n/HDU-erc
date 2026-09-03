@@ -35,16 +35,17 @@ class TurnSubscription:
         self._detached = False
         self._closed = False
 
-    async def publish(self, name: str, data: dict[str, object]) -> None:
+    async def publish(self, name: str, data: dict[str, object]) -> bool:
         """Publish without awaiting consumer capacity; overflow detaches the display."""
         if name not in _EVENT_NAMES:
             raise ValueError("unsupported SSE event")
         if self._detached or self._closed:
-            return
+            return False
         if self._queue.qsize() >= self._payload_capacity:
             self.detach()
-            return
+            return False
         self._queue.put_nowait(SseEvent(cast(EventName, name), dict(data)))
+        return True
 
     def close(self) -> None:
         if self._detached or self._closed:

@@ -288,6 +288,111 @@ async def test_complete_assistant_atomically_persists_all_audit_fields(
 
 
 @pytest.mark.asyncio
+async def test_success_updates_conversation_once_but_failure_and_replay_do_not(
+    messages, conversation, database, monkeypatch
+) -> None:
+    """Catches completion ordering time drifting on failures or terminal replay."""
+    async def conversation_updated_at() -> str:
+        async with database.connect() as connection:
+            row = await (
+                await connection.execute(
+                    "SELECT updated_at FROM conversations WHERE id = ?", (conversation.id,)
+                )
+            ).fetchone()
+        assert row is not None
+        return row[0]
+
+    success = await messages.reserve_turn(conversation.id, "success-touch", "one")
+    await messages.mark_streaming(success.assistant.id)
+    monkeypatch.setattr(messages_module, "utc_now", lambda: "2026-09-03T14:00:00+00:00")
+    completed = await messages.complete_assistant(
+        success.assistant.id,
+        content="done",
+        reasoning_content=None,
+        trace={"schema_version": 1},
+        prompt=[],
+        provider="test",
+        model="test",
+        parameters={},
+        input_tokens=1,
+        output_tokens=1,
+        total_tokens=2,
+        latency_ms=1,
+        finish_reason="stop",
+    )
+    assert await conversation_updated_at() == completed.updated_at
+
+    failed = await messages.reserve_turn(conversation.id, "failure-no-touch", "two")
+    await messages.mark_streaming(failed.assistant.id)
+    monkeypatch.setattr(messages_module, "utc_now", lambda: "2026-09-03T15:00:00+00:00")
+    await messages.fail_assistant(
+        failed.assistant.id, error_code="model_error", error_message="safe"
+    )
+    assert await conversation_updated_at() == "2026-09-03T14:00:00+00:00"
+
+    monkeypatch.setattr(messages_module, "utc_now", lambda: "2026-09-03T16:00:00+00:00")
+    with pytest.raises(InvalidMessageState):
+        await messages.complete_assistant(
+            success.assistant.id,
+            content="replay",
+            reasoning_content=None,
+            trace={"schema_version": 1},
+            prompt=[],
+            provider="test",
+            model="test",
+            parameters={},
+            input_tokens=1,
+            output_tokens=1,
+            total_tokens=2,
+            latency_ms=1,
+            finish_reason="stop",
+        )
+    assert await conversation_updated_at() == "2026-09-03T14:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_completion_rolls_back_when_conversation_timestamp_cannot_update(
+    messages, conversation, database, monkeypatch
+) -> None:
+    """Catches assistant completion committing without its conversation ordering write."""
+    turn = await messages.reserve_turn(conversation.id, "conversation-rollback", "one")
+    await messages.mark_streaming(turn.assistant.id)
+    async with database.transaction(immediate=True) as connection:
+        await connection.execute(
+            """
+            CREATE TRIGGER reject_conversation_touch
+            BEFORE UPDATE OF updated_at ON conversations
+            BEGIN
+                SELECT RAISE(IGNORE);
+            END
+            """
+        )
+    monkeypatch.setattr(messages_module, "utc_now", lambda: "2026-09-03T17:00:00+00:00")
+
+    with pytest.raises(InvalidMessageState):
+        await messages.complete_assistant(
+            turn.assistant.id,
+            content="must-roll-back",
+            reasoning_content=None,
+            trace={"schema_version": 1},
+            prompt=[],
+            provider="test",
+            model="test",
+            parameters={},
+            input_tokens=1,
+            output_tokens=1,
+            total_tokens=2,
+            latency_ms=1,
+            finish_reason="stop",
+        )
+
+    assistant = await messages.find_assistant(conversation.id, "conversation-rollback")
+    assert assistant is not None
+    assert assistant.status == "streaming"
+    assert assistant.content == ""
+
+
+@pytest.mark.asyncio
 async def test_lifecycle_rejects_skips_repeated_updates_and_terminal_overwrites(
     messages, conversation
 ):

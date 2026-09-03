@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -229,6 +230,23 @@ def test_adapter_constructs_real_chat_openai_with_exact_config() -> None:
     }
     assert "sk-unit-secret" not in repr(adapter)
     assert "sk-unit-secret" not in repr(adapter.parameters)
+
+
+def test_adapter_repr_does_not_expose_credentials_embedded_in_base_url() -> None:
+    """Catches diagnostic repr leaking URL userinfo or sensitive query values."""
+    config = replace(
+        _config(),
+        llm_base_url=(
+            "https://user:url-password@example.invalid/v1"
+            "?api_key=query-secret&region=cn"
+        ),
+    )
+
+    rendered = repr(OpenAICompatibleChatModel(config, client=_ChunkSource()))
+
+    assert "url-password" not in rendered
+    assert "query-secret" not in rendered
+    assert "https://example.invalid/v1" in rendered
 
 
 class _ChunkSource:

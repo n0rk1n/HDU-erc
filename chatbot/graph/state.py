@@ -15,7 +15,7 @@ class TurnState(TypedDict, total=False):
 
 
 class EventPublisher(Protocol):
-    async def publish(self, name: str, data: dict[str, object]) -> None:
+    async def publish(self, name: str, data: dict[str, object]) -> bool:
         raise NotImplementedError
 
 
