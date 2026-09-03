@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import aiosqlite
+
 from chatbot.core.errors import ConfigError
 from chatbot.db.connection import Database
 
@@ -90,8 +92,7 @@ DDL_STATEMENTS = (
 
 
 async def initialize_schema(database: Database) -> None:
-    async with database.connect() as connection:
-        version = (await (await connection.execute("PRAGMA user_version")).fetchone())[0]
+    version = await _read_schema_version(database)
     if version > SCHEMA_VERSION:
         raise ConfigError("unsupported database schema version")
     if version == SCHEMA_VERSION:
@@ -106,3 +107,10 @@ async def initialize_schema(database: Database) -> None:
         for statement in DDL_STATEMENTS:
             await connection.execute(statement)
         await connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+
+
+async def _read_schema_version(database: Database) -> int:
+    """Read the version without applying the application's persistent PRAGMAs."""
+    database.path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(database.path) as connection:
+        return (await (await connection.execute("PRAGMA user_version")).fetchone())[0]

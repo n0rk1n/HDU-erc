@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import FrozenInstanceError
 
 import pytest
+import aiosqlite
 from aiosqlite import IntegrityError
 
 from chatbot.core.errors import ConfigError
@@ -166,6 +167,33 @@ async def test_schema_is_idempotent_and_rejects_future_versions(tmp_path) -> Non
 
     with pytest.raises(ConfigError, match="unsupported database schema version"):
         await initialize_schema(database)
+
+
+@pytest.mark.asyncio
+async def test_schema_rejects_future_version_without_mutating_database(tmp_path) -> None:
+    """Catches version preflight changing an unsupported database before rejecting it."""
+    path = tmp_path / "future-schema.sqlite3"
+    async with aiosqlite.connect(path) as connection:
+        await connection.execute("PRAGMA journal_mode = DELETE")
+        await connection.execute("PRAGMA user_version = 2")
+        await connection.commit()
+
+    with pytest.raises(ConfigError, match="unsupported database schema version"):
+        await initialize_schema(Database(path))
+
+    async with aiosqlite.connect(path) as connection:
+        version = (await (await connection.execute("PRAGMA user_version")).fetchone())[0]
+        journal_mode = (await (await connection.execute("PRAGMA journal_mode")).fetchone())[0]
+        tables = {
+            row[0]
+            for row in await (
+                await connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            ).fetchall()
+        }
+
+    assert version == 2
+    assert journal_mode == "delete"
+    assert not {"users", "conversations", "messages"} & tables
 
 
 def test_domain_models_are_immutable_and_retain_interrupted_turn_identifiers() -> None:
