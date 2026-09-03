@@ -111,7 +111,17 @@
 - Consumes: Git 基线提交 `86220ac52df1641fee051bae8e4e04fd09ff6e40`。
 - Produces: 冻结归档、可安装的新版 Python 测试环境、干净的根目录和归档完整性测试。
 
-- [ ] **Step 1: 写归档完整性失败测试**
+- [ ] **Step 1: 使用旧基线依赖建立测试运行器**
+
+Run: `python3 -m venv .venv`
+
+Run: `.venv/bin/python -m pip install -r requirements.txt`
+
+Run: `.venv/bin/python -m pytest --version`
+
+Expected: 输出 pytest 版本并以状态 0 结束。此时安装使用的仍是尚未归档的旧 `requirements.txt`，只用于保证 RED 测试能够实际运行。
+
+- [ ] **Step 2: 写归档完整性失败测试**
 
 ```python
 # tests/project/test_archive.py
@@ -130,13 +140,13 @@ def test_every_baseline_file_exists_under_archive():
     assert missing == []
 ```
 
-- [ ] **Step 2: 运行测试并确认归档尚未完成**
+- [ ] **Step 3: 运行测试并确认归档尚未完成**
 
-Run: `python -m pytest tests/project/test_archive.py -v`
+Run: `.venv/bin/python -m pytest tests/project/test_archive.py -v`
 
 Expected: FAIL，至少报告 `archive/emotion-aware-chatbot-v1/<旧路径>` 不存在。
 
-- [ ] **Step 3: 按基线文件清单逐文件移动旧内容**
+- [ ] **Step 4: 按基线文件清单逐文件移动旧内容**
 
 从工作树根目录执行以下逻辑；必须逐文件 `git mv`，不能整体移动目录，以免把被忽略的缓存带入归档：
 
@@ -151,7 +161,7 @@ done < <(git ls-tree -r --name-only "$baseline")
 
 设计文档和本实施计划不属于基线提交，因此仍保留在根目录 `docs/superpowers/`。
 
-- [ ] **Step 4: 清理未归档的生成缓存并创建归档说明**
+- [ ] **Step 5: 清理未归档的生成缓存并创建归档说明**
 
 使用可恢复方式移除旧路径中遗留的缓存；不得移动或删除 `.idea/`：
 
@@ -162,7 +172,7 @@ test ! -d .pytest_cache || /usr/bin/trash .pytest_cache
 
 `ARCHIVE.md` 必须写明原始提交、归档日期、包含范围、从归档目录运行旧项目的命令，以及“仅供参考、不与新版共享运行时代码”。
 
-- [ ] **Step 5: 创建新版根配置**
+- [ ] **Step 6: 创建新版根配置**
 
 `requirements.txt` 使用：
 
@@ -181,9 +191,7 @@ pytest-asyncio>=0.25,<2
 
 `pytest.ini` 使用 `pythonpath = .`、`testpaths = tests`、`asyncio_mode = auto`。根 `.gitignore` 至少忽略 `.env`、`.venv/`、`.idea/`、`.pytest_cache/`、`__pycache__/`、`*.pyc`、`.worktrees/`、`.superpowers/`、`data/*.sqlite3*`。
 
-- [ ] **Step 6: 安装依赖并运行归档测试**
-
-Run: `python3 -m venv .venv`
+- [ ] **Step 7: 安装新版依赖并运行归档测试**
 
 Run: `.venv/bin/python -m pip install -r requirements.txt`
 
@@ -191,7 +199,7 @@ Run: `.venv/bin/python -m pytest tests/project/test_archive.py -v`
 
 Expected: PASS；归档缺失列表为空。
 
-- [ ] **Step 7: 核对移动范围并提交**
+- [ ] **Step 8: 核对移动范围并提交**
 
 Run: `git status --short`
 
