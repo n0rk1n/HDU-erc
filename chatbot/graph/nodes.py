@@ -131,7 +131,7 @@ class TurnNodes:
             facts.content += delta.content
             facts.reasoning += delta.reasoning
             if delta.usage is not None:
-                facts.usage = delta.usage
+                facts.usage = _merge_usage(facts.usage, delta.usage)
             if delta.finish_reason is not None:
                 facts.finish_reason = delta.finish_reason
             metadata = redact_secrets(delta.response_metadata)
@@ -167,6 +167,7 @@ class TurnNodes:
                 facts.flushed_characters = _generated_characters(facts)
 
         if error_code is not None:
+            facts.finish_reason = "error"
             _trace_errors(facts.trace).append(
                 {"code": "model_error", "message": "model generation failed"}
             )
@@ -181,6 +182,14 @@ class TurnNodes:
             started_at,
             ended_at,
         )
+        await self.dependencies.messages.flush_partial(
+            assistant.id,
+            content=facts.content,
+            reasoning_content=facts.reasoning or None,
+            trace=facts.trace,
+        )
+        facts.last_flush_at = ended_at
+        facts.flushed_characters = _generated_characters(facts)
         return {
             "phase": "failed" if error_code else "generated",
             "error_code": error_code,
@@ -210,6 +219,7 @@ class TurnNodes:
         _append_node(facts.trace, "finalize_turn", "completed", started_at, ended_at)
         if state.get("error_code"):
             error_code = cast(str, state["error_code"])
+            usage = facts.usage or TokenUsage()
             await self.dependencies.messages.fail_assistant(
                 assistant.id,
                 error_code=error_code,
@@ -217,6 +227,15 @@ class TurnNodes:
                 content=facts.content,
                 reasoning_content=facts.reasoning or None,
                 trace=facts.trace,
+                prompt=facts.prompt,
+                provider=facts.provider,
+                model=facts.model,
+                parameters=facts.parameters,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+                latency_ms=_duration_ms(facts.started_at, ended_at),
+                finish_reason=facts.finish_reason,
             )
             self._runs.pop(assistant.id, None)
             return {"phase": "failed", "error_code": error_code}
@@ -387,6 +406,28 @@ def _optional_string(value: object) -> str | None:
 
 def _generated_characters(facts: _RunFacts) -> int:
     return len(facts.content) + len(facts.reasoning)
+
+
+def _merge_usage(current: TokenUsage | None, incoming: TokenUsage) -> TokenUsage:
+    """Merge cumulative provider snapshots without summing or forgetting known fields."""
+    current = current or TokenUsage()
+    return TokenUsage(
+        input_tokens=(
+            incoming.input_tokens
+            if incoming.input_tokens is not None
+            else current.input_tokens
+        ),
+        output_tokens=(
+            incoming.output_tokens
+            if incoming.output_tokens is not None
+            else current.output_tokens
+        ),
+        total_tokens=(
+            incoming.total_tokens
+            if incoming.total_tokens is not None
+            else current.total_tokens
+        ),
+    )
 
 
 def _duration_ms(started_at: datetime, ended_at: datetime) -> int:

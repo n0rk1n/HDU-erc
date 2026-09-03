@@ -12,6 +12,7 @@ import pytest
 import pytest_asyncio
 from langchain_core.messages import BaseMessage
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph.state import CompiledStateGraph
 
 from chatbot.core.errors import InvalidMessageState
 from chatbot.db.messages import MessageRepository
@@ -19,6 +20,7 @@ from chatbot.graph import (
     NodeDependencies,
     TurnContext,
     TurnState,
+    build_turn_graph,
     compile_turn_graph,
 )
 from chatbot.llm.types import ModelDelta, TokenUsage
@@ -139,6 +141,11 @@ async def messages(database) -> MessageRepository:
 @pytest_asyncio.fixture
 async def saver(database):
     async with AsyncSqliteSaver.from_conn_string(str(database.path)) as checkpointer:
+        await checkpointer.conn.execute("PRAGMA journal_mode = WAL")
+        await checkpointer.conn.execute("PRAGMA foreign_keys = ON")
+        await checkpointer.conn.execute("PRAGMA busy_timeout = 5000")
+        await checkpointer.conn.execute("PRAGMA synchronous = NORMAL")
+        await checkpointer.conn.commit()
         await checkpointer.setup()
         yield checkpointer
 
@@ -251,6 +258,41 @@ async def test_prepare_rejects_a_noncompleted_prewritten_user_message(
 
 
 @pytest.mark.asyncio
+async def test_thread_config_mismatch_is_rejected_before_checkpoint_or_business_write(
+    database, messages, saver
+) -> None:
+    """Catches context A mutating its message while recording progress under thread B."""
+    context_a, state_a = await _reserved_context(database, messages, "thread-context-a")
+    context_b, _ = await _reserved_context(database, messages, "thread-config-b")
+    model = DeterministicModel([ModelDelta(content="must-not-run")])
+    graph = compile_turn_graph(NodeDependencies(messages=messages, model=model), saver)
+
+    assert isinstance(graph, CompiledStateGraph)
+    with pytest.raises(InvalidMessageState, match="thread_id"):
+        await graph.ainvoke(state_a, _config(context_b), context=context_a)
+    with pytest.raises(InvalidMessageState, match="thread_id"):
+        graph.astream(state_a, _config(context_b), context=context_a)
+
+    assistant_a = await messages.find_assistant(
+        context_a.conversation_id, context_a.request_id
+    )
+    async with aiosqlite.connect(Path(database.path)) as connection:
+        b_checkpoints = (
+            await (
+                await connection.execute(
+                    "SELECT COUNT(*) FROM checkpoints WHERE thread_id = ?",
+                    (context_b.thread_id,),
+                )
+            ).fetchone()
+        )[0]
+
+    assert assistant_a is not None
+    assert assistant_a.status == "pending"
+    assert model.calls == 0
+    assert b_checkpoints == 0
+
+
+@pytest.mark.asyncio
 async def test_generate_persists_versioned_prompt_redacted_model_facts_and_null_reasoning(
     database, messages, saver
 ) -> None:
@@ -305,6 +347,40 @@ async def test_generate_persists_versioned_prompt_redacted_model_facts_and_null_
     }
     assert "sk-test-secret" not in serialized
     assert "provider-secret" not in serialized
+
+
+@pytest.mark.asyncio
+async def test_usage_snapshots_keep_each_fields_last_known_value(
+    database, messages, saver
+) -> None:
+    """Catches a later partial cumulative usage snapshot clearing known token counts."""
+    context, state = await _reserved_context(database, messages, "usage-snapshots")
+    model = DeterministicModel(
+        [
+            ModelDelta(content="答", usage=TokenUsage(input_tokens=10)),
+            ModelDelta(
+                content="案",
+                usage=TokenUsage(output_tokens=4, total_tokens=14),
+            ),
+            ModelDelta(usage=TokenUsage(), finish_reason="stop"),
+        ]
+    )
+    graph = compile_turn_graph(NodeDependencies(messages=messages, model=model), saver)
+
+    await graph.ainvoke(state, _config(context), context=context)
+
+    assistant = await messages.find_assistant(context.conversation_id, context.request_id)
+    assert assistant is not None
+    assert (assistant.input_tokens, assistant.output_tokens, assistant.total_tokens) == (
+        10,
+        4,
+        14,
+    )
+    assert json.loads(assistant.trace_json)["model_calls"][0]["usage"] == {
+        "input_tokens": 10,
+        "output_tokens": 4,
+        "total_tokens": 14,
+    }
 
 
 @pytest.mark.asyncio
@@ -381,7 +457,52 @@ async def test_generate_flushes_partial_on_either_threshold(
 
     await graph.ainvoke(state, _config(context), context=context)
 
-    assert recording.flushes == [(expected_flush, None)]
+    assert recording.flushes == [
+        (expected_flush, None),
+        (expected_flush, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_short_generation_survives_rebuild_before_finalize(
+    database, messages, saver
+) -> None:
+    """Catches sub-threshold final chunks existing only in process-local run facts."""
+    context, state = await _reserved_context(database, messages, "short-recovery")
+    first_model = DeterministicModel(
+        [ModelDelta(content="短答", reasoning="短依据")]
+    )
+    interrupted = build_turn_graph(
+        NodeDependencies(messages=messages, model=first_model)
+    ).compile(checkpointer=saver, interrupt_after=["generate_response"])
+
+    generated = await interrupted.ainvoke(state, _config(context), context=context)
+    before_rebuild = await messages.find_assistant(
+        context.conversation_id, context.request_id
+    )
+
+    replacement_model = DeterministicModel([ModelDelta(content="不得重试")])
+    rebuilt = compile_turn_graph(
+        NodeDependencies(messages=messages, model=replacement_model), saver
+    )
+    recovered = await rebuilt.ainvoke(None, _config(context), context=context)
+    after_rebuild = await messages.find_assistant(
+        context.conversation_id, context.request_id
+    )
+
+    assert generated["phase"] == "generated"
+    assert before_rebuild is not None
+    assert before_rebuild.status == "streaming"
+    assert before_rebuild.content == "短答"
+    assert before_rebuild.reasoning_content == "短依据"
+    assert after_rebuild is not None
+    assert recovered["phase"] == "failed"
+    assert recovered["error_code"] == "process_interrupted"
+    assert after_rebuild.status == "failed"
+    assert after_rebuild.content == "短答"
+    assert after_rebuild.reasoning_content == "短依据"
+    assert first_model.calls == 1
+    assert replacement_model.calls == 0
 
 
 @pytest.mark.asyncio
@@ -390,11 +511,26 @@ async def test_model_failure_is_stable_retains_partials_and_is_idempotent(
 ) -> None:
     """Catches raw provider failures leaking or checkpoint replay calling the model twice."""
     context, state = await _reserved_context(database, messages, "failure")
+    clock = ManualClock()
     model = DeterministicModel(
-        [ModelDelta(content="部分", reasoning="真实部分依据")],
+        [
+            ModelDelta(
+                content="部分",
+                reasoning="真实部分依据",
+                usage=TokenUsage(input_tokens=5, output_tokens=2, total_tokens=7),
+                response_metadata={
+                    "provider_request_id": "known-id",
+                    "authorization": "Bearer provider-secret",
+                },
+            )
+        ],
         error=RuntimeError("provider sk-live-very-secret"),
+        clock=clock,
+        advances=[0.125],
     )
-    graph = compile_turn_graph(NodeDependencies(messages=messages, model=model), saver)
+    graph = compile_turn_graph(
+        NodeDependencies(messages=messages, model=model, clock=clock), saver
+    )
 
     first = await graph.ainvoke(state, _config(context), context=context)
     second = await graph.ainvoke(state, _config(context), context=context)
@@ -407,7 +543,42 @@ async def test_model_failure_is_stable_retains_partials_and_is_idempotent(
     assert assistant.content == "部分"
     assert assistant.reasoning_content == "真实部分依据"
     assert assistant.error_message == "model generation failed"
-    assert "sk-live-very-secret" not in assistant.trace_json
+    assert assistant.provider == "test-provider"
+    assert assistant.model == "test-model"
+    assert json.loads(assistant.parameters_json or "null") == {
+        "api_key": "[REDACTED]",
+        "model": "test-model",
+        "temperature": 0.2,
+    }
+    prompt = json.loads(assistant.prompt_json or "null")
+    assert prompt[0]["role"] == "system"
+    assert prompt[-1] == {"role": "user", "content": "来自 failure 的问题"}
+    assert (assistant.input_tokens, assistant.output_tokens, assistant.total_tokens) == (
+        5,
+        2,
+        7,
+    )
+    assert assistant.latency_ms == 125
+    assert assistant.finish_reason == "error"
+    assert json.loads(assistant.trace_json)["model_calls"][0][
+        "response_metadata"
+    ] == {
+        "authorization": "[REDACTED]",
+        "provider_request_id": "known-id",
+    }
+    serialized = "|".join(
+        filter(
+            None,
+            (
+                assistant.trace_json,
+                assistant.prompt_json,
+                assistant.parameters_json,
+                assistant.error_message,
+            ),
+        )
+    )
+    assert "sk-live-very-secret" not in serialized
+    assert "provider-secret" not in serialized
     assert model.calls == 1
 
 

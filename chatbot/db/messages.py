@@ -261,6 +261,15 @@ class MessageRepository:
         content: str | object = _UNSET,
         reasoning_content: str | None | object = _UNSET,
         trace: object = _UNSET,
+        prompt: object = _UNSET,
+        provider: str | None | object = _UNSET,
+        model: str | None | object = _UNSET,
+        parameters: object = _UNSET,
+        input_tokens: int | None | object = _UNSET,
+        output_tokens: int | None | object = _UNSET,
+        total_tokens: int | None | object = _UNSET,
+        latency_ms: int | None | object = _UNSET,
+        finish_reason: str | None | object = _UNSET,
     ) -> Message:
         """Fail an active assistant while retaining any partial facts not supplied here."""
         assignments = ["status = 'failed'", "error_code = ?", "error_message = ?"]
@@ -274,6 +283,24 @@ class MessageRepository:
         if trace is not _UNSET:
             assignments.append("trace_json = ?")
             values.append(_stable_json(trace))
+        if prompt is not _UNSET:
+            assignments.append("prompt_json = ?")
+            values.append(_stable_json(prompt))
+        for column, value in (
+            ("provider", provider),
+            ("model", model),
+            ("input_tokens", input_tokens),
+            ("output_tokens", output_tokens),
+            ("total_tokens", total_tokens),
+            ("latency_ms", latency_ms),
+            ("finish_reason", finish_reason),
+        ):
+            if value is not _UNSET:
+                assignments.append(f"{column} = ?")
+                values.append(value)
+        if parameters is not _UNSET:
+            assignments.append("parameters_json = ?")
+            values.append(None if parameters is None else _stable_json(parameters))
         now = utc_now()
         assignments.extend(("updated_at = ?", "completed_at = ?"))
         values.extend((now, now, assistant_message_id))
