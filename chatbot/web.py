@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from chatbot.api import messages_router, users_router
@@ -32,6 +34,8 @@ _SAFE_ERRORS: dict[str, tuple[int, str]] = {
     "database_error": (500, "database error"),
     "process_interrupted": (503, "service unavailable"),
 }
+
+_STATIC_DIR = Path(__file__).with_name("static")
 
 
 def create_app(
@@ -102,6 +106,12 @@ def create_app(
     app = FastAPI(title="Persistent Multi-user Chatbot", lifespan=lifespan)
     app.include_router(users_router)
     app.include_router(messages_router)
+
+    @app.get("/", include_in_schema=False)
+    async def chat_page() -> FileResponse:
+        return FileResponse(_STATIC_DIR / "index.html")
+
+    app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(DomainError, _domain_error_handler)
     app.add_exception_handler(Exception, _unexpected_error_handler)

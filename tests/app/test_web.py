@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 from collections.abc import AsyncIterator, Sequence
+from html.parser import HTMLParser
 
 import pytest
 from fastapi.testclient import TestClient
@@ -26,6 +27,17 @@ class OfflineModel:
         self, prompt: Sequence[BaseMessage]
     ) -> AsyncIterator[ModelDelta]:
         yield ModelDelta(content="ok")
+
+
+class _ElementIdParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.element_ids: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = dict(attrs)
+        if identifier := attributes.get("id"):
+            self.element_ids.add(identifier)
 
 
 @pytest.fixture
@@ -230,3 +242,80 @@ def test_recovery_failure_prevents_half_available_app(
         with TestClient(app):
             pass
     assert not hasattr(app.state, "coordinator")
+
+
+def test_chat_page_serves_accessible_controls_assets_and_keeps_api_reachable(
+    app_config, offline_model
+) -> None:
+    """Catches a missing SPA shell, incorrectly typed assets, or a static mount masking API routes."""
+    app = create_app(config=app_config, model=offline_model)
+    with TestClient(app) as client:
+        index = client.get("/")
+        stylesheet = client.get("/static/style.css")
+        script = client.get("/static/app.js")
+        resolved = client.post("/api/users/resolve", json={"identifier": "web-user"})
+
+    parser = _ElementIdParser()
+    parser.feed(index.text)
+    assert index.status_code == 200
+    assert index.headers["content-type"].startswith("text/html")
+    assert {
+        "identity-view",
+        "identity-form",
+        "identifier-input",
+        "identity-status",
+        "chat-view",
+        "current-identifier",
+        "switch-user",
+        "message-list",
+        "chat-status",
+        "message-form",
+        "message-input",
+        "send-message",
+    } <= parser.element_ids
+    assert 'for="identifier-input"' in index.text
+    assert 'for="message-input"' in index.text
+    assert 'aria-live="polite"' in index.text
+    assert stylesheet.status_code == 200
+    assert stylesheet.headers["content-type"].startswith("text/css")
+    assert script.status_code == 200
+    assert script.headers["content-type"].startswith(("application/javascript", "text/javascript"))
+    assert resolved.status_code == 200
+    assert resolved.json()["user"]["identifier"] == "web-user"
+
+
+def test_chat_script_has_the_minimal_safe_post_sse_contract(
+    app_config, offline_model
+) -> None:
+    """Catches a UI that cannot safely drive the documented POST SSE protocol."""
+    app = create_app(config=app_config, model=offline_model)
+    with TestClient(app) as client:
+        script = client.get("/static/app.js")
+
+    assert script.status_code == 200
+    source = script.text
+    for required_fragment in (
+        "crypto.randomUUID()",
+        "method: \"POST\"",
+        "response.body.getReader()",
+        "new TextDecoder()",
+        "AbortController",
+        "event:",
+        "data:",
+        "sequence_no",
+        "!Number.isInteger(siblingSequence)",
+        "textContent",
+    ):
+        assert required_fragment in source
+    for private_field in (
+        "reasoning_content",
+        "prompt_json",
+        "parameters_json",
+        "trace_json",
+        "thread_id",
+    ):
+        assert private_field not in source
+    assert (
+        'setStatus(chatStatus, "回复已完成。", "completed");\n'
+        "      temporaryAssistant = null;"
+    ) in source

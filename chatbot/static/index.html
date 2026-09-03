@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>多用户聊天</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section id="identity-view" class="identity-view" aria-labelledby="identity-title">
+        <div class="panel">
+          <h1 id="identity-title">开始聊天</h1>
+          <p>输入一个用户标识以进入对应的聊天记录。</p>
+          <form id="identity-form">
+            <label for="identifier-input">用户标识</label>
+            <input id="identifier-input" name="identifier" type="text" maxlength="128" required autocomplete="username" aria-describedby="identity-status" />
+            <button id="enter-chat" type="submit">进入聊天</button>
+          </form>
+          <p id="identity-status" class="status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="chat-view" class="chat-view" aria-labelledby="chat-title" hidden>
+        <header class="chat-header">
+          <div>
+            <p class="eyebrow">当前用户</p>
+            <h1 id="chat-title"><span id="current-identifier"></span> 的聊天</h1>
+          </div>
+          <button id="switch-user" type="button">切换用户</button>
+        </header>
+        <p id="chat-status" class="status" role="status" aria-live="polite"></p>
+        <ol id="message-list" class="message-list" aria-label="聊天消息"></ol>
+        <form id="message-form" class="message-form">
+          <label for="message-input">消息</label>
+          <textarea id="message-input" name="message" rows="3" required aria-describedby="chat-status" placeholder="输入消息，按发送开始对话"></textarea>
+          <button id="send-message" type="submit">发送</button>
+        </form>
+      </section>
+    </main>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>
