@@ -439,6 +439,50 @@ async def test_repository_failure_is_normalized_without_raw_details() -> None:
 
 
 @pytest.mark.asyncio
+async def test_task_creation_failure_finalizes_reserved_turn_for_failed_replay(
+    database, monkeypatch
+) -> None:
+    """Catches startup failure leaving a committed assistant pending forever."""
+    identity = await _resolved(database, "task-create-failure")
+    messages = MessageRepository(database)
+    graph = ScriptedGraph(messages)
+    coordinator = _coordinator(database, messages, graph)
+    request_id = str(uuid4())
+
+    def fail_create_task(coroutine, **_: object):
+        coroutine.close()
+        raise RuntimeError("private task factory failure")
+
+    monkeypatch.setattr(asyncio, "create_task", fail_create_task)
+    failure: BaseException | None = None
+    try:
+        await coordinator.open_stream(identity.user.id, request_id, "hello")
+    except BaseException as error:
+        failure = error
+
+    assistant = await messages.find_assistant(identity.conversation.id, request_id)
+    assert assistant is not None
+    assert assistant.status == "failed"
+    assert assistant.error_code == "process_interrupted"
+    assert isinstance(failure, DatabaseError)
+    assert "private" not in failure.message
+
+    replay = await _collect(
+        await coordinator.open_stream(identity.user.id, request_id, "hello")
+    )
+    assert replay == [
+        SseEvent(
+            name="error",
+            data={
+                "code": "process_interrupted",
+                "message": "generation interrupted",
+            },
+        )
+    ]
+    assert graph.calls == []
+
+
+@pytest.mark.asyncio
 async def test_shutdown_waits_for_inflight_turn(database) -> None:
     """Catches graceful shutdown cancelling work that completes within its deadline."""
     identity = await _resolved(database, "shutdown-wait")

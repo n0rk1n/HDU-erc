@@ -84,6 +84,9 @@ class TurnCoordinator:
                 raise TurnInProgress()
             await user_lock.acquire()
 
+            turn: ReservedTurn | None = None
+            subscription: TurnSubscription | None = None
+            task: asyncio.Task[None] | None = None
             try:
                 # Recheck under the user lock; the database constraint remains the
                 # final guard if another service instance ever appears.
@@ -144,10 +147,15 @@ class TurnCoordinator:
                         "sequence_no": turn.user.sequence_no,
                     },
                 )
-                task = asyncio.create_task(
-                    self._produce(context, state, subscription),
-                    name=f"chat-turn-{user_id}-{request_id}",
-                )
+                producer = self._produce(context, state, subscription)
+                try:
+                    task = asyncio.create_task(
+                        producer,
+                        name=f"chat-turn-{user_id}-{request_id}",
+                    )
+                except BaseException:
+                    producer.close()
+                    raise
                 self._tasks.add(task)
                 self._active_requests[user_id] = request_id
                 task.add_done_callback(
@@ -156,9 +164,26 @@ class TurnCoordinator:
                     )
                 )
                 return subscription
-            except BaseException:
-                if user_id not in self._active_requests:
-                    self._release_unused_lock(user_id, user_lock)
+            except BaseException as error:
+                if task is not None:
+                    task.cancel()
+                    await asyncio.gather(task, return_exceptions=True)
+                    self._tasks.discard(task)
+                self._active_requests.pop(user_id, None)
+                if turn is not None:
+                    try:
+                        await self._fail_reserved_turn(
+                            turn, "process_interrupted", "generation interrupted"
+                        )
+                    except Exception:
+                        pass
+                if subscription is not None:
+                    subscription.detach()
+                self._release_unused_lock(user_id, user_lock)
+                if isinstance(error, (asyncio.CancelledError, DomainError)):
+                    raise
+                if isinstance(error, Exception):
+                    raise DatabaseError("turn initialization failed") from None
                 raise
 
     async def shutdown(self, timeout_seconds: float) -> None:
@@ -231,6 +256,24 @@ class TurnCoordinator:
         )
         if assistant is None:
             raise InvalidMessageState("turn disappeared during failure handling")
+        if assistant.status == "pending":
+            assistant = await self._messages.mark_streaming(assistant.id)
+        if assistant.status == "streaming":
+            assistant = await self._messages.fail_assistant(
+                assistant.id,
+                error_code=error_code,
+                error_message=error_message,
+            )
+        return assistant
+
+    async def _fail_reserved_turn(
+        self, turn: ReservedTurn, error_code: str, error_message: str
+    ) -> Message:
+        assistant = await self._messages.find_assistant(
+            turn.assistant.conversation_id, turn.assistant.request_id
+        )
+        if assistant is None:
+            raise InvalidMessageState("reserved turn disappeared during initialization")
         if assistant.status == "pending":
             assistant = await self._messages.mark_streaming(assistant.id)
         if assistant.status == "streaming":
