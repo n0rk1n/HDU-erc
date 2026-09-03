@@ -336,6 +336,38 @@ async def test_lifecycle_rejects_skips_repeated_updates_and_terminal_overwrites(
 
 
 @pytest.mark.asyncio
+async def test_list_interrupted_is_read_only_and_uses_the_recovery_cutoff(
+    messages, conversation, database
+):
+    """Catches recovery discovery mutating rows before checkpoint cleanup succeeds."""
+    stale = await messages.reserve_turn(conversation.id, "request-stale-list", "one")
+    fresh = await messages.reserve_turn(conversation.id, "request-fresh-list", "two")
+    async with database.transaction(immediate=True) as connection:
+        await connection.execute(
+            "UPDATE messages SET updated_at = ? WHERE id = ?",
+            ("2026-09-02T00:00:00+00:00", stale.assistant.id),
+        )
+        await connection.execute(
+            "UPDATE messages SET updated_at = ? WHERE id = ?",
+            ("2026-09-03T12:00:00+00:00", fresh.assistant.id),
+        )
+
+    interrupted = await messages.list_interrupted(
+        stale_before="2026-09-03T00:00:00+00:00"
+    )
+
+    assert interrupted == [
+        type(interrupted[0])(
+            conversation_id=conversation.id,
+            thread_id=conversation.thread_id,
+            assistant_message_id=stale.assistant.id,
+        )
+    ]
+    assert (await messages.find_assistant(conversation.id, "request-stale-list")).status == "pending"
+    assert (await messages.find_assistant(conversation.id, "request-fresh-list")).status == "pending"
+
+
+@pytest.mark.asyncio
 async def test_fail_interrupted_marks_only_stale_active_assistants_and_preserves_partials(
     messages, conversation, database
 ):

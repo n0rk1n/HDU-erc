@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator, Sequence
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.messages import BaseMessage
 
-from chatbot.services.events import SseEvent
-from chatbot.web import format_sse, stream_subscription
+from chatbot.db.messages import MessageRepository
+from chatbot.llm.types import ModelDelta
+from chatbot.services.events import SseEvent, TurnSubscription
+from chatbot.web import create_app, format_sse, stream_subscription
 from tests.api.helpers import OfflineModel, parse_sse
 
 
@@ -181,3 +185,117 @@ async def test_cancelled_stream_detaches_without_cancelling_producer() -> None:
 
     assert subscription.detached is True
     assert producer_cancelled is False
+
+
+def test_asgi_disconnect_detaches_http_stream_but_background_turn_completes(
+    app_config, monkeypatch
+) -> None:
+    """Catches Starlette disconnect cancellation propagating into the turn producer."""
+    class SlowModel:
+        provider = "asgi-test"
+        parameters = {"model": "asgi-test"}
+
+        def __init__(self) -> None:
+            self.entered = asyncio.Event()
+            self.release = asyncio.Event()
+            self.cancelled = False
+
+        async def stream(
+            self, prompt: Sequence[BaseMessage]
+        ) -> AsyncIterator[ModelDelta]:
+            self.entered.set()
+            try:
+                await self.release.wait()
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+            yield ModelDelta(content="后台完成")
+
+    detached: list[TurnSubscription] = []
+    original_detach = TurnSubscription.detach
+
+    def record_detach(subscription: TurnSubscription) -> None:
+        detached.append(subscription)
+        original_detach(subscription)
+
+    monkeypatch.setattr(TurnSubscription, "detach", record_detach)
+    model = SlowModel()
+    app = create_app(config=app_config, model=model)
+    request_id = str(uuid4())
+    with TestClient(app) as client:
+        user_id = client.post(
+            "/api/users/resolve", json={"identifier": "asgi-disconnect"}
+        ).json()["user"]["id"]
+
+        async def exercise_disconnect():
+            body = json.dumps(
+                {"request_id": request_id, "content": "keep working"}
+            ).encode()
+            receives: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+            await receives.put(
+                {"type": "http.request", "body": body, "more_body": False}
+            )
+            sent: list[dict[str, object]] = []
+            disconnect_sent = False
+
+            async def receive() -> dict[str, object]:
+                return await receives.get()
+
+            async def send(message: dict[str, object]) -> None:
+                nonlocal disconnect_sent
+                sent.append(message)
+                if (
+                    message["type"] == "http.response.body"
+                    and message.get("body")
+                    and not disconnect_sent
+                ):
+                    disconnect_sent = True
+                    await receives.put({"type": "http.disconnect"})
+
+            scope = {
+                "type": "http",
+                "asgi": {"version": "3.0", "spec_version": "2.3"},
+                "http_version": "1.1",
+                "scheme": "http",
+                "method": "POST",
+                "root_path": "",
+                "path": f"/api/users/{user_id}/messages:stream",
+                "raw_path": f"/api/users/{user_id}/messages:stream".encode(),
+                "query_string": b"",
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"accept", b"text/event-stream"),
+                ],
+                "client": ("127.0.0.1", 12345),
+                "server": ("testserver", 80),
+            }
+            response_task = asyncio.create_task(app(scope, receive, send))
+            await asyncio.wait_for(model.entered.wait(), timeout=1)
+            await asyncio.wait_for(response_task, timeout=1)
+
+            assert model.cancelled is False
+            assert model.release.is_set() is False
+            assert detached
+            assert any(message["type"] == "http.response.start" for message in sent)
+            assert not any(
+                message["type"] == "http.response.body"
+                and message.get("more_body") is False
+                for message in sent
+            )
+
+            model.release.set()
+            await app.state.coordinator.shutdown(timeout_seconds=1)
+            conversation = await app.state.conversations.get_default_by_user(user_id)
+            assert conversation is not None
+            assistant = await MessageRepository(app.state.database).find_assistant(
+                conversation.id,
+                request_id,
+            )
+            return assistant
+
+        assistant = client.portal.call(exercise_disconnect)
+
+    assert model.cancelled is False
+    assert assistant is not None
+    assert assistant.status == "completed"
+    assert assistant.content == "后台完成"

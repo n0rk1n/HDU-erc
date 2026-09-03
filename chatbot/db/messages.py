@@ -326,22 +326,8 @@ class MessageRepository:
         cutoff = utc_now() if stale_before is None else stale_before
         now = utc_now()
         async with self.database.transaction(immediate=True) as connection:
-            cursor = await connection.execute(
-                """
-                SELECT m.id, m.conversation_id, c.thread_id
-                FROM messages AS m
-                JOIN conversations AS c ON c.id = m.conversation_id
-                WHERE m.role = 'assistant'
-                  AND m.status IN ('pending', 'streaming')
-                  AND m.updated_at < ?
-                ORDER BY m.conversation_id, m.sequence_no
-                """,
-                (cutoff,),
-            )
-            rows = await cursor.fetchall()
-            interrupted: list[InterruptedTurn] = []
-            seen: set[tuple[str, str, str]] = set()
-            for message_id, conversation_id, thread_id in rows:
+            interrupted = await self._select_interrupted(connection, cutoff)
+            for item in interrupted:
                 update = await connection.execute(
                     """
                     UPDATE messages
@@ -350,14 +336,51 @@ class MessageRepository:
                     WHERE id = ? AND role = 'assistant'
                       AND status IN ('pending', 'streaming') AND updated_at < ?
                     """,
-                    (error_code, error_message, now, now, message_id, cutoff),
+                    (
+                        error_code,
+                        error_message,
+                        now,
+                        now,
+                        item.assistant_message_id,
+                        cutoff,
+                    ),
                 )
                 _require_single_update(update)
-                key = (conversation_id, thread_id, message_id)
-                if key not in seen:
-                    seen.add(key)
-                    interrupted.append(InterruptedTurn(*key))
             return interrupted
+
+    async def list_interrupted(
+        self, *, stale_before: str | None = None
+    ) -> list[InterruptedTurn]:
+        """Discover active assistant turns without changing their retryable state."""
+        cutoff = utc_now() if stale_before is None else stale_before
+        async with self.database.connect() as connection:
+            return await self._select_interrupted(connection, cutoff)
+
+    @staticmethod
+    async def _select_interrupted(
+        connection: aiosqlite.Connection, cutoff: str
+    ) -> list[InterruptedTurn]:
+        cursor = await connection.execute(
+            """
+            SELECT m.id, m.conversation_id, c.thread_id
+            FROM messages AS m
+            JOIN conversations AS c ON c.id = m.conversation_id
+            WHERE m.role = 'assistant'
+              AND m.status IN ('pending', 'streaming')
+              AND m.updated_at < ?
+            ORDER BY m.conversation_id, m.sequence_no
+            """,
+            (cutoff,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            InterruptedTurn(
+                conversation_id=conversation_id,
+                thread_id=thread_id,
+                assistant_message_id=message_id,
+            )
+            for message_id, conversation_id, thread_id in rows
+        ]
 
     @staticmethod
     async def _select_turn(
