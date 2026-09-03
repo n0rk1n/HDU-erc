@@ -96,16 +96,8 @@ class MessageRepository:
         self, conversation_id: str, request_id: str
     ) -> Message | None:
         async with self.database.connect() as connection:
-            cursor = await connection.execute(
-                f"""
-                SELECT {_MESSAGE_COLUMNS}
-                FROM messages
-                WHERE conversation_id = ? AND request_id = ? AND role = 'assistant'
-                """,
-                (conversation_id, request_id),
-            )
-            row = await cursor.fetchone()
-            return None if row is None else _message_from_row(row)
+            turn = await self._select_turn(connection, conversation_id, request_id)
+            return None if turn is None else turn.assistant
 
     async def list_visible(
         self,
@@ -360,7 +352,11 @@ class MessageRepository:
         by_role = {message.role: message for message in messages}
         if len(messages) != 2 or set(by_role) != {"user", "assistant"}:
             raise InvalidMessageState("request does not contain one complete message pair")
-        return ReservedTurn(user=by_role["user"], assistant=by_role["assistant"])
+        user = by_role["user"]
+        assistant = by_role["assistant"]
+        if user.sequence_no + 1 != assistant.sequence_no:
+            raise InvalidMessageState("request message pair has invalid sequence")
+        return ReservedTurn(user=user, assistant=assistant)
 
     @staticmethod
     async def _select_message_by_id(

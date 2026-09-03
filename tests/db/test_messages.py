@@ -26,6 +26,37 @@ async def messages(database) -> MessageRepository:
     return MessageRepository(database)
 
 
+@pytest_asyncio.fixture
+async def inject_message_facts(database, conversation):
+    async def inject(request_id: str, facts: list[tuple[str, int]]) -> None:
+        timestamp = "2026-09-03T00:00:00+00:00"
+        async with database.transaction(immediate=True) as connection:
+            for index, (role, sequence_no) in enumerate(facts):
+                status = "completed" if role == "user" else "pending"
+                await connection.execute(
+                    """
+                    INSERT INTO messages(
+                        id, conversation_id, request_id, sequence_no, role, status,
+                        content, created_at, updated_at, completed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        f"malformed-{request_id}-{index}",
+                        conversation.id,
+                        request_id,
+                        sequence_no,
+                        role,
+                        status,
+                        role,
+                        timestamp,
+                        timestamp,
+                        timestamp if role == "user" else None,
+                    ),
+                )
+
+    return inject
+
+
 @pytest.mark.asyncio
 async def test_reserve_turn_writes_pair_with_stable_sequence(messages, conversation):
     """Catches separate inserts or sequence allocation that loses the adjacent turn pair."""
@@ -75,6 +106,33 @@ async def test_find_turn_and_assistant_return_persisted_facts(messages, conversa
     assert await messages.find_assistant(conversation.id, REQUEST_ID) == reserved.assistant
     assert await messages.find_turn(conversation.id, "missing") is None
     assert await messages.find_assistant(conversation.id, "missing") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "facts",
+    (
+        [("assistant", 1)],
+        [("user", 1)],
+        [("user", 1), ("assistant", 3)],
+        [("assistant", 1), ("user", 2)],
+    ),
+    ids=("orphan-assistant", "missing-assistant", "non-adjacent", "roles-reversed"),
+)
+async def test_find_queries_reject_incomplete_or_misordered_request_facts(
+    messages, conversation, inject_message_facts, facts
+):
+    """Catches replay lookups treating corrupt or half-written request facts as a valid turn."""
+    request_id = "malformed-request"
+    await inject_message_facts(request_id, facts)
+
+    with pytest.raises(InvalidMessageState) as turn_error:
+        await messages.find_turn(conversation.id, request_id)
+    with pytest.raises(InvalidMessageState) as assistant_error:
+        await messages.find_assistant(conversation.id, request_id)
+
+    assert turn_error.value.code == "invalid_message"
+    assert assistant_error.value.code == "invalid_message"
 
 
 @pytest.mark.asyncio
