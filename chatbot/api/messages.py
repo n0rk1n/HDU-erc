@@ -13,7 +13,7 @@ from chatbot.api.schemas import (
     PositiveSequence,
     SendMessageRequest,
 )
-from chatbot.core.errors import UserNotFound
+from chatbot.core.errors import SAFE_PUBLIC_ERROR_MESSAGES, UserNotFound
 from chatbot.services.events import SseEvent
 
 
@@ -101,11 +101,7 @@ def _safe_history_message(message: dict[str, object | None]) -> dict[str, object
         public["error_message"] = None
         return public
 
-    safe_errors = {
-        "model_error": "model generation failed",
-        "database_error": "database error",
-        "process_interrupted": "generation interrupted",
-    }
+    safe_errors = SAFE_PUBLIC_ERROR_MESSAGES
     error_code = public.get("error_code")
     if not isinstance(error_code, str) or error_code not in safe_errors:
         public["error_code"] = "message_failed"

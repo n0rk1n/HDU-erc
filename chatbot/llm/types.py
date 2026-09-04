@@ -29,3 +29,7 @@ class ModelDelta:
 
 class ChatModelAdapter(Protocol):
     def stream(self, prompt: Sequence[BaseMessage]) -> AsyncIterator[ModelDelta]: ...
+
+
+def optional_string(value: object) -> str | None:
+    return value if isinstance(value, str) else None

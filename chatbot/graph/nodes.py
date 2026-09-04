@@ -17,7 +17,7 @@ from chatbot.graph.dependencies import NodeDependencies
 from chatbot.graph.state import TurnContext, TurnState
 from chatbot.llm.prompt import build_prompt
 from chatbot.llm.redaction import redact_secrets
-from chatbot.llm.types import JSONValue, ModelDelta, TokenUsage
+from chatbot.llm.types import JSONValue, ModelDelta, TokenUsage, optional_string
 
 
 @dataclass
@@ -141,7 +141,7 @@ class TurnNodes:
         facts.prompt = [_serialize_message(message) for message in prompt]
         raw_parameters = getattr(self.dependencies.model, "parameters", None)
         facts.parameters = redact_secrets(raw_parameters)
-        facts.provider = _optional_string(
+        facts.provider = optional_string(
             getattr(self.dependencies.model, "provider", None)
         ) or _mapping_string(facts.parameters, "provider")
         facts.model = _mapping_string(facts.parameters, "model")
@@ -493,12 +493,8 @@ def _serialize_message(message: BaseMessage) -> dict[str, object]:
 
 def _mapping_string(value: JSONValue, key: str) -> str | None:
     if isinstance(value, dict):
-        return _optional_string(value.get(key))
+        return optional_string(value.get(key))
     return None
-
-
-def _optional_string(value: object) -> str | None:
-    return value if isinstance(value, str) else None
 
 
 def _generated_characters(facts: _RunFacts) -> int:

@@ -10,6 +10,7 @@ from chatbot.core.errors import (
     DomainError,
     InvalidMessageState,
     ProcessInterrupted,
+    SAFE_PUBLIC_ERROR_MESSAGES,
     TurnInProgress,
     UserNotFound,
 )
@@ -387,10 +388,5 @@ def _public_message(message: Message) -> dict[str, object]:
 
 
 def _public_error(error_code: str | None) -> dict[str, object]:
-    messages = {
-        "model_error": "model generation failed",
-        "database_error": "database error",
-        "process_interrupted": "generation interrupted",
-    }
-    code = error_code if error_code in messages else "database_error"
-    return {"code": code, "message": messages[code]}
+    code = error_code if error_code in SAFE_PUBLIC_ERROR_MESSAGES else "database_error"
+    return {"code": code, "message": SAFE_PUBLIC_ERROR_MESSAGES[code]}

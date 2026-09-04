@@ -15,7 +15,7 @@ from chatbot.api import messages_router, users_router
 from chatbot.api.messages import format_sse, stream_subscription
 from chatbot.core.config import AppConfig
 from chatbot.core.errors import DomainError
-from chatbot.db.connection import Database
+from chatbot.db.connection import Database, configure_connection
 from chatbot.db.conversations import ConversationRepository
 from chatbot.db.messages import MessageRepository
 from chatbot.db.schema import initialize_schema
@@ -119,10 +119,7 @@ def create_app(
 
 
 async def _configure_saver_connection(connection: aiosqlite.Connection) -> None:
-    await connection.execute("PRAGMA journal_mode = WAL")
-    await connection.execute("PRAGMA foreign_keys = ON")
-    await connection.execute("PRAGMA busy_timeout = 5000")
-    await connection.execute("PRAGMA synchronous = NORMAL")
+    await configure_connection(connection)
     await connection.commit()
 
 

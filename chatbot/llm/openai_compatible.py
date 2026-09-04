@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 
 from chatbot.core.config import AppConfig
 from chatbot.llm.redaction import redact_secrets
-from chatbot.llm.types import ModelDelta, TokenUsage
+from chatbot.llm.types import ModelDelta, TokenUsage, optional_string
 
 
 class ModelStreamError(RuntimeError):
@@ -86,7 +86,7 @@ def parse_ai_message_chunk(chunk: AIMessageChunk) -> ModelDelta:
         content=_text_content(chunk.content),
         reasoning=_reasoning_content(chunk.additional_kwargs),
         usage=_token_usage(chunk.usage_metadata, chunk.response_metadata),
-        finish_reason=_optional_string(chunk.response_metadata.get("finish_reason")),
+        finish_reason=optional_string(chunk.response_metadata.get("finish_reason")),
         response_metadata=metadata,
     )
 
@@ -160,10 +160,6 @@ def _usage_from_mapping(
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _optional_string(value: object) -> str | None:
-    return value if isinstance(value, str) else None
 
 
 def _safe_base_url(value: str | None) -> str | None:

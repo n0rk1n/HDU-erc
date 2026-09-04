@@ -48,3 +48,10 @@ class DatabaseError(DomainError):
 class ProcessInterrupted(DomainError):
     def __init__(self, message: str = "process interrupted") -> None:
         super().__init__("process_interrupted", message, 503)
+
+
+SAFE_PUBLIC_ERROR_MESSAGES: dict[str, str] = {
+    "model_error": "model generation failed",
+    "database_error": "database error",
+    "process_interrupted": "generation interrupted",
+}

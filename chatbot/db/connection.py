@@ -7,6 +7,13 @@ from typing import AsyncIterator
 import aiosqlite
 
 
+async def configure_connection(connection: aiosqlite.Connection) -> None:
+    await connection.execute("PRAGMA journal_mode = WAL")
+    await connection.execute("PRAGMA foreign_keys = ON")
+    await connection.execute("PRAGMA busy_timeout = 5000")
+    await connection.execute("PRAGMA synchronous = NORMAL")
+
+
 class Database:
     def __init__(self, path: Path | str) -> None:
         self.path = Path(path)
@@ -16,10 +23,7 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = await aiosqlite.connect(self.path)
         try:
-            await connection.execute("PRAGMA journal_mode = WAL")
-            await connection.execute("PRAGMA foreign_keys = ON")
-            await connection.execute("PRAGMA busy_timeout = 5000")
-            await connection.execute("PRAGMA synchronous = NORMAL")
+            await configure_connection(connection)
             yield connection
         finally:
             await connection.close()
