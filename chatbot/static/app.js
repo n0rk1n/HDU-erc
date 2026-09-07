@@ -546,8 +546,8 @@
   messageInput.addEventListener("input", resizeMessageInput);
 
   messageInput.addEventListener("keydown", (event) => {
+    // IME confirmation can report isComposing=false after compositionend.
     if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
-    if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
     if (!messageInput.disabled) messageForm.requestSubmit();
   });

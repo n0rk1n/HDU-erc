@@ -834,14 +834,11 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           input.dispatch("input");
           assert.equal(input.style.height, "96px", "typing grows the composer to its content height");
 
-          const draft = input.value;
+          input.value = "harness";
           for (const keys of [
-            {},
             { shiftKey: true },
-            { ctrlKey: true, isComposing: true },
-            { metaKey: true, isComposing: true },
-            { ctrlKey: true, keyCode: 229 },
-            { metaKey: true, keyCode: 229 },
+            { isComposing: true, keyCode: 13 },
+            { isComposing: false, keyCode: 229 },
           ]) {
             let prevented = false;
             input.dispatch("keydown", {
@@ -851,23 +848,20 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
             });
             await settle();
             assert.equal(prevented, false, "newline and IME confirmation keep their default behavior");
-            assert.equal(posts, 0, "unfinished drafts must not be sent");
-            assert.equal(input.value, draft, "unfinished drafts must not be cleared");
+            assert.equal(posts, 0, "confirming harness in the IME must not send it");
+            assert.equal(input.value, "harness", "IME confirmation must preserve the draft");
           }
 
-          for (const modifier of ["ctrlKey", "metaKey"]) {
-            input.value = "line 1";
-            let prevented = false;
-            input.dispatch("keydown", {
-              key: "Enter", [modifier]: true, shiftKey: false, isComposing: false,
-              preventDefault() { prevented = true; },
-            });
-            await settle(40);
-            assert.equal(prevented, true, "send shortcut prevents a newline");
-            assert.equal(input.value, "");
-            assert.equal(input.style.height, "", "sending restores the default composer height");
-          }
-          assert.equal(posts, 2, "Ctrl+Enter and Command+Enter each send once");
+          let prevented = false;
+          input.dispatch("keydown", {
+            key: "Enter", keyCode: 13, shiftKey: false, isComposing: false,
+            preventDefault() { prevented = true; },
+          });
+          await settle(40);
+          assert.equal(prevented, true, "a separate ordinary Enter sends after IME confirmation");
+          assert.equal(posts, 1);
+          assert.equal(input.value, "");
+          assert.equal(input.style.height, "", "sending restores the default composer height");
         }
 
         function descendantText(element) {
