@@ -22,10 +22,13 @@ class AppConfig:
     context_message_limit: int
     sqlite_db_path: Path
     llm_thinking: str = "disabled"
+    llm_reasoning_effort: str | None = None
 
     def __post_init__(self) -> None:
         if self.llm_thinking not in {"disabled", "enabled"}:
             raise ConfigError("CHAT_LLM_THINKING must be disabled or enabled")
+        if self.llm_reasoning_effort not in {None, "low", "high", "max"}:
+            raise ConfigError("CHAT_LLM_REASONING_EFFORT must be low, high or max")
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -46,6 +49,7 @@ class AppConfig:
             context_message_limit=context_limit,
             sqlite_db_path=sqlite_path,
             llm_thinking=model_settings.thinking,
+            llm_reasoning_effort=model_settings.reasoning_effort,
         )
 
 
@@ -92,6 +96,7 @@ class ModelSettings:
     temperature: float
     timeout_seconds: float
     thinking: str = "disabled"
+    reasoning_effort: str | None = None
 
 
 def resolve_model_settings(prefix: str) -> ModelSettings:
@@ -111,8 +116,12 @@ def resolve_model_settings(prefix: str) -> ModelSettings:
     thinking = _optional(thinking_name) or "disabled"
     if thinking not in {"disabled", "enabled"}:
         raise ConfigError(f"{thinking_name} must be disabled or enabled")
+    effort_name = effective_name("REASONING_EFFORT")
+    effort = _optional(effort_name)
+    if effort not in {None, "low", "high", "max"}:
+        raise ConfigError(f"{effort_name} must be low, high or max")
     if not isfinite(temperature) or not 0 <= temperature <= 2:
         raise ConfigError(f"{temperature_name} must be finite and between 0 and 2")
     if not isfinite(timeout) or timeout <= 0:
         raise ConfigError(f"{timeout_name} must be finite and positive")
-    return ModelSettings(SecretStr(api_key), model, base_url, temperature, timeout, thinking)
+    return ModelSettings(SecretStr(api_key), model, base_url, temperature, timeout, thinking, effort)

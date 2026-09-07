@@ -43,7 +43,8 @@ def error_facts(exc,*,stage,secret=''):
 class OpenAICompatibleEmotionModel:
     def __init__(self,settings,*,client=None):
         self.secret=settings.api_key.get_secret_value()
-        extra_body=thinking_extra_body(settings.model,settings.base_url,settings.thinking)
+        extra_body=thinking_extra_body(settings.model,settings.base_url,settings.thinking,
+                                     getattr(settings,'reasoning_effort',None))
         self.parameters=safe_facts({'provider':'openai-compatible','model':settings.model,'base_url':settings.base_url,
             'temperature':settings.temperature,'timeout':settings.timeout_seconds,'max_tokens':settings.budget.output_tokens,
             'max_retries':0,'streaming':False,'tokenizer_model':settings.tokenizer_model,
@@ -69,12 +70,16 @@ class OpenAICompatibleEmotionModel:
 
 class ModelTokenCounter:
     def __init__(self,client,*,tokenizer_model):
-        self._deepseek_counter = None
+        self._local_counter = None
         if tokenizer_model == 'deepseek-v4-flash':
             from chatbot.llm.deepseek_tokens import DeepSeekV4TokenCounter
-            self._deepseek_counter = DeepSeekV4TokenCounter()
-            self.identity = self._deepseek_counter.identity
-            self.version = self._deepseek_counter.version
+            self._local_counter = DeepSeekV4TokenCounter()
+        elif tokenizer_model == 'ZHIPU/GLM-5.3':
+            from chatbot.llm.glm53_tokens import GLM53TokenCounter
+            self._local_counter = GLM53TokenCounter()
+        if self._local_counter is not None:
+            self.identity = self._local_counter.identity
+            self.version = self._local_counter.version
             return
         # LangChain can silently fall back to another encoding: explicitly reject that.
         import tiktoken
@@ -88,6 +93,6 @@ class ModelTokenCounter:
         self.identity=tokenizer_model
         self.version='langchain-openai:'+version('langchain-openai')+';tiktoken:'+version('tiktoken')
     def count(self,messages):
-        if self._deepseek_counter is not None:
-            return self._deepseek_counter.count(messages)
+        if self._local_counter is not None:
+            return self._local_counter.count(messages)
         return self.client.get_num_tokens_from_messages(list(messages)) if messages else 0

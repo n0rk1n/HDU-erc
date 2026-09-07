@@ -65,6 +65,18 @@ def test_other_endpoints_do_not_receive_deepseek_thinking_fields(model, base_url
     assert "extra_body" not in adapter.parameters
 
 
+@pytest.mark.parametrize('base_url', [
+    'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    'https://ws-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1',
+])
+def test_glm53_rejects_disabled_thinking(base_url):
+    from chatbot.core.errors import ConfigError
+    with pytest.raises(ConfigError, match='GLM-5.3.*enabled'):
+        OpenAICompatibleChatModel(replace(
+            _config(), llm_model='ZHIPU/GLM-5.3', llm_base_url=base_url,
+            llm_thinking='disabled'))
+
+
 def _message(*, role: str, content: str, sequence_no: int) -> Message:
     return Message(
         id=f"message-{sequence_no}",

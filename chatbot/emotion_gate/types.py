@@ -49,6 +49,7 @@ class GateSettings:
     prompt: dict[str, str]
     version: str = 'v1'
     thinking: str = 'disabled'
+    reasoning_effort: str | None = None
 
     @property
     def wait_seconds(self) -> float:

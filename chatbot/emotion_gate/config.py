@@ -42,4 +42,4 @@ def load_gate_settings(emotion: EmotionSettings) -> GateSettings:
     return GateSettings(policy, connection.api_key, model, connection.base_url,
                         connection.temperature, connection.timeout_seconds,
                         budget, tokenizer, path, load_prompt_config(path), data['version'],
-                        thinking=connection.thinking)
+                        thinking=connection.thinking, reasoning_effort=connection.reasoning_effort)

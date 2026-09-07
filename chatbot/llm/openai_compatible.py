@@ -8,6 +8,7 @@ from langchain_core.messages import AIMessageChunk, BaseMessage
 from langchain_openai import ChatOpenAI
 
 from chatbot.core.config import AppConfig
+from chatbot.core.errors import ConfigError
 from chatbot.llm.redaction import redact_secrets
 from chatbot.llm.types import ModelDelta, TokenUsage, optional_string
 
@@ -33,7 +34,8 @@ class OpenAICompatibleChatModel:
         self._temperature = config.llm_temperature
         self._timeout = config.llm_timeout_seconds
         self._extra_body = thinking_extra_body(
-            config.llm_model, config.llm_base_url, config.llm_thinking
+            config.llm_model, config.llm_base_url, config.llm_thinking,
+            config.llm_reasoning_effort,
         )
         self._client: _StreamingClient = (
             client
@@ -85,11 +87,22 @@ class OpenAICompatibleChatModel:
         )
 
 
-def thinking_extra_body(model: str, base_url: str | None, thinking: str) -> dict | None:
-    """Share the official DeepSeek V4 thinking contract across all model roles."""
-    if (urlsplit(base_url or "").hostname == "api.deepseek.com"
+def thinking_extra_body(
+    model: str, base_url: str | None, thinking: str, reasoning_effort: str | None = None,
+) -> dict | None:
+    """Apply the supported provider's thinking contract to every model role."""
+    host = urlsplit(base_url or "").hostname or ""
+    if (host == "api.deepseek.com"
             and model in {"deepseek-v4-flash", "deepseek-v4-pro"}):
         return {"thinking": {"type": thinking}}
+    if (model == "ZHIPU/GLM-5.3" and (host == "dashscope.aliyuncs.com"
+            or host.endswith(".cn-beijing.maas.aliyuncs.com"))):
+        if thinking != "enabled":
+            raise ConfigError("GLM-5.3 requires thinking enabled")
+        if reasoning_effort not in {None, "low", "high", "max"}:
+            raise ConfigError("GLM-5.3 reasoning effort must be low, high or max")
+        return {"enable_thinking": True,
+                **({"reasoning_effort": reasoning_effort} if reasoning_effort else {})}
     return None
 
 

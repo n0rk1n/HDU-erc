@@ -55,7 +55,7 @@ WHERE type = 'table' AND name = 'emotion_analyses';
 
 `reasoning_content` 只保存供应商确实返回的 reasoning；供应商没有返回时保持 `NULL`。它不会显示在当前前端或普通历史 API 中。
 
-三个模型角色使用 DeepSeek 官方接口（`api.deepseek.com`）的 `deepseek-v4-flash` 或 `deepseek-v4-pro` 时，均支持通过 `.env` 配置思考模式。`LLM_THINKING=disabled` 为共享默认值；`CHAT_LLM_THINKING`、`EMOTION_LLM_THINKING`、`EMOTION_GATE_LLM_THINKING` 分别覆盖聊天、情绪识别、入口判定。角色未设置或留空时直接继承 `LLM_THINKING`，默认配置也留空时关闭思考。有效值只接受 `disabled`（关闭）和 `enabled`（开启），非法值会阻止启动，修改后重启服务生效。请求携带对应的 `thinking.type`，并写入各角色的调用审计。其他模型或兼容端点不自动添加此供应商专用参数。参见 [DeepSeek 思考模式文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。
+三个模型角色均支持通过 `.env` 配置思考模式。`CHAT_LLM_THINKING`、`EMOTION_LLM_THINKING`、`EMOTION_GATE_LLM_THINKING` 分别覆盖聊天、情绪识别、入口判定；留空时直接继承 `LLM_THINKING`。有效值只接受 `disabled`（关闭）和 `enabled`（开启），非法值会阻止启动，修改后重启服务生效。DeepSeek 官方接口的 V4 flash/pro 使用 `thinking.type`；阿里云百炼的 `ZHIPU/GLM-5.3` 使用 `enable_thinking=true`，不允许关闭思考，并支持 `LLM_REASONING_EFFORT=low/high/max` 及三个角色对应的 `*_REASONING_EFFORT` 覆盖。参数会写入各角色调用审计，其他模型或端点不自动添加上述供应商专用参数。参见 [百炼 GLM 文档](https://help.aliyun.com/zh/model-studio/glm-zhipu)和 [DeepSeek 思考模式文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。
 
 ## 项目结构
 
@@ -119,7 +119,22 @@ python3 -m venv .venv
 
 模型连接与 Token 预算分别配置：`LLM_MODEL` / `EMOTION_LLM_MODEL` 是 API 模型名称，`EMOTION_TOKENIZER_MODEL` 明确指定本地计数器使用的分词器和消息模板。更换模型时，需要同步核对并填写实际上下文窗口和匹配的 tokenizer，代码不会自动补值。
 
-例如使用 DeepSeek V4 Flash 官方服务时，在 `.env` 中显式填写：
+当前 `.env.example` 使用百炼 `ZHIPU/GLM-5.3`，三个角色共同继承。复制后填写自己的北京业务空间 ID 和 API Key：
+
+```dotenv
+LLM_MODEL=ZHIPU/GLM-5.3
+LLM_API_KEY=replace-with-provider-api-key
+LLM_BASE_URL=https://YOUR_WORKSPACE_ID.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+LLM_THINKING=enabled
+LLM_REASONING_EFFORT=low
+EMOTION_CONTEXT_TOKENS=1048576
+EMOTION_TOKENIZER_MODEL=ZHIPU/GLM-5.3
+EMOTION_OUTPUT_TOKENS=8192
+```
+
+百炼 GLM-5.3 支持 1M 上下文；若工作空间限制更小，应填写实际限制。输出预算包含思考和最终 JSON，因此模板为情绪识别和门控预留 8192 token。官方 tokenizer 随代码提供，固定版本和许可证见 `chatbot/llm/vendor/glm53/README.md`，启动不下载文件。计数覆盖完整纯文本消息及思考强度、历史思考和生成前缀，保留安全余量以应对服务端模板差异。模型和参数说明见 [百炼 GLM 文档](https://help.aliyun.com/zh/model-studio/glm-zhipu)。
+
+如果改用 DeepSeek V4 Flash 官方服务，同步更换模型、接口和密钥，并在 `.env` 中显式填写：
 
 ```dotenv
 EMOTION_CONTEXT_TOKENS=1048576
@@ -145,6 +160,7 @@ DeepSeek 的官方 tokenizer 和消息编码器随项目提供，固定版本与
 | `LLM_BASE_URL` | 留空使用 SDK 默认地址 | OpenAI-compatible 服务地址。 |
 | `LLM_TEMPERATURE` | `0.7`，范围 0–2 | 默认采样温度。 |
 | `LLM_THINKING` | `disabled` | 共享思考模式：`disabled` / `enabled`；三个角色可独立覆盖。 |
+| `LLM_REASONING_EFFORT` | 留空使用供应商默认值 | 百炼 GLM-5.3 推理强度：`low` / `high` / `max`；角色通过对应的 `*_REASONING_EFFORT` 独立覆盖。 |
 | `LLM_TIMEOUT_SECONDS` | `60`，大于 0 | 默认模型调用超时；各角色有效超时参与关闭等待预算。 |
 | `CHAT_CONTEXT_MESSAGE_LIMIT` | `40`，范围 1–200 | 聊天 Prompt 中最近已完成消息的数量上限，含当前已入库的用户消息；不是轮数或 token 数。 |
 | `SQLITE_DB_PATH` | `data/chatbot.sqlite3` | 业务与 checkpoint 共用的 SQLite 文件。 |
@@ -169,6 +185,8 @@ DeepSeek 的官方 tokenizer 和消息编码器随项目提供，固定版本与
 | `EMOTION_EXAMPLES_PATH` | 模板指向 `data/config/emotion_examples.json` | 动态检索示例文件。 |
 
 `LLM_*` 是统一默认模型配置。三个角色分别通过 `CHAT_LLM_*`（聊天）、`EMOTION_LLM_*`（情绪识别）、`EMOTION_GATE_LLM_*`（入口判定）独立覆盖，未设置、空字符串或纯空白字段均直接继承对应的 `LLM_*`，不会继承其他角色的配置。
+
+表格中的默认值是环境变量未配置时的代码回退值。当前 GLM-5.3 模板显式设置模型、接口、`enabled`、`low`、匹配的 tokenizer 和 8192 token 输出预算，以模板配置为准。
 
 例如 `LLM_MODEL=default-model`、`CHAT_LLM_MODEL=chat-model`，其余两组模型留空时，聊天使用 `chat-model`，情绪识别和入口判定均使用 `default-model`。仅覆盖模型名不会切换密钥或服务地址；切换供应商时应同时配置对应角色的密钥和地址。
 

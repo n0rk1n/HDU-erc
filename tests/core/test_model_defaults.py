@@ -172,3 +172,33 @@ def test_matching_default_model_can_inherit_emotion_budget(model_env, tmp_path):
     assert gate.model == 'default-model'
     assert gate.tokenizer_model == 'default-tokenizer'
     assert gate.budget.context_tokens == 10000
+
+
+@pytest.mark.parametrize('role,prefix', list(enumerate(('CHAT_LLM', 'EMOTION_LLM', 'EMOTION_GATE_LLM'))))
+def test_glm_reasoning_options_reach_each_role_request_and_audit(model_env, role, prefix):
+    """Catch lost shared effort, cross-role overrides, and wrong provider field names."""
+    from chatbot.emotion.model import OpenAICompatibleEmotionModel
+    from chatbot.llm.openai_compatible import OpenAICompatibleChatModel
+    from langchain_core.messages import HumanMessage
+    model_env.setenv('LLM_MODEL', 'ZHIPU/GLM-5.3')
+    model_env.setenv('LLM_BASE_URL', 'https://ws-test.cn-beijing.maas.aliyuncs.com/compatible-mode/v1')
+    model_env.setenv('LLM_THINKING', 'enabled')
+    model_env.setenv('LLM_REASONING_EFFORT', 'low')
+    model_env.setenv(f'{prefix}_REASONING_EFFORT', 'high')
+    chat, emotion, gate = thinking_settings()
+    adapters = [OpenAICompatibleChatModel(chat), OpenAICompatibleEmotionModel(emotion),
+                OpenAICompatibleEmotionModel(gate)]
+    efforts = ['low'] * 3
+    efforts[role] = 'high'
+    for adapter, effort in zip(adapters, efforts):
+        expected = {'enable_thinking': True, 'reasoning_effort': effort}
+        payload = adapter.client._get_request_payload([HumanMessage(content='你好')])
+        assert payload['extra_body'] == expected
+        assert adapter.parameters['extra_body'] == expected
+
+
+@pytest.mark.parametrize('prefix', ['LLM', 'CHAT_LLM', 'EMOTION_LLM', 'EMOTION_GATE_LLM'])
+def test_invalid_reasoning_effort_fails_configuration(model_env, prefix):
+    model_env.setenv(f'{prefix}_REASONING_EFFORT', 'typo')
+    with pytest.raises(ConfigError, match=f'{prefix}_REASONING_EFFORT'):
+        thinking_settings()
