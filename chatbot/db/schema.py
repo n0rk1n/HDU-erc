@@ -6,10 +6,10 @@ from chatbot.core.errors import ConfigError
 from chatbot.db.connection import Database
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
-DDL_STATEMENTS = (
+V1_DDL_STATEMENTS = (
     """
     -- 用户表：保存可登录或发起对话的用户身份
     CREATE TABLE users (
@@ -94,6 +94,28 @@ DDL_STATEMENTS = (
 )
 
 
+
+V2_DDL_STATEMENTS = (
+    """CREATE TABLE emotion_analyses (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        request_id TEXT NOT NULL,
+        user_message_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed')),
+        snapshot_json TEXT NOT NULL DEFAULT '{}',
+        result_json TEXT, raw_output TEXT, reasoning_content TEXT,
+        response_metadata_json TEXT, error_json TEXT,
+        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens>=0),
+        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens>=0),
+        total_tokens INTEGER CHECK(total_tokens IS NULL OR total_tokens>=0),
+        latency_ms INTEGER CHECK(latency_ms IS NULL OR latency_ms>=0),
+        finish_reason TEXT, created_at TEXT NOT NULL, started_at TEXT, completed_at TEXT,
+        UNIQUE(conversation_id,request_id)
+    )""",
+    "CREATE INDEX ix_emotion_status_created ON emotion_analyses(status,created_at)",
+)
+DDL_STATEMENTS = (*V1_DDL_STATEMENTS, *V2_DDL_STATEMENTS)
+
 async def initialize_schema(database: Database) -> None:
     version = await _read_schema_version(database)
     if version > SCHEMA_VERSION:
@@ -107,7 +129,7 @@ async def initialize_schema(database: Database) -> None:
             raise ConfigError("unsupported database schema version")
         if version == SCHEMA_VERSION:
             return
-        for statement in DDL_STATEMENTS:
+        for statement in (DDL_STATEMENTS if version == 0 else V2_DDL_STATEMENTS):
             await connection.execute(statement)
         await connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 

@@ -9,7 +9,7 @@ from aiosqlite import IntegrityError
 from chatbot.core.errors import ConfigError
 from chatbot.db.connection import Database
 from chatbot.db.models import Conversation, InterruptedTurn, Message, ReservedTurn, User
-from chatbot.db.schema import initialize_schema
+from chatbot.db.schema import initialize_schema, SCHEMA_VERSION
 
 
 async def execute(connection, sql: str, parameters: tuple = ()) -> None:
@@ -34,7 +34,7 @@ async def test_schema_creates_three_business_tables_and_version(tmp_path) -> Non
 
     assert {"users", "conversations", "messages"} <= names
     assert "checkpoints" not in names
-    assert version == 1
+    assert version == SCHEMA_VERSION
 
 
 @pytest.mark.asyncio
@@ -163,7 +163,7 @@ async def test_schema_is_idempotent_and_rejects_future_versions(tmp_path) -> Non
     await initialize_schema(database)
     await initialize_schema(database)
     async with database.connect() as connection:
-        await connection.execute("PRAGMA user_version = 2")
+        await connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
 
     with pytest.raises(ConfigError, match="unsupported database schema version"):
         await initialize_schema(database)
@@ -175,7 +175,7 @@ async def test_schema_rejects_future_version_without_mutating_database(tmp_path)
     path = tmp_path / "future-schema.sqlite3"
     async with aiosqlite.connect(path) as connection:
         await connection.execute("PRAGMA journal_mode = DELETE")
-        await connection.execute("PRAGMA user_version = 2")
+        await connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
         await connection.commit()
 
     with pytest.raises(ConfigError, match="unsupported database schema version"):
@@ -191,7 +191,7 @@ async def test_schema_rejects_future_version_without_mutating_database(tmp_path)
             ).fetchall()
         }
 
-    assert version == 2
+    assert version == SCHEMA_VERSION + 1
     assert journal_mode == "delete"
     assert not {"users", "conversations", "messages"} & tables
 
