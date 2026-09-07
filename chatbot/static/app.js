@@ -94,9 +94,6 @@
     article.setAttribute("aria-label", role === "user" ? "用户消息" : "助手消息");
     body.className = "message-body";
     detail.className = "message-error";
-    if (role === "assistant") article.append(Object.assign(document.createElement("div"), {
-      className: "assistant-heading", textContent: "小禾 · 对话助手",
-    }));
     article.append(body, detail);
     item.append(article);
     applyMessage(item, message);

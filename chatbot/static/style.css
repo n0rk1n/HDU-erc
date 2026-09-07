@@ -1009,8 +1009,7 @@ button:disabled {
 .emotion-badge[data-state="empty"] .emotion-badge-heading strong { color: var(--text-muted); font-weight: 500; }
 
 .message--assistant article { row-gap: 0.55rem; }
-.message--assistant article::before { grid-row: 1 / span 3; background: var(--accent); border-color: var(--accent); color: #fff; }
-.assistant-heading { grid-column: 2; color: var(--text); font-size: 0.8rem; font-weight: 650; line-height: 2rem; }
+.message--assistant article::before { grid-row: 1; background: var(--accent); border-color: var(--accent); color: #fff; }
 .message--assistant article .message-body { margin-top: 0.3rem; }
 .message--assistant article .message-error { margin-top: 0; }
 .message-error:empty, .message-body:empty { display: none; }
