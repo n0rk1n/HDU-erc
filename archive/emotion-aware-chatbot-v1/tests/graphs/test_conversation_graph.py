@@ -101,7 +101,7 @@ async def test_conversation_graph_routes_regeneration_to_same_id_replacement():
             "regeneration_reason": "不准确",
             "messages": [
                 HumanMessage(id="human-target", content="原问题"),
-                AIMessage(id="ai-target", content="旧回复", additional_kwargs={"feedback": "dislike"}),
+                AIMessage(id="ai-target", content="旧回复", additional_kwargs={}),
             ],
         },
         {"configurable": {"thread_id": "thread-regen"}},

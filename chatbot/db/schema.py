@@ -12,7 +12,7 @@ from chatbot.core.errors import ConfigError
 from chatbot.db.connection import Database
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 V1_DDL_STATEMENTS = (
@@ -168,7 +168,14 @@ V4_DDL_STATEMENTS = (
     ALTER TABLE messages ADD COLUMN bubbles_json TEXT
     """,
 )
-DDL_STATEMENTS = (*V1_DDL_STATEMENTS, *V2_DDL_STATEMENTS, *V3_DDL_STATEMENTS, *V4_DDL_STATEMENTS)
+V5_DDL_STATEMENTS = (
+    """
+    -- 回复评价：未评价为 NULL，赞为 like，踩为 dislike；仅已完成助手回复可评价
+    ALTER TABLE messages ADD COLUMN feedback TEXT
+        CHECK (feedback IS NULL OR (feedback IN ('like', 'dislike') AND role = 'assistant' AND status = 'completed'))
+    """,
+)
+DDL_STATEMENTS = (*V1_DDL_STATEMENTS, *V2_DDL_STATEMENTS, *V3_DDL_STATEMENTS, *V4_DDL_STATEMENTS, *V5_DDL_STATEMENTS)
 
 async def initialize_schema(database: Database) -> None:
     version = await _read_schema_version(database)
@@ -183,7 +190,7 @@ async def initialize_schema(database: Database) -> None:
             raise ConfigError("unsupported database schema version")
         if version == SCHEMA_VERSION:
             return
-        migrations = {1: V1_DDL_STATEMENTS, 2: V2_DDL_STATEMENTS, 3: V3_DDL_STATEMENTS, 4: V4_DDL_STATEMENTS}
+        migrations = {1: V1_DDL_STATEMENTS, 2: V2_DDL_STATEMENTS, 3: V3_DDL_STATEMENTS, 4: V4_DDL_STATEMENTS, 5: V5_DDL_STATEMENTS}
         for target in range(version + 1, SCHEMA_VERSION + 1):
             for statement in migrations[target]:
                 await connection.execute(statement)

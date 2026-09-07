@@ -43,6 +43,15 @@ class SendMessageRequest(BaseModel):
         return value
 
 
+class MessageFeedbackRequest(BaseModel):
+    feedback: Literal["like", "dislike"]
+
+
+class MessageFeedbackResponse(BaseModel):
+    message_id: str
+    feedback: Literal["like", "dislike"]
+
+
 class PublicUser(BaseModel):
     id: int
     identifier: str
@@ -90,6 +99,7 @@ class PublicMessage(BaseModel):
     status: Literal["pending", "streaming", "completed", "failed"]
     content: str
     bubbles: list[str] | None = None
+    feedback: Literal["like", "dislike"] | None = None
     error_code: str | None
     error_message: str | None
     created_at: str

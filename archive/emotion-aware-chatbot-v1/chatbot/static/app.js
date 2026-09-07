@@ -362,7 +362,7 @@ function createMessageElement(role, content, metadata = {}) {
   bubble.className = "bubble";
   bubble.textContent = messageText(content, role);
   wrapper.appendChild(bubble);
-  if (displayRole === "ai" && metadata.id) renderFeedbackControls(wrapper, metadata);
+  if (displayRole === "ai" && metadata.id) renderMessageControls(wrapper, metadata);
   return {wrapper, bubble};
 }
 
@@ -665,32 +665,14 @@ function allButtons(container) {
   return output;
 }
 
-function renderFeedbackControls(wrapper, metadata) {
-  if (metadata.feedback) return;
+function renderMessageControls(wrapper, metadata) {
   const controls = document.createElement("div"); controls.className = "feedback-controls";
   const status = document.createElement("span"); status.className = "feedback-status";
-  [["有帮助", "like", "将回复评价为有帮助"], ["没帮助", "dislike", "将回复评价为没帮助"]].forEach(([label, value, ariaLabel]) => {
-    const button = document.createElement("button"); button.type = "button"; button.className = "feedback-button"; button.textContent = label;
-    button.setAttribute("aria-label", ariaLabel);
-    button.addEventListener("click", () => submitFeedback(metadata.id, value, controls, status)); controls.appendChild(button);
-  });
   const regenerate = document.createElement("button"); regenerate.type = "button"; regenerate.className = "feedback-button"; regenerate.textContent = "重新生成"; regenerate.setAttribute("aria-label", "重新生成回复");
   regenerate.addEventListener("click", () => renderRegenerationReasons(wrapper, metadata.id, controls, status)); controls.appendChild(regenerate);
   const emotion = document.createElement("button"); emotion.type = "button"; emotion.className = "feedback-button"; emotion.textContent = "情绪判断"; emotion.setAttribute("aria-label", "反馈情绪判断是否准确");
   emotion.addEventListener("click", () => renderEmotionFeedbackChoices(metadata, controls, status)); controls.appendChild(emotion);
   controls.appendChild(status); wrapper.appendChild(controls);
-}
-
-async function submitFeedback(messageId, feedback, controls, status) {
-  const buttons = allButtons(controls); buttons.forEach((button) => { button.disabled = true; });
-  try {
-    await mutateJson(threadPath(`/messages/${encodeURIComponent(messageId)}/feedback`), {
-      method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify({feedback}),
-    });
-    controls.remove();
-  } catch (error) {
-    buttons.forEach((button) => { button.disabled = false; }); status.textContent = "评价保存失败";
-  }
 }
 
 async function submitEmotionFeedback(metadata, feedback, status) {

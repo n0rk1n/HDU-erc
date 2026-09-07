@@ -179,7 +179,7 @@ async def test_interval_reuse_risk_force_and_crisis_monotonicity(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_feedback_and_regeneration_replace_the_same_ai_message(tmp_path):
+async def test_regeneration_replaces_the_same_ai_message(tmp_path):
     chat, graph = configs(tmp_path)
     chat_model = RecordingModel("原回复", "新回复")
     async with open_persistence(graph) as handles:
@@ -195,10 +195,6 @@ async def test_feedback_and_regeneration_replace_the_same_ai_message(tmp_path):
                 "client-a", record.thread_id, "req-1", "不同正文"
             )
         assert conflict_info.value.code == "request_id_conflict"
-        rated = await runtime.aupdate_message_feedback(
-            "client-a", record.thread_id, "ai_req-1", "dislike"
-        )
-        assert rated.id == "ai_req-1"
         with pytest.raises(RuntimeOperationError) as cross_operation_info:
             await runtime.astream_regeneration(
                 "client-a", record.thread_id, "req-1", "ai_req-1", "不准确"
@@ -233,7 +229,7 @@ async def test_feedback_and_regeneration_replace_the_same_ai_message(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_restart_restores_state_feedback_and_thread_order(tmp_path):
+async def test_restart_restores_state_and_thread_order(tmp_path):
     chat, graph = configs(tmp_path)
     client_id = "client-a"
     async with open_persistence(graph) as handles:
@@ -245,7 +241,6 @@ async def test_restart_restores_state_feedback_and_thread_order(tmp_path):
         first = await runtime.acreate_thread(client_id)
         second = await runtime.acreate_thread(client_id)
         await turn(runtime, client_id, first.thread_id, "保留", "req-1")
-        await runtime.aupdate_message_feedback(client_id, first.thread_id, "ai_req-1", "like")
 
     async with open_persistence(graph) as handles:
         runtime = build_graph_runtime(
@@ -256,7 +251,7 @@ async def test_restart_restores_state_feedback_and_thread_order(tmp_path):
         records = await runtime.alist_threads(client_id)
         state = await runtime.aget_state(client_id, first.thread_id)
         assert [r.thread_id for r in records] == [first.thread_id, second.thread_id]
-        assert state.values["messages"][-1].additional_kwargs["feedback"] == "like"
+        assert state.values["messages"][-1].content == "回复"
 
 
 @pytest.mark.asyncio
@@ -610,10 +605,6 @@ def test_real_lifespan_http_flow_and_restart_persistence(tmp_path, monkeypatch):
             f"/api/clients/{client_id}/threads/{thread_id}"
         ).json()
         ai_id = snapshot["messages"][-1]["id"]
-        assert client.patch(
-            f"/api/clients/{client_id}/threads/{thread_id}/messages/{ai_id}/feedback",
-            json={"feedback": "like"},
-        ).status_code == 200
         assert client.get(
             f"/api/clients/{client_id}/threads/{thread_id}/emotion-timeline"
         ).json()["timeline"]
@@ -630,7 +621,7 @@ def test_real_lifespan_http_flow_and_restart_persistence(tmp_path, monkeypatch):
             f"/api/clients/{client_id}/threads/{thread_id}"
         )
         assert snapshot.status_code == 200
-        assert snapshot.json()["messages"][-1]["feedback"] == "like"
+        assert snapshot.json()["messages"][-1]["id"] == ai_id
         assert client.get(f"/api/clients/{client_id}/profile").json()["profile"] == {
             "preferred_name": "小明"
         }

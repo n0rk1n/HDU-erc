@@ -142,7 +142,6 @@ def _reply_message(state: ConversationState, content: str) -> AIMessage:
         id=f"ai_{state['request_id']}",
         content=content,
         additional_kwargs={
-            "feedback": None,
             "turn_count": state["turn_count"],
             "emotion_state": emotion_state,
             "predicted_emotion": primary_emotion,

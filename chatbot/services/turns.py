@@ -391,6 +391,7 @@ def _public_message(message: Message) -> dict[str, object]:
         "role": message.role,
         "status": message.status,
         "content": message.content,
+        "feedback": message.feedback,
         "bubbles": None if message.bubbles_json is None else json.loads(message.bubbles_json),
         "error_code": message.error_code,
         "error_message": message.error_message,

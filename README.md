@@ -11,6 +11,7 @@
 - 默认首轮识别，之后由判定 Agent 按情绪变化提前触发，最多间隔 15 轮强制识别；间隔和历史窗口均可配置。跳过时默认引用最近成功情绪，标明来源轮次；识别失败默认普通回复，下轮再试。
 - 聊天、情绪识别、是否需要识别的判定 Agent 系统提示词、情绪标签、分类映射和示例均可通过 JSON 文件配置。
 - 聊天记录展示真实处理进度与本轮情绪识别结果，支持展开/折叠；右上角显示最近一次成功识别的情绪和时间。跳过和识别失败分别提示，不把旧结果当成本轮识别。
+- 已完成的助手回复支持点赞、点踩，每条回复只能评价一次，刷新和请求重放后保留评价。
 - 聊天回复按内容调整篇幅，通常展示 1～3 个完整气泡；每条可以包含几句话或完整段落。模型一次生成，页面按配置间隔逐条显示，刷新后保留分段。
 - 流式回复支持 request ID 幂等重放；进程重启会保留已完成消息和正常 checkpoint，并把遗留中的回复标记为 `failed/process_interrupted`。
 - 模型调用通过 OpenAI-compatible 接口完成；普通历史 API 和前端不会返回内部 `thread_id`、Prompt、reasoning 或 trace。
@@ -334,6 +335,19 @@ WHERE d.conversation_id = :conversation_id AND d.request_id = :request_id ORDER 
 | `GET /api/users/{user_id}/messages` | 可选 `limit`（默认 100，范围 1–200）、`before_sequence`（正整数） | 消息历史，支持向前分页。 |
 | `POST /api/users/{user_id}/messages:stream` | JSON：`request_id`、`content` | SSE 流。`request_id` 必须是规范小写 UUID4，正文不得为空白或包含 NUL。 |
 
+### 回复点赞、点踩
+
+`PATCH /api/users/{user_id}/messages/{message_id}/feedback` 接收
+`{"feedback":"like"}` 或 `{"feedback":"dislike"}`，返回 `message_id` 和 `feedback`。
+仅允许评价当前用户默认对话中已完成的助手回复；一条回复的多个气泡共用一组评价按钮。
+评价成功后显示“已赞”或“已踩”并禁用按钮，保存失败可重试。每条回复只接受首次评价，
+重复提交返回 `409 already_rated`；其他用户或不存在的消息返回 `404 message_not_found`，
+用户消息、未完成或失败的助手回复返回 `400 invalid_identifier_or_message`。
+
+历史和 SSE `done.message` 的 `feedback` 为 `null`、`like` 或 `dislike`，重放读取已保存评价。
+启动时 schema 从 v4 增量升级到 v5，仅增加可空 `messages.feedback` 列，不改写正文、气泡或调用审计。
+评价只保存到当前应用，不触发模型调用或自动训练，也不迁移旧项目的历史评价数据。
+
 先解析用户，再将返回的 `user.id` 用于历史和发送接口：
 
 ```bash
@@ -415,4 +429,6 @@ FROM emotion_analyses ORDER BY created_at, id;
 
 ## 旧版归档
 
-旧的 emotion-aware chatbot 已冻结在 `archive/emotion-aware-chatbot-v1/`，对应基线提交 `86220ac52df1641fee051bae8e4e04fd09ff6e40`，保留基线的 166 个文件。归档仅供追溯和独立运行；新版不导入其模块，也不与它共享 Python 环境或依赖。运行方法见归档内的 `ARCHIVE.md`。
+旧的 emotion-aware chatbot 归档位于 `archive/emotion-aware-chatbot-v1/`，对应基线提交 `86220ac52df1641fee051bae8e4e04fd09ff6e40`，保留基线的 166 个文件。归档仅供追溯和独立运行；新版不导入其模块，也不与它共享 Python 环境或依赖。运行方法见归档内的 `ARCHIVE.md`。
+
+2026-09-07：回复点赞、点踩已迁移到新版，归档中的对应接口、按钮和写入逻辑已移除；其余归档能力保留。原始完整版本仍可通过基线提交追溯。

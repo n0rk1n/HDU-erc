@@ -17,6 +17,7 @@
   const messageInput = document.querySelector("#message-input");
   const sendMessageButton = document.querySelector("#send-message");
 
+  const feedbackControllers = new Set();
   let activeSession = null;
   let streamController = null;
   let identityController = null;
@@ -83,6 +84,88 @@
     body.replaceChildren(...parts.map(createBubble));
     detail.textContent = state === "failed" ? "生成未完成" : "";
     presentation.render(item, message.processing, state);
+    renderReplyFeedback(item, message);
+  }
+
+  function renderReplyFeedback(item, message) {
+    const previous = item.querySelector(".reply-feedback");
+    if (previous) previous.parentNode.removeChild(previous);
+    if (message.role !== "assistant" || message.status !== "completed" || !message.id || !activeSession) return;
+    const controls = document.createElement("div");
+    controls.className = "reply-feedback";
+    controls.setAttribute("role", "group");
+    controls.setAttribute("aria-label", "评价这条回复");
+    const status = document.createElement("span");
+    status.className = "reply-feedback-status";
+    status.setAttribute("role", "status");
+    let rating = message.feedback;
+    let pending = false;
+    const buttons = [];
+    const expectedGeneration = generation;
+    const userId = activeSession.user_id;
+    const isCurrent = () => sessionIsCurrent(expectedGeneration, userId) && item.parentNode === messageList;
+    const update = () => {
+      buttons.forEach((button) => {
+        button.disabled = pending || Boolean(rating);
+        button.setAttribute("aria-pressed", String(button.dataset.rating === rating));
+      });
+      status.textContent = pending ? "保存中…" : rating === "like" ? "已赞" : rating === "dislike" ? "已踩" : "";
+    };
+    for (const [value, label] of [["like", "赞"], ["dislike", "踩"]]) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "reply-feedback-button";
+      button.dataset.rating = value;
+      button.textContent = label;
+      button.setAttribute("aria-label", value === "like" ? "点赞这条回复" : "点踩这条回复");
+      button.addEventListener("click", async () => {
+        if (pending || rating || !isCurrent()) return;
+        const controller = new AbortController();
+        feedbackControllers.add(controller);
+        pending = true;
+        update();
+        try {
+          const response = await fetch(`/api/users/${userId}/messages/${encodeURIComponent(message.id)}/feedback`, {
+            method: "PATCH", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({feedback: value}), signal: controller.signal,
+          });
+          const payload = await response.json();
+          if (!isCurrent()) return;
+          if (response.ok && payload.message_id === message.id && ["like", "dislike"].includes(payload.feedback)) {
+            rating = payload.feedback;
+          } else if (response.status === 409 && payload.error?.code === "already_rated") {
+            // Another tab or a lost response may have saved the first rating.
+            const history = await fetch(`/api/users/${userId}/messages`, {signal: controller.signal});
+            if (!history.ok) throw new Error("history unavailable");
+            const saved = (await history.json()).messages?.find((row) => row.id === message.id);
+            if (!saved || !["like", "dislike"].includes(saved.feedback)) throw new Error("rating unavailable");
+            rating = saved.feedback;
+          } else {
+            throw new Error("feedback rejected");
+          }
+          pending = false;
+          if (isCurrent()) update();
+        } catch {
+          pending = false;
+          if (isCurrent() && !controller.signal.aborted) {
+            update();
+            status.textContent = "评价保存失败，请重试。";
+          }
+        } finally {
+          feedbackControllers.delete(controller);
+        }
+      });
+      buttons.push(button);
+      controls.append(button);
+    }
+    controls.append(status);
+    update();
+    item.querySelector("article").append(controls);
+  }
+
+  function abortFeedback() {
+    feedbackControllers.forEach((controller) => controller.abort());
+    feedbackControllers.clear();
   }
 
   function createBubble(content) {
@@ -359,6 +442,7 @@
         status: message.status,
         content: message.content,
         bubbles: message.bubbles,
+        feedback: message.feedback,
         processing: message.processing,
       });
       presentation.updateBadge(event.data.latest_emotion);
@@ -554,6 +638,7 @@
 
   switchUserButton.addEventListener("click", () => {
     generation += 1;
+    abortFeedback();
     streamController?.abort();
     identityController?.abort();
     reconciliationController?.abort();
@@ -568,6 +653,7 @@
 
   window.addEventListener("pagehide", () => {
     generation += 1;
+    abortFeedback();
     streamController?.abort();
     identityController?.abort();
     reconciliationController?.abort();
@@ -577,6 +663,7 @@
   });
 
   window.addEventListener("pageshow", () => {
+    abortFeedback();
     const session = activeSession;
     if (!session) return;
     streamController?.abort();

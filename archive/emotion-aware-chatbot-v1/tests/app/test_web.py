@@ -103,7 +103,7 @@ setImmediate(()=>setImmediate(async()=>{try{assert.equal(store.get("hdu_erc_clie
 ''')
 
 
-def test_static_401_recovery_retries_reads_but_not_feedback_mutation():
+def test_static_401_recovery_retries_reads_but_not_emotion_mutation():
     _run_node(NODE_DOM + r'''
 const assert=require("assert"),fs=require("fs"),vm=require("vm");
 const store=new Map([["hdu_erc_client_id","old"],["hdu_erc_thread_id","old-thread"]]);const calls=[];let oldSnapshots=0;
@@ -113,11 +113,11 @@ const fetch=async(url,options={})=>{calls.push({url,options});
  if(url==="/api/clients/bootstrap")return response({client_id:"new",thread:{thread_id:"new-thread",title:"新"}},201);
  if(url==="/api/clients/new/threads/new-thread")return response({messages:[{role:"ai",content:"新身份内容",id:"a1"}],emotion:null});
  if(url==="/api/clients/new/threads/new-thread/emotion-timeline?limit=5")return response({timeline:[]});
- if(url==="/api/clients/new/threads/new-thread/messages/a1/feedback")return response({},401);
+ if(url==="/api/clients/new/threads/new-thread/emotion-feedback")return response({},401);
  throw new Error(`unexpected ${url}`);};
 const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
 vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
-setImmediate(()=>setImmediate(async()=>{try{assert.equal(store.get("hdu_erc_client_id"),"new");assert.equal(store.get("hdu_erc_thread_id"),"new-thread");assert.equal(elements["#messages"].children[0].children[0].textContent,"新身份内容");const controls=elements["#messages"].children[0].children[1];await controls.children[0].listeners.click();assert.equal(calls.filter(c=>c.url.includes("/feedback")).length,1);assert.notEqual(store.get("hdu_erc_client_id"),"old");assert.ok(elements["#app-status"].textContent.includes("身份已更新")||controls.children.at(-1).textContent.includes("失败"));}catch(e){console.error(e);process.exit(1);}}));
+setImmediate(()=>setImmediate(async()=>{try{assert.equal(store.get("hdu_erc_client_id"),"new");assert.equal(store.get("hdu_erc_thread_id"),"new-thread");assert.equal(elements["#messages"].children[0].children[0].textContent,"新身份内容");const controls=elements["#messages"].children[0].children[1];controls.children[1].listeners.click();await controls.children[2].children[0].listeners.click();assert.equal(calls.filter(c=>c.url.endsWith("/emotion-feedback")).length,1);assert.notEqual(store.get("hdu_erc_client_id"),"old");assert.ok(elements["#app-status"].textContent.includes("身份已更新")||controls.children.at(-1).textContent.includes("失败"));}catch(e){console.error(e);process.exit(1);}}));
 ''')
 
 
@@ -168,7 +168,7 @@ const assert=require("assert"),fs=require("fs"),vm=require("vm");
 const store=new Map([["hdu_erc_client_id","c"],["hdu_erc_thread_id","home"]]);
 const fetch=async(url,options={})=>{
  if(url==="/api/clients/c/threads")return response({threads:[{thread_id:"home",title:"H"},{thread_id:"timeline-fails",title:"T"},{thread_id:"snapshot-fails",title:"S"}]});
- if(url==="/api/clients/c/threads/home")return response({messages:[{role:"ai",content:"HOME",id:"h",safety_level:"crisis",feedback:"like"}],emotion:{primary_emotion:"calm"}});
+ if(url==="/api/clients/c/threads/home")return response({messages:[{role:"ai",content:"HOME",id:"h",safety_level:"crisis"}],emotion:{primary_emotion:"calm"}});
  if(url==="/api/clients/c/threads/home/emotion-timeline?limit=5")return response({timeline:[{turn_count:1,primary_emotion:"HOME_EMOTION"}]});
  if(url==="/api/clients/c/threads/timeline-fails")return response({messages:[{role:"ai",content:"TARGET_PARTIAL",id:"t",safety_level:"normal"}],emotion:null});
  if(url==="/api/clients/c/threads/timeline-fails/emotion-timeline?limit=5")return response({},500);
@@ -250,8 +250,8 @@ vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
 try { context.__HDU_ERC_TEST__.renderSnapshot({emotion:null,messages:[
   {role:"system",content:"SYSTEM_SECRET",id:"sys"},
   {role:"tool",content:{token:"TOOL_SECRET"},id:"tool"},
-  {role:"ai",content:[],id:"ai_1",regenerated:true,original_content:"旧答案",regeneration_reason:"不准确",feedback:"like",predicted_emotion:"sad"},
-  {role:"ai",content:"危机回复",id:"ai_2",safety_level:"crisis",feedback:"like"},
+  {role:"ai",content:[],id:"ai_1",regenerated:true,original_content:"旧答案",regeneration_reason:"不准确",predicted_emotion:"sad"},
+  {role:"ai",content:"危机回复",id:"ai_2",safety_level:"crisis"},
 ]});
   assert.equal(elements["#messages"].children.length,4);
   assert.equal(elements["#messages"].children[0].children[0].textContent,"[系统消息]");
@@ -270,7 +270,7 @@ try { context.__HDU_ERC_TEST__.renderSnapshot({emotion:null,messages:[
 ''')
 
 
-def test_static_profile_feedback_and_draft_use_scoped_urls_and_accessible_controls():
+def test_static_profile_emotion_feedback_and_draft_use_scoped_urls_and_accessible_controls():
     _run_node(NODE_DOM + r'''
 const assert=require("assert"),fs=require("fs"),vm=require("vm");
 ["profile-button","profile-panel","profile-backdrop","profile-close","profile-panel-body","profile-onboarding-prompt","profile-onboarding-start","profile-onboarding-skip"].forEach(id=>elements[`#${id}`]=new Element(id));
@@ -283,30 +283,18 @@ const fetch=async(url,options={})=>{calls.push({url,options});
  if(url==="/api/clients/c/profile"&&options.method==="PUT")return response({profile:JSON.parse(options.body).profile});
  if(url==="/api/profile/onboarding/questions")return response({questions:[{key:"preferred_name",question:"怎么称呼？"}]});
  if(url==="/api/clients/c/profile/draft")return response({draft:{preferred_name:"草稿称呼"}});
- if(url.endsWith("/messages/a1/feedback"))return response({message_id:"a1",feedback:"like"});
  if(url.endsWith("/emotion-feedback"))return response({status:"saved"},201);
  throw new Error(`unexpected ${url}`);};
 const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},sessionStorage:{getItem:()=>null,setItem(){}},document:{activeElement:null,querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
 vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);
 setImmediate(()=>setImmediate(async()=>{try{
   const message=elements["#messages"].children[0],controls=message.children[1];
-  assert.equal(controls.children[0].attributes["aria-label"],"将回复评价为有帮助");
-  controls.children[3].listeners.click();const emotionChoices=controls.children[4];await emotionChoices.children[0].listeners.click();const emotionFeedback=calls.find(c=>c.url.endsWith("/emotion-feedback"));assert.equal(emotionFeedback.options.method,"POST");assert.deepEqual(JSON.parse(emotionFeedback.options.body),{message_id:"a1",feedback:"accurate",predicted_emotion:"sad",turn_count:1});assert.ok(calls.some(c=>c.url.endsWith("/emotion-timeline?limit=5")));
-  await controls.children[0].listeners.click();const feedback=calls.find(c=>c.url.endsWith("/messages/a1/feedback"));assert.equal(feedback.options.method,"PATCH");assert.deepEqual(JSON.parse(feedback.options.body),{feedback:"like"});
+  assert.equal(controls.children[0].attributes["aria-label"],"重新生成回复");
+  controls.children[1].listeners.click();const emotionChoices=controls.children[2];await emotionChoices.children[0].listeners.click();const emotionFeedback=calls.find(c=>c.url.endsWith("/emotion-feedback"));assert.equal(emotionFeedback.options.method,"POST");assert.deepEqual(JSON.parse(emotionFeedback.options.body),{message_id:"a1",feedback:"accurate",predicted_emotion:"sad",turn_count:1});assert.ok(calls.some(c=>c.url.endsWith("/emotion-timeline?limit=5")));
   await elements["#profile-button"].listeners.click();await Promise.resolve();const editForm=elements["#profile-panel-body"].children[0];assert.equal(editForm.className,"profile-form");const preferred=editForm.children[0].children[0];preferred.value="新称呼";await editForm.listeners.submit({preventDefault(){}});const saved=calls.find(c=>c.options.method==="PUT");assert.deepEqual(JSON.parse(saved.options.body),{profile:{preferred_name:"新称呼"}});
   context.document.activeElement=elements["#profile-onboarding-start"];await elements["#profile-onboarding-start"].listeners.click();const questionForm=elements["#profile-panel-body"].children[0];questionForm.children[0].children[0].value="草稿称呼";await questionForm.listeners.submit({preventDefault(){}});const draft=calls.find(c=>c.url.endsWith("/profile/draft"));assert.equal(draft.options.method,"POST");assert.deepEqual(JSON.parse(draft.options.body),{thread_id:"t",answers:[{key:"preferred_name",answer:"草稿称呼"}]});assert.equal(elements["#profile-panel-body"].children[0].className,"profile-form");elements["#profile-close"].listeners.click();assert.equal(elements["#profile-button"].focused,true);assert.notEqual(elements["#profile-onboarding-start"].focused,true);
   assert.ok(profileGets>=1);
 }catch(e){console.error(e);process.exit(1);}}));
-''')
-
-
-def test_static_feedback_failure_disables_and_restores_all_visible_controls():
-    _run_node(NODE_DOM + r'''
-const assert=require("assert"),fs=require("fs"),vm=require("vm");let resolveFeedback;const pending=new Promise(resolve=>resolveFeedback=resolve);const calls=[];
-const fetch=async(url,options={})=>{calls.push({url,options});if(url.endsWith("/feedback"))return pending;return new Promise(()=>{});};
-const context={console,fetch,encodeURIComponent,TextDecoder,TextEncoder,AbortController,crypto:{randomUUID:()=>"id"},localStorage:{getItem:()=>"c",setItem(){},removeItem(){}},sessionStorage:{getItem:()=>null,setItem(){}},document:{querySelector:s=>elements[s]||null,createElement:n=>new Element(n)},setTimeout,clearTimeout};
-vm.runInNewContext(fs.readFileSync("chatbot/static/app.js","utf8"),context);context.__HDU_ERC_TEST__.setStateForTest("c","t");context.__HDU_ERC_TEST__.renderSnapshot({emotion:null,messages:[{role:"ai",content:"回复",id:"a1"}]});
-(async()=>{try{const controls=elements["#messages"].children[0].children[1];controls.children[2].listeners.click();const pendingSave=controls.children[0].listeners.click();const buttons=[];const visit=n=>(n.children||[]).forEach(c=>{if(c.name==="button")buttons.push(c);visit(c);});visit(controls);assert.ok(buttons.length>=9);assert.ok(buttons.every(button=>button.disabled));resolveFeedback(response({},500));await pendingSave;assert.ok(buttons.every(button=>!button.disabled));assert.equal(controls.children.at(-1).textContent,"评价保存失败");assert.equal(calls.find(c=>c.url.endsWith("/feedback")).options.method,"PATCH");}catch(e){console.error(e);process.exit(1);}})();
 ''')
 
 
@@ -357,7 +345,7 @@ function streamResponse(text){const bytes=encoder.encode(text);let read=false;re
 const fetch=async(url,options={})=>{
  if(url==="/api/clients/c/threads"&&!options.method)return response({threads:[{thread_id:"home",title:"H"},{thread_id:"bad",title:"B"}]});
  if(url==="/api/clients/c/threads"&&options.method==="POST")return response({thread:{thread_id:"new-bad",title:"N"}},201);
- if(url==="/api/clients/c/threads/home"){homeSnapshots++;return homeSnapshots===1?response({messages:[{role:"ai",content:"BEFORE",id:"old",safety_level:"supportive",feedback:"like"}],emotion:{primary_emotion:"before"}}):response({},500);}
+ if(url==="/api/clients/c/threads/home"){homeSnapshots++;return homeSnapshots===1?response({messages:[{role:"ai",content:"BEFORE",id:"old",safety_level:"supportive"}],emotion:{primary_emotion:"before"}}):response({},500);}
  if(url==="/api/clients/c/threads/home/emotion-timeline?limit=5")return response({timeline:[{primary_emotion:"before-timeline"}]});
  if(url==="/api/clients/c/threads/bad"||url==="/api/clients/c/threads/new-bad")return response({},500);
  if(url.endsWith("/bad/emotion-timeline?limit=5")||url.endsWith("/new-bad/emotion-timeline?limit=5"))return response({timeline:[]});

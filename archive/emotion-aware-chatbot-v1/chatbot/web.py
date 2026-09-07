@@ -33,10 +33,6 @@ from chatbot.persistence import open_persistence
 STATIC_DIR = Path(__file__).parent / "static"
 
 
-class FeedbackRequest(BaseModel):
-    feedback: Literal["like", "dislike"]
-
-
 class RegenerateRequest(BaseModel):
     reason: str
 
@@ -442,7 +438,6 @@ def _graph_message(message) -> dict[str, Any]:
         output["id"] = message.id
     metadata = getattr(message, "additional_kwargs", {})
     for key in (
-        "feedback",
         "regeneration",
         "regenerated_from",
         "turn_count",
@@ -499,11 +494,11 @@ def create_app() -> FastAPI:
         if exc.code in {"thread_not_found", "message_not_found"}:
             status_code = 404
         elif exc.code in {
-            "already_rated", "already_regenerated", "turn_in_progress",
+            "already_regenerated", "turn_in_progress",
             "request_id_conflict",
         }:
             status_code = 409
-        elif exc.code in {"invalid_feedback", "invalid_input"}:
+        elif exc.code in {"invalid_input"}:
             status_code = 422
         else:
             status_code = 500
@@ -584,20 +579,6 @@ def create_app() -> FastAPI:
         )
         return {"draft": draft}
 
-    @app.patch(
-        "/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback"
-    )
-    async def message_feedback(
-        client_id: str,
-        thread_id: str,
-        message_id: str,
-        request: FeedbackRequest,
-    ):
-        authenticated_client(client_id)
-        message = await graph_runtime().aupdate_message_feedback(
-            client_id, thread_id, message_id, request.feedback
-        )
-        return {"message_id": message.id, "feedback": request.feedback}
 
     @app.post(
         "/api/clients/{client_id}/threads/{thread_id}/emotion-feedback",

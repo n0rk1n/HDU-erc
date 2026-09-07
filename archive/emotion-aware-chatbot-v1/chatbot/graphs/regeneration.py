@@ -19,7 +19,6 @@ from chatbot.models.graph import GraphContext, SafetyDecision
 
 
 APPLICATION_AUDIT_FIELDS = (
-    "feedback",
     "turn_count",
     "emotion_state",
     "predicted_emotion",
@@ -172,7 +171,6 @@ async def generate_variant(
     metadata = {
         **original_audit,
         **_model_additional_kwargs(result),
-        "feedback": None,
         "original_content": _message_text(target),
         "original_audit": original_audit,
         "regeneration_reason": state["regeneration_reason"],

@@ -24,8 +24,8 @@ async def test_upgrade_v3_preserves_legacy_message_text_and_audit(tmp_path):
     await initialize_schema(database)
     async with database.connect() as connection:
         after = await (await connection.execute('SELECT * FROM messages')).fetchone()
-        assert after[:-1] == before
-        assert after[-1] is None
+        assert after[:len(before)] == before
+        assert all(value is None for value in after[len(before):])
         assert await (await connection.execute('PRAGMA foreign_key_check')).fetchall() == []
     history = await MessageRepository(database).list_visible(conversation.id, limit=10)
     assert history[0]['content'] == '旧正文。\n\n还是同一条。'

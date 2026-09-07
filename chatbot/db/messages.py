@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import aiosqlite
 
-from chatbot.core.errors import InvalidMessageState
+from chatbot.core.errors import AlreadyRated, InvalidMessageState, MessageNotFound
 from chatbot.core.time import utc_now
 from chatbot.db.connection import Database
 from chatbot.db.models import InterruptedTurn, Message, ReservedTurn
@@ -17,7 +17,7 @@ _MESSAGE_COLUMNS = """
     id, conversation_id, request_id, sequence_no, role, status, content,
     reasoning_content, trace_json, prompt_json, provider, model, parameters_json,
     input_tokens, output_tokens, total_tokens, latency_ms, finish_reason,
-    error_code, error_message, created_at, updated_at, completed_at, bubbles_json
+    error_code, error_message, created_at, updated_at, completed_at, bubbles_json, feedback
 """
 _UNSET = object()
 
@@ -117,7 +117,7 @@ class MessageRepository:
             cursor = await connection.execute(
                 f"""
                 SELECT id, request_id, sequence_no, role, status, content,
-                       error_code, error_message, created_at, updated_at, completed_at, bubbles_json
+                       error_code, error_message, created_at, updated_at, completed_at, bubbles_json, feedback
                 FROM messages
                 WHERE {condition}
                 ORDER BY sequence_no DESC
@@ -139,6 +139,7 @@ class MessageRepository:
             "updated_at",
             "completed_at",
             "bubbles_json",
+            "feedback",
         )
         result = []
         for row in reversed(rows):
@@ -147,6 +148,26 @@ class MessageRepository:
             message["bubbles"] = None if raw_bubbles is None else json.loads(raw_bubbles)
             result.append(message)
         return result
+
+    async def set_feedback(self, conversation_id: str, message_id: str, feedback: str) -> None:
+        """Set one rating atomically without rewriting reply text, timing, or audit."""
+        if feedback not in ("like", "dislike"):
+            raise ValueError("invalid feedback")
+        async with self.database.transaction(immediate=True) as connection:
+            row = await (await connection.execute(
+                "SELECT role, status, feedback FROM messages WHERE conversation_id=? AND id=?",
+                (conversation_id, message_id),
+            )).fetchone()
+            if row is None:
+                raise MessageNotFound()
+            if row[:2] != ("assistant", "completed"):
+                raise InvalidMessageState()
+            if row[2] is not None:
+                raise AlreadyRated()
+            await connection.execute(
+                "UPDATE messages SET feedback=? WHERE conversation_id=? AND id=?",
+                (feedback, conversation_id, message_id),
+            )
 
     async def save_bubbles(self, assistant_message_id: str, bubbles: list[str]) -> None:
         """Commit complete display text and boundaries together before publishing."""

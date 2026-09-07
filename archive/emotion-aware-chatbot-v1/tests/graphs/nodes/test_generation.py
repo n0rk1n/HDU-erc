@@ -162,7 +162,6 @@ async def test_generate_reply_invokes_model_with_config_and_returns_one_complete
         id="ai_req-1",
         content="我听见你的不安了。",
         additional_kwargs={
-            "feedback": None,
             "turn_count": 3,
             "emotion_state": {"primary_emotion": "anxious", "confidence": 0.9},
             "predicted_emotion": "anxious",

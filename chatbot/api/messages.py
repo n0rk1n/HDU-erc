@@ -9,6 +9,8 @@ from fastapi.responses import StreamingResponse
 
 from chatbot.api.schemas import (
     HistoryLimit,
+    MessageFeedbackRequest,
+    MessageFeedbackResponse,
     MessageHistoryResponse,
     PositiveSequence,
     SendMessageRequest,
@@ -51,6 +53,20 @@ async def list_messages(
                   for item in visible],
         latest_emotion=latest,
     )
+
+
+@router.patch("/{user_id}/messages/{message_id}/feedback", response_model=MessageFeedbackResponse)
+async def set_message_feedback(
+    request: Request,
+    payload: MessageFeedbackRequest,
+    user_id: Annotated[int, Path(ge=1)],
+    message_id: str,
+) -> MessageFeedbackResponse:
+    conversation = await request.app.state.conversations.get_default_by_user(user_id)
+    if conversation is None:
+        raise UserNotFound()
+    await request.app.state.messages.set_feedback(conversation.id, message_id, payload.feedback)
+    return MessageFeedbackResponse(message_id=message_id, feedback=payload.feedback)
 
 
 @router.post("/{user_id}/messages:stream")

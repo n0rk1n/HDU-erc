@@ -980,7 +980,50 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.equal(app.document.nodes["message-input"].disabled, false);
         }
 
+        async function runReplyFeedback() {
+          let saved = null;
+          let fail = true;
+          let patches = 0;
+          const app = await boot(async (url, options = {}) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({user: {id: 1, identifier: "alice"}}) };
+            if (options.method === "PATCH") {
+              patches++;
+              assert.equal(url, "/api/users/1/messages/a/feedback");
+              if (fail) return {ok: false, json: async () => ({error: {code: "database_error"}})};
+              saved = JSON.parse(options.body).feedback;
+              return {ok: true, json: async () => ({message_id: "a", feedback: saved})};
+            }
+            return {ok: true, json: async () => ({messages: [
+              {id: "u", role: "user", status: "completed", sequence_no: 1, content: "hi"},
+              {id: "a", role: "assistant", status: "completed", sequence_no: 2, content: "hi", feedback: saved},
+              {id: "f", role: "assistant", status: "failed", sequence_no: 3, content: "partial"},
+            ]})};
+          });
+          await enter(app);
+          const rows = app.document.nodes["message-list"].children;
+          assert.equal(rows[0].querySelector(".reply-feedback"), null);
+          assert.equal(rows[2].querySelector(".reply-feedback"), null);
+          const controls = rows[1].querySelector(".reply-feedback");
+          assert.ok(controls, "completed assistant must offer a rating");
+          await controls.children[0].dispatch("click");
+          assert.equal(controls.children[0].disabled, false, "failed save must allow retry");
+          assert.match(controls.querySelector(".reply-feedback-status").textContent, /失败/);
+          fail = false;
+          await controls.children[1].dispatch("click");
+          assert.equal(saved, "dislike");
+          assert.equal(controls.children[0].disabled, true);
+          assert.equal(controls.children[1].disabled, true);
+          assert.match(controls.querySelector(".reply-feedback-status").textContent, /已踩/);
+          app.document.nodes["switch-user"].dispatch("click");
+          await enter(app);
+          const restored = app.document.nodes["message-list"].children[1].querySelector(".reply-feedback");
+          assert.equal(restored.children[0].disabled, true);
+          assert.equal(restored.children[1].disabled, true);
+          assert.equal(patches, 2);
+        }
+
         Promise.resolve()
+          .then(runReplyFeedback)
           .then(runHistoryLoadingKeepsSendDisabled)
           .then(runBubblePacingAndHistory)
           .then(runEmotionPresentation)

@@ -163,6 +163,7 @@ async def test_done_is_emitted_after_database_completion(database) -> None:
         "status": "completed",
         "content": "答案",
         "bubbles": None,
+        "feedback": None,
         "error_code": None,
         "error_message": None,
         "created_at": assistant.created_at,

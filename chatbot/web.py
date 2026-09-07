@@ -36,6 +36,8 @@ from chatbot.services.turns import TurnCoordinator
 
 
 _SAFE_ERRORS: dict[str, tuple[int, str]] = {
+    "message_not_found": (404, "message not found"),
+    "already_rated": (409, "message already rated"),
     "user_not_found": (404, "user not found"),
     "turn_in_progress": (409, "turn already in progress"),
     "model_error": (502, "model generation failed"),

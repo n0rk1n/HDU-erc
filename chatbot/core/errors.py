@@ -30,6 +30,16 @@ class UserNotFound(DomainError):
         super().__init__("user_not_found", message, 404)
 
 
+class AlreadyRated(DomainError):
+    def __init__(self) -> None:
+        super().__init__("already_rated", "message already rated", 409)
+
+
+class MessageNotFound(DomainError):
+    def __init__(self) -> None:
+        super().__init__("message_not_found", "message not found", 404)
+
+
 class TurnInProgress(DomainError):
     def __init__(self, message: str = "turn already in progress") -> None:
         super().__init__("turn_in_progress", message, 409)

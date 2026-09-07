@@ -96,7 +96,6 @@ def regeneration_input(*, reason: str = "不准确") -> dict[str, Any]:
                 id="ai-target",
                 content="旧回复",
                 additional_kwargs={
-                    "feedback": "dislike",
                     "turn_count": 2,
                     "emotion_state": {
                         "primary_emotion": "anxious",
@@ -187,7 +186,6 @@ async def test_regeneration_replaces_same_message_id_and_preserves_original_meta
     )
     assert replacement.content == "新回复"
     assert replacement.additional_kwargs == {
-        "feedback": None,
         "turn_count": 2,
         "emotion_state": {
             "primary_emotion": "anxious",
@@ -198,7 +196,6 @@ async def test_regeneration_replaces_same_message_id_and_preserves_original_meta
         "safety_note": "keep-supportive",
         "original_content": "旧回复",
         "original_audit": {
-            "feedback": "dislike",
             "turn_count": 2,
             "emotion_state": {
                 "primary_emotion": "anxious",
@@ -555,7 +552,7 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
             content="新回复",
             additional_kwargs={
                 "provider_trace": "fresh-trace",
-                "feedback": "like",
+
                 "original_content": "provider-spoof",
                 "original_audit": {"provider": "spoof"},
                 "regeneration_reason": "provider-spoof",
@@ -597,10 +594,8 @@ async def test_regeneration_uses_fresh_model_response_and_usage_metadata():
     assert replacement.name == "new-assistant"
     assert replacement.additional_kwargs["provider_trace"] == "fresh-trace"
     assert "legacy_provider_only" not in replacement.additional_kwargs
-    assert replacement.additional_kwargs["feedback"] is None
     assert replacement.additional_kwargs["original_content"] == "旧回复"
     assert replacement.additional_kwargs["original_audit"] == {
-        "feedback": "dislike",
         "turn_count": 2,
         "emotion_state": {
             "primary_emotion": "anxious",

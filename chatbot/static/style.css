@@ -1125,3 +1125,26 @@ button:disabled {
 
 .chat-status[data-state="pending"],
 .chat-status[data-state="streaming"] { color: var(--text-soft); }
+
+/* A rating belongs to the whole assistant reply, including all its bubbles. */
+.reply-feedback {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.reply-feedback-button {
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+}
+.reply-feedback-button[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--surface);
+  opacity: 1;
+}
+.reply-feedback-status { font-size: 0.72rem; color: var(--text-muted); }

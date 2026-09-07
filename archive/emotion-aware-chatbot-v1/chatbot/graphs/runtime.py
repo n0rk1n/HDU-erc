@@ -170,49 +170,6 @@ class ConversationRuntime:
             await self._require_initialized_thread(client_id, thread_id)
             return await self.graph.aget_state(self._config(thread_id))
 
-    async def aupdate_message_feedback(
-        self,
-        client_id: str,
-        thread_id: str,
-        message_id: str,
-        feedback: str,
-    ) -> AIMessage:
-        """Replace one unrated AIMessage under the same ID and preserve all other fields."""
-        lock = self.lock_for(thread_id)
-        await lock.acquire()
-        try:
-            await self._require_initialized_thread(client_id, thread_id)
-            if feedback not in {"like", "dislike"}:
-                raise RuntimeOperationError("invalid_feedback")
-            snapshot = await self.graph.aget_state(self._config(thread_id))
-            target = next(
-                (
-                    message
-                    for message in snapshot.values.get("messages", [])
-                    if getattr(message, "id", None) == message_id
-                ),
-                None,
-            )
-            if not isinstance(target, AIMessage):
-                raise RuntimeOperationError("message_not_found")
-            if target.additional_kwargs.get("feedback") in {"like", "dislike"}:
-                raise RuntimeOperationError("already_rated")
-            replacement = target.model_copy(
-                update={
-                    "additional_kwargs": {
-                        **target.additional_kwargs,
-                        "feedback": feedback,
-                    }
-                }
-            )
-            await self.graph.aupdate_state(
-                self._config(thread_id),
-                {"messages": [replacement]},
-                as_node="turn",
-            )
-            return replacement
-        finally:
-            lock.release()
 
     async def adelete_thread(self, client_id: str, thread_id: str) -> None:
         """Delete Saver state before its directory record, preserving recovery semantics."""

@@ -93,7 +93,7 @@ flowchart LR
 - 每隔固定用户回合执行一次结构化情绪识别，并在页面展示当前状态和近期轨迹。
 - 将当前情绪、回复策略、安全提示、用户画像和相关长期记忆注入聊天 Prompt。
 - 提供可跳过的首次画像录入，以及后续画像查看和编辑。
-- 支持 AI 回复点赞、点踩、按原因重新生成，以及情绪识别正确性反馈。
+- 支持 AI 回复按原因重新生成，以及情绪识别正确性反馈。回复点赞、点踩已迁移到新版，本目录不再提供。
 - 使用本地 SQLite 保存长期记忆，执行词法检索、去重、冲突处理和周期性规则提炼。
 - 提供 JSON/JSONL 离线评估和 OpenAI-compatible LLM 消融流程。
 
@@ -191,7 +191,6 @@ LangGraph 运行时只读取上面的两个新 SQLite 文件。旧版聊天、�
 | `DELETE` | `/api/clients/{client_id}/threads/{thread_id}` | 无 | 删除线程 Checkpoint 后删除目录记录。 |
 | `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages:stream` | `{"request_id": UUID4, "message": 非空字符串}` | 提交幂等消息，并通过同一响应返回 SSE。 |
 | `POST` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/regenerate:stream` | `request_id` 为 UUID4；`reason` 为“不准确”“不完整”“没有理解我的问题”“语气不合适”“其他”之一 | 按原因重新生成并原位替换同 ID 的 AI 消息。 |
-| `PATCH` | `/api/clients/{client_id}/threads/{thread_id}/messages/{message_id}/feedback` | `{"feedback": "like" \| "dislike"}` | 对同一 AI 消息点赞或点踩。 |
 | `GET` | `/api/clients/{client_id}/threads/{thread_id}/emotion-timeline` | 查询参数 `limit=1..50`，默认 10 | 获取该线程的情绪轨迹。 |
 | `POST` | `/api/clients/{client_id}/threads/{thread_id}/emotion-feedback` | `feedback` 为 `accurate`、`too_positive`、`too_negative`、`wrong_emotion` 之一；可带 `message_id`、`turn_count`、`predicted_emotion`、`corrected_emotion` | 保存情绪识别反馈。 |
 | `GET` | `/api/clients/{client_id}/profile` | 无 | 获取跨线程共享画像。 |

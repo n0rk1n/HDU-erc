@@ -219,7 +219,7 @@ async def test_stream_revalidates_if_thread_deleted_after_preflight():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("operation", ["state", "feedback", "stream"])
+@pytest.mark.parametrize("operation", ["state", "stream"])
 async def test_stale_store_record_is_rejected_by_checkpoint_operations(operation):
     """Catches checkpoint operations accepting an owned record with no checkpoint."""
     runtime, saver, _ = memory_runtime()
@@ -228,10 +228,6 @@ async def test_stale_store_record_is_rejected_by_checkpoint_operations(operation
     with pytest.raises(RuntimeOperationError) as exc_info:
         if operation == "state":
             await runtime.aget_state("client-a", stale.thread_id)
-        elif operation == "feedback":
-            await runtime.aupdate_message_feedback(
-                "client-a", stale.thread_id, "ai-missing", "like"
-            )
         else:
             stream = await runtime.astream_turn(
                 "client-a", stale.thread_id, "turn-1", "不应写入"
@@ -563,10 +559,6 @@ async def test_runtime_rejects_unowned_thread_for_read_stream_and_profile_draft(
             "profile-1",
             [{"key": "response_style", "answer": "简短"}],
         )
-    with pytest.raises(RuntimeOperationError) as feedback_error:
-        await runtime.aupdate_message_feedback(
-            "client-b", record.thread_id, "ai-missing", "like"
-        )
     with pytest.raises(RuntimeOperationError) as delete_error:
         await runtime.adelete_thread("client-b", record.thread_id)
 
@@ -575,67 +567,10 @@ async def test_runtime_rejects_unowned_thread_for_read_stream_and_profile_draft(
         turn_error.value.code,
         regeneration_error.value.code,
         profile_error.value.code,
-        feedback_error.value.code,
         delete_error.value.code,
     } == {
         "thread_not_found"
     }
-
-
-@pytest.mark.asyncio
-async def test_feedback_replaces_same_ai_id_and_preserves_all_metadata():
-    """Catches feedback appending a message or dropping provider/audit metadata."""
-    runtime, _, _ = memory_runtime()
-    record = await runtime.acreate_thread("client-a")
-    original = AIMessage(
-        id="ai-1",
-        content="回复",
-        additional_kwargs={"feedback": None, "safety_level": "supportive"},
-        response_metadata={"model_name": "m1", "finish_reason": "stop"},
-        usage_metadata={"input_tokens": 4, "output_tokens": 2, "total_tokens": 6},
-        name="assistant-name",
-    )
-    await runtime.graph.aupdate_state(
-        thread_config(record.thread_id),
-        {"messages": [HumanMessage(id="human-1", content="你好"), original]},
-        as_node="turn",
-    )
-
-    updated = await runtime.aupdate_message_feedback(
-        "client-a", record.thread_id, "ai-1", "like"
-    )
-    snapshot = await runtime.aget_state("client-a", record.thread_id)
-
-    assert updated.id == "ai-1"
-    assert updated.additional_kwargs == {
-        "feedback": "like",
-        "safety_level": "supportive",
-    }
-    assert updated.response_metadata == original.response_metadata
-    assert updated.usage_metadata == original.usage_metadata
-    assert updated.name == "assistant-name"
-    assert [message.id for message in snapshot.values["messages"]] == ["human-1", "ai-1"]
-
-    with pytest.raises(RuntimeOperationError) as repeated:
-        await runtime.aupdate_message_feedback(
-            "client-a", record.thread_id, "ai-1", "dislike"
-        )
-    with pytest.raises(RuntimeOperationError) as invalid:
-        await runtime.aupdate_message_feedback(
-            "client-a", record.thread_id, "ai-1", "neutral"
-        )
-    with pytest.raises(RuntimeOperationError) as missing:
-        await runtime.aupdate_message_feedback(
-            "client-a", record.thread_id, "missing", "like"
-        )
-    with pytest.raises(RuntimeOperationError) as human:
-        await runtime.aupdate_message_feedback(
-            "client-a", record.thread_id, "human-1", "like"
-        )
-    assert repeated.value.code == "already_rated"
-    assert invalid.value.code == "invalid_feedback"
-    assert missing.value.code == "message_not_found"
-    assert human.value.code == "message_not_found"
 
 
 @pytest.mark.asyncio
