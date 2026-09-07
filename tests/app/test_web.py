@@ -834,30 +834,40 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           input.dispatch("input");
           assert.equal(input.style.height, "96px", "typing grows the composer to its content height");
 
-          let shiftEnterPrevented = false;
-          input.dispatch("keydown", {
-            key: "Enter",
-            shiftKey: true,
-            isComposing: false,
-            preventDefault() { shiftEnterPrevented = true; },
-          });
-          await settle();
-          assert.equal(shiftEnterPrevented, false, "Shift+Enter keeps the newline behavior");
-          assert.equal(posts, 0);
+          const draft = input.value;
+          for (const keys of [
+            {},
+            { shiftKey: true },
+            { ctrlKey: true, isComposing: true },
+            { metaKey: true, isComposing: true },
+            { ctrlKey: true, keyCode: 229 },
+            { metaKey: true, keyCode: 229 },
+          ]) {
+            let prevented = false;
+            input.dispatch("keydown", {
+              key: "Enter", shiftKey: false, isComposing: false,
+              ...keys,
+              preventDefault() { prevented = true; },
+            });
+            await settle();
+            assert.equal(prevented, false, "newline and IME confirmation keep their default behavior");
+            assert.equal(posts, 0, "unfinished drafts must not be sent");
+            assert.equal(input.value, draft, "unfinished drafts must not be cleared");
+          }
 
-          input.value = "line 1";
-          let enterPrevented = false;
-          input.dispatch("keydown", {
-            key: "Enter",
-            shiftKey: false,
-            isComposing: false,
-            preventDefault() { enterPrevented = true; },
-          });
-          await settle(40);
-          assert.equal(enterPrevented, true, "Enter prevents a newline before sending");
-          assert.equal(posts, 1);
-          assert.equal(input.value, "");
-          assert.equal(input.style.height, "", "sending restores the default composer height");
+          for (const modifier of ["ctrlKey", "metaKey"]) {
+            input.value = "line 1";
+            let prevented = false;
+            input.dispatch("keydown", {
+              key: "Enter", [modifier]: true, shiftKey: false, isComposing: false,
+              preventDefault() { prevented = true; },
+            });
+            await settle(40);
+            assert.equal(prevented, true, "send shortcut prevents a newline");
+            assert.equal(input.value, "");
+            assert.equal(input.style.height, "", "sending restores the default composer height");
+          }
+          assert.equal(posts, 2, "Ctrl+Enter and Command+Enter each send once");
         }
 
         function descendantText(element) {
