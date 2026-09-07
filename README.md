@@ -230,9 +230,14 @@ WHERE d.conversation_id = :conversation_id AND d.request_id = :request_id ORDER 
 日常编辑 `data/config/` 下的文件：
 
 - `prompts/chat_prompts.json`：包含非空字符串 `version` 和 `system`，控制聊天角色和回复风格。
+- `emotion_names.json`：`"情绪标签": "前端显示名称"`，控制情绪徽标与处理卡片的文案。
 - `emotion_labels.json`：`"情绪标签": "描述"`，包含 34 类情绪。
 - `emotion_families.json`：`"情绪标签": "family"`，键必须与标签集合完全一致。
 - `emotion_examples.json`：示例数组，每条包含非空字符串 `id`、`dialogue`、`emotion`；ID 唯一，标签必须已定义。
+
+前端情绪名称可直接修改 `data/config/emotion_names.json`，例如将 `"sad": "难过"` 改为 `"sad": "低落"`。也可通过 `EMOTION_NAMES_PATH` 指定其他 JSON 文件；留空时按项目位置定位默认文件。自定义文件替代整份映射，未列出的标签显示原始标签，`{}` 表示全部显示原始标签。只影响 `display_label`，不改变模型识别标签或数据库结果。
+
+映射在每次构造展示数据时重新读取，修改后下一次进度事件、历史查询或请求重放生效，历史结果也使用当前名称；已显示的页面需刷新或等待新数据。缺失文件、无效 JSON、重复键和空白名称会报配置错误，修正文件后重试。
 
 三个提示词文件统一使用 `version` + `system` 格式，分别表示提示词版本和系统提示词正文。聊天提示词的最小结构如下（如需调整角色，可替换内容）：
 
