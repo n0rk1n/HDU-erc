@@ -9,7 +9,7 @@ from typing import TypedDict
 from langgraph.graph import StateGraph,START,END
 from chatbot.db.emotions import EmotionRepository
 from chatbot.db.messages import MessageRepository
-from chatbot.emotion.types import EmotionModel,TokenCounter,BudgetConfig,Taxonomy,ModelOutcome
+from chatbot.emotion.types import EmotionModel,TokenCounter,BudgetConfig,Taxonomy,ModelOutcome,RetrievalConfig
 from chatbot.emotion.prompt import prepare_analysis
 from chatbot.emotion.parsing import parse_result,ResultValidationError
 from chatbot.emotion.model import error_facts,safe_facts
@@ -25,6 +25,7 @@ class EmotionRuntime:
     budget: BudgetConfig
     taxonomy: Taxonomy
     examples: list[dict[str,str]]
+    retrieval: RetrievalConfig = RetrievalConfig()
 
 class AnalysisState(TypedDict,total=False):
     conversation_id: str
@@ -54,15 +55,16 @@ def build_emotion_graph(runtime: EmotionRuntime):
         snapshot={'labels':runtime.taxonomy.labels,'families':runtime.taxonomy.families,
             'taxonomy_hash':runtime.taxonomy.content_hash,'examples':runtime.examples,
             'model_parameters':runtime.model.parameters,'budget_config':asdict(runtime.budget),
+            'retrieval_config':asdict(runtime.retrieval),
             'counter':runtime.counter.identity,'counter_version':runtime.counter.version}
         # DB errors intentionally propagate; they are not ordinary model failures.
         turn=await runtime.messages.find_turn(state['conversation_id'],state['request_id'])
         rows=await runtime.messages.list_emotion_history(state['conversation_id'],through_sequence=turn.user.sequence_no)
-        recent=await repo.recent_labels(state['conversation_id'],before_sequence=turn.user.sequence_no)
+        recent=await repo.recent_labels(state['conversation_id'],before_sequence=turn.user.sequence_no,limit=runtime.retrieval.recent_label_limit)
         snapshot['source_message_ids']=[r.id for r in rows]
         try:
             prepared=prepare_analysis(rows,current_id=state['user_message_id'],taxonomy=runtime.taxonomy,
-                examples=runtime.examples,recent_labels=recent,counter=runtime.counter,budget=runtime.budget)
+                examples=runtime.examples,recent_labels=recent,counter=runtime.counter,budget=runtime.budget,retrieval=runtime.retrieval)
             snapshot.update(prepared.snapshot)
         except Exception as exc:
             if isinstance(exc,ContextBudgetExceeded):

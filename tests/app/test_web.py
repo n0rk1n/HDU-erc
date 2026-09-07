@@ -235,7 +235,7 @@ def test_recovery_failure_prevents_half_available_app(
     app_config, offline_model, monkeypatch
 ) -> None:
     """Catches a failed startup recovery being ignored while routes become available."""
-    async def fail_recovery(messages, checkpointer, *, emotions):
+    async def fail_recovery(messages, checkpointer, *, emotions, gates):
         raise RuntimeError("recovery failed")
 
     monkeypatch.setattr("chatbot.web.recover_interrupted_turns", fail_recovery)

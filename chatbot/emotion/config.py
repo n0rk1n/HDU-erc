@@ -39,7 +39,7 @@ def load_taxonomy(labels_path=CONFIG_ROOT/'emotion_labels.json', families_path=C
 from dataclasses import dataclass
 import os
 from pydantic import SecretStr
-from chatbot.emotion.types import BudgetConfig
+from chatbot.emotion.types import BudgetConfig, RetrievalConfig
 
 @dataclass(frozen=True)
 class EmotionSettings:
@@ -53,6 +53,7 @@ class EmotionSettings:
     labels_path: Path
     families_path: Path
     examples_path: Path
+    retrieval: RetrievalConfig = RetrievalConfig()
 
 def load_emotion_settings(chat_config):
     def env(name, default=None):
@@ -65,6 +66,7 @@ def load_emotion_settings(chat_config):
         raise ConfigError('EMOTION_TOKENIZER_MODEL is required and must match the deployed model')
     try:
         budget=BudgetConfig(int(context),int(env('EMOTION_OUTPUT_TOKENS','1024')),int(env('EMOTION_SAFETY_TOKENS','256')),float(env('EMOTION_HISTORY_RATIO','0.60')))
+        retrieval=RetrievalConfig(int(env('EMOTION_EXAMPLE_LIMIT','4')),float(env('EMOTION_PRIOR_BOOST','2.0')),int(env('EMOTION_RECENT_LABEL_LIMIT','3')))
         temperature=float(env('EMOTION_LLM_TEMPERATURE','0'))
         timeout=float(env('EMOTION_LLM_TIMEOUT_SECONDS',str(chat_config.llm_timeout_seconds)))
         if not 0<=temperature<=2 or not 0<timeout<float('inf'):
@@ -75,4 +77,4 @@ def load_emotion_settings(chat_config):
         env('EMOTION_LLM_MODEL',chat_config.llm_model),env('EMOTION_LLM_BASE_URL',chat_config.llm_base_url),temperature,timeout,budget,tokenizer,
         Path(env('EMOTION_LABELS_PATH',str(CONFIG_ROOT/'emotion_labels.json'))),
         Path(env('EMOTION_FAMILIES_PATH',str(CONFIG_ROOT/'emotion_families.json'))),
-        Path(env('EMOTION_EXAMPLES_PATH',str(CONFIG_ROOT/'emotion_examples.json'))))
+        Path(env('EMOTION_EXAMPLES_PATH',str(CONFIG_ROOT/'emotion_examples.json'))),retrieval)

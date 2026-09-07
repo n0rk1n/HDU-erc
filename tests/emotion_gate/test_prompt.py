@@ -30,3 +30,22 @@ def test_invalid_output(raw):
 def test_valid_output():
     from chatbot.emotion_gate.parsing import parse_gate_result
     assert parse_gate_result('{"should_analyze":false,"reason":"stable"}').should_analyze is False
+
+async def test_incomplete_history_and_budget_failure(database):
+    from tests.emotion_gate.helpers import gate_runtime
+    from chatbot.emotion_gate.prompt import prepare_gate_prompt
+    from chatbot.emotion.types import BudgetConfig
+    from chatbot.emotion.budget import ContextBudgetExceeded
+    messages=MessageRepository(database);convo=(await IdentityService(database).resolve('budget')).conversation
+    broken=await messages.reserve_turn(convo.id,'broken','orphan')
+    await messages.mark_streaming(broken.assistant.id)
+    await messages.fail_assistant(broken.assistant.id,error_code='model_error',error_message='failed')
+    whole=await messages.reserve_turn(convo.id,'whole','history');await complete(messages,whole)
+    current=await messages.reserve_turn(convo.id,'now','x'*100)
+    rows=await messages.list_emotion_history(convo.id,through_sequence=current.user.sequence_no)
+    settings=gate_runtime(database).settings
+    prepared=prepare_gate_prompt(rows,current_id=current.user.id,baseline=None,settings=settings,counter=Counter())
+    assert [m.content for m in prepared.messages[1:]]==['history','reply','x'*100]
+    settings=replace(settings,budget=BudgetConfig(50,10,1))
+    with pytest.raises(ContextBudgetExceeded):
+        prepare_gate_prompt(rows,current_id=current.user.id,baseline=None,settings=settings,counter=Counter())

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from math import isfinite
 from pathlib import Path
 from pydantic import SecretStr

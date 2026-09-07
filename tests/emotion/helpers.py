@@ -23,10 +23,16 @@ def emotion_runtime(database,model=None):
 
 def dependencies(**kwargs):
     from chatbot.graph import NodeDependencies
-    return NodeDependencies(emotion=emotion_runtime(kwargs['messages'].database),**kwargs)
+    from tests.emotion_gate.helpers import gate_runtime
+    kwargs.setdefault('emotion', emotion_runtime(kwargs['messages'].database))
+    kwargs.setdefault('gate', gate_runtime(kwargs['messages'].database))
+    return NodeDependencies(**kwargs)
 
 def create_app(config=None,model=None,**kwargs):
     from chatbot.web import create_app as real_create_app
     if config is not None and 'emotion' not in kwargs:
         kwargs['emotion']=emotion_runtime(Database(config.sqlite_db_path))
+    if config is not None and 'gate' not in kwargs:
+        from tests.emotion_gate.helpers import gate_runtime
+        kwargs['gate']=gate_runtime(Database(config.sqlite_db_path))
     return real_create_app(config=config,model=model,**kwargs)

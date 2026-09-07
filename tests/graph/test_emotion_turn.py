@@ -1,6 +1,7 @@
 import json
 import pytest
-from chatbot.graph import compile_turn_graph,NodeDependencies
+from chatbot.graph import compile_turn_graph
+from tests.emotion.helpers import dependencies as NodeDependencies
 from chatbot.llm.types import ModelDelta,TokenUsage
 from chatbot.emotion.types import ModelOutcome
 from tests.emotion.helpers import emotion_runtime

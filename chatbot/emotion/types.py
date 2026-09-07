@@ -34,6 +34,18 @@ class TokenCounter(Protocol):
     def count(self, messages: Sequence[BaseMessage]) -> int: ...
 
 @dataclass(frozen=True)
+class RetrievalConfig:
+    example_limit: int = 4
+    prior_boost: float = 2.0
+    recent_label_limit: int = 3
+
+    def __post_init__(self):
+        if (any(type(v) is not int or v < 0 for v in (self.example_limit, self.recent_label_limit))
+                or type(self.prior_boost) not in (int, float)
+                or not isfinite(self.prior_boost) or self.prior_boost < 0):
+            raise ValueError('invalid emotion retrieval settings')
+
+@dataclass(frozen=True)
 class EmotionResult:
     primary_emotion: str
     confidence: float

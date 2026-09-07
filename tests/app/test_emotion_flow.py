@@ -3,7 +3,7 @@ from tests.emotion.helpers import emotion_runtime
 from chatbot.db.connection import Database
 from chatbot.emotion.types import ModelOutcome
 from chatbot.llm.types import TokenUsage
-from chatbot.web import create_app
+from tests.emotion.helpers import create_app
 from tests.api.helpers import OfflineModel
 from tests.api.conftest import app_config
 
@@ -32,7 +32,10 @@ def test_three_turns_persist_success_failure_and_complete_role_history(app_confi
             return ModelOutcome(json.dumps({'primary_emotion':'no_emotion','confidence':.9,'secondary_emotions':[], 'evidence':'任务','reply_strategy':'直接回答','trajectory_note':'','safety_level':'normal'}),None,TokenUsage(10,4,14),'stop',{},None)
     model=Emotion();runtime=emotion_runtime(Database(app_config.sqlite_db_path),model)
     chat=OfflineModel()
-    with TestClient(create_app(config=app_config,model=chat,emotion=runtime)) as client:
+    from tests.emotion_gate.helpers import gate_runtime
+    from chatbot.emotion_gate.types import GatePolicy
+    gate=gate_runtime(Database(app_config.sqlite_db_path),policy=GatePolicy(max_interval_turns=1))
+    with TestClient(create_app(config=app_config,model=chat,emotion=runtime,gate=gate)) as client:
         user=client.post('/api/users/resolve',json={'identifier':'full-flow'}).json()['user']['id']
         requests=[str(uuid4()) for _ in range(3)]
         for i,request in enumerate(requests):

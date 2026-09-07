@@ -10,6 +10,7 @@ from chatbot.emotion.config import read_json,content_hash
 from chatbot.emotion.history import group_history
 from chatbot.emotion.budget import select_history
 from chatbot.emotion.retrieval import select_examples
+from chatbot.emotion.types import RetrievalConfig
 
 DEFAULT_EMOTION_PROMPT_PATH = PROJECT_ROOT / "data" / "config" / "prompts" / "emotion_prompts.json"
 
@@ -43,13 +44,13 @@ def serialize_messages(messages, *, audit=False):
     roles={'human':'human' if audit else 'user','ai':'assistant','system':'system'}
     return [{'role':roles[m.type],'content':m.content,**({'id':m.id} if audit else {})} for m in messages]
 
-def prepare_analysis(rows,*,current_id,taxonomy,examples,recent_labels,counter,budget):
+def prepare_analysis(rows,*,current_id,taxonomy,examples,recent_labels,counter,budget,retrieval=RetrievalConfig()):
     prompt_config = get_emotion_prompt()
     turns,current,excluded=group_history(rows,current_id=current_id)
     # Initial candidate retrieval uses the same bound; final pass accounts for actual instructions.
     candidate=select_history(turns,current,counter=counter,budget=budget,system_messages=[])
     likely=[label for label in recent_labels if label in taxonomy.labels]
-    picked=select_examples(examples,json.dumps(serialize_messages(candidate.messages,audit=True),ensure_ascii=False),likely)
+    picked=select_examples(examples,json.dumps(serialize_messages(candidate.messages,audit=True),ensure_ascii=False),likely,limit=retrieval.example_limit,prior_boost=retrieval.prior_boost)
     system=SystemMessage(content=prompt_config['system']+'\n标签及描述：\n'+json.dumps(taxonomy.labels,ensure_ascii=False)+'\n参考示例：\n'+json.dumps(picked,ensure_ascii=False))
     candidate_ids=set(candidate.audit['retained_ids'])
     candidates=[turn for turn in turns if set(turn.message_ids)<=candidate_ids]
@@ -60,6 +61,6 @@ def prepare_analysis(rows,*,current_id,taxonomy,examples,recent_labels,counter,b
         'prompt':serialize_messages(messages),'role_history':serialize_messages(selected.messages,audit=True),
         'prompt_version':prompt_config['version'],'prompt_config_hash':content_hash(prompt_config),'labels':taxonomy.labels,'families':taxonomy.families,'taxonomy_hash':taxonomy.content_hash,
         'examples':examples,'examples_hash':content_hash(examples),'selected_examples':picked,
-        'retrieval':{'version':'weighted-overlap-v1','limit':4,'prior_boost':2.0,'recent_labels':likely,'candidate_ids':candidate.audit['retained_ids']},
+        'retrieval':{'version':'weighted-overlap-v1','limit':retrieval.example_limit,'prior_boost':retrieval.prior_boost,'recent_label_limit':retrieval.recent_label_limit,'recent_labels':likely,'candidate_ids':candidate.audit['retained_ids']},
         'budget':{**selected.audit,'removed_ids':removed,'excluded_incomplete_ids':excluded,'trim_reason':'token_budget' if removed else None},
     })

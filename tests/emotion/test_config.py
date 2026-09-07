@@ -25,3 +25,21 @@ def test_invalid_taxonomy_rejected(tmp_path, labels, families):
     a.write_text(labels); b.write_text(families)
     with pytest.raises(ConfigError):
         load_taxonomy(a,b)
+
+
+def test_retrieval_settings_from_environment(monkeypatch):
+    from chatbot.core.config import AppConfig
+    from chatbot.emotion.config import load_emotion_settings
+    monkeypatch.setenv('LLM_API_KEY','offline')
+    monkeypatch.setenv('EMOTION_CONTEXT_TOKENS','10000')
+    monkeypatch.setenv('EMOTION_TOKENIZER_MODEL','gpt-4o-mini')
+    monkeypatch.setenv('EMOTION_EXAMPLE_LIMIT','0')
+    monkeypatch.setenv('EMOTION_PRIOR_BOOST','4.5')
+    monkeypatch.setenv('EMOTION_RECENT_LABEL_LIMIT','0')
+    result=load_emotion_settings(AppConfig.from_env())
+    assert result.retrieval.example_limit==0 and result.retrieval.prior_boost==4.5
+    assert result.retrieval.recent_label_limit==0
+    monkeypatch.setenv('EMOTION_PRIOR_BOOST','NaN')
+    from chatbot.core.errors import ConfigError
+    import pytest
+    with pytest.raises(ConfigError):load_emotion_settings(AppConfig.from_env())

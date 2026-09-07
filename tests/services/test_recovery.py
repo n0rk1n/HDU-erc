@@ -44,7 +44,7 @@ async def test_recovery_fails_interrupted_messages_and_deletes_each_thread_once(
             self.deleted.append(thread_id)
 
     saver = Saver()
-    report = await recover_interrupted_turns(Messages(), saver, emotions=NoPendingAnalyses())
+    report = await recover_interrupted_turns(Messages(), saver, emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
 
     assert report == RecoveryReport(failed_messages=3, reset_threads=2)
     assert saver.deleted == ["thread-a", "thread-b"]
@@ -65,7 +65,7 @@ async def test_recovery_keeps_checkpoints_when_no_interrupted_message_exists() -
         async def adelete_thread(self, thread_id: str) -> None:
             raise AssertionError(f"normal checkpoint deleted: {thread_id}")
 
-    report = await recover_interrupted_turns(Messages(), Saver(), emotions=NoPendingAnalyses())
+    report = await recover_interrupted_turns(Messages(), Saver(), emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
 
     assert report == RecoveryReport(failed_messages=0, reset_threads=0)
 
@@ -89,7 +89,7 @@ async def test_recovery_delete_failure_aborts_startup_contract() -> None:
 
     messages = Messages()
     with pytest.raises(RuntimeError, match="saver unavailable"):
-        await recover_interrupted_turns(messages, Saver(), emotions=NoPendingAnalyses())
+        await recover_interrupted_turns(messages, Saver(), emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
     assert messages.fail_calls == 0
 
 
@@ -128,7 +128,7 @@ async def test_checkpoint_delete_failure_keeps_message_retryable_until_next_reco
 
         flaky_saver = FailFirstDelete()
         with pytest.raises(RuntimeError, match="checkpoint delete unavailable"):
-            await recover_interrupted_turns(messages, flaky_saver, emotions=NoPendingAnalyses())
+            await recover_interrupted_turns(messages, flaky_saver, emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
 
         after_failure = await messages.find_assistant(
             identity.conversation.id, request_id
@@ -137,7 +137,7 @@ async def test_checkpoint_delete_failure_keeps_message_retryable_until_next_reco
             {"configurable": {"thread_id": identity.conversation.thread_id}}
         )
 
-        report = await recover_interrupted_turns(messages, flaky_saver, emotions=NoPendingAnalyses())
+        report = await recover_interrupted_turns(messages, flaky_saver, emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
         after_retry = await messages.find_assistant(identity.conversation.id, request_id)
         checkpoint_after_retry = await saver.aget_tuple(
             {"configurable": {"thread_id": identity.conversation.thread_id}}
@@ -183,7 +183,7 @@ async def test_business_failure_after_delete_is_retryable_with_idempotent_redele
         await _put_checkpoint(saver, identity.conversation.thread_id)
 
         with pytest.raises(RuntimeError, match="business database unavailable"):
-            await recover_interrupted_turns(messages, saver, emotions=NoPendingAnalyses())
+            await recover_interrupted_turns(messages, saver, emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
 
         after_failure = await real_messages.find_assistant(
             identity.conversation.id, request_id
@@ -191,7 +191,7 @@ async def test_business_failure_after_delete_is_retryable_with_idempotent_redele
         checkpoint_after_failure = await saver.aget_tuple(
             {"configurable": {"thread_id": identity.conversation.thread_id}}
         )
-        report = await recover_interrupted_turns(messages, saver, emotions=NoPendingAnalyses())
+        report = await recover_interrupted_turns(messages, saver, emotions=NoPendingAnalyses(), gates=NoPendingAnalyses())
         after_retry = await real_messages.find_assistant(
             identity.conversation.id, request_id
         )

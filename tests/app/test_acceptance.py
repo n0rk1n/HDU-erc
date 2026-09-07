@@ -330,6 +330,7 @@ def test_same_sqlite_path_preserves_completed_turn_and_checkpoint_across_restart
     trace = json.loads(trace_json)
     assert [node["name"] for node in trace["nodes"]] == [
         "prepare_turn",
+        "decide_emotion",
         "analyze_emotion",
         "generate_response",
         "finalize_turn",

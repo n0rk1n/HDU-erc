@@ -51,3 +51,22 @@ async def test_storage_failure_does_not_retry_or_fallback(database):
     runtime=replace(gate_runtime(database,GateModel(),GatePolicy(force_first_analysis=False)),repository=Broken(database))
     with pytest.raises(RuntimeError,match='disk'):await run_new(database,runtime)
     assert len(runtime.model.prompts)==1
+
+async def test_prepare_budget_failure_uses_policy_without_call(database):
+    from chatbot.emotion.types import BudgetConfig
+    runtime=gate_runtime(database,policy=GatePolicy(force_first_analysis=False,gate_failure_action='skip'))
+    runtime=replace(runtime,settings=replace(runtime.settings,budget=BudgetConfig(30,10,1)))
+    row=await run_new(database,runtime)
+    assert row.action=='skip' and row.error['stage']=='prepare'
+    assert runtime.model.prompts==[]
+    assert await runtime.repository.list_attempts(row.id)==[]
+
+async def test_retry_can_succeed_and_secrets_are_redacted(database):
+    model=GateModel(['invalid sk-gate-secret','{"should_analyze":true,"reason":"clear change"}'])
+    model.secret='sk-gate-secret'
+    runtime=gate_runtime(database,model,GatePolicy(force_first_analysis=False,model_retry_count=1))
+    row=await run_new(database,runtime)
+    assert row.action=='analyze' and row.reason=='emotion_changed'
+    attempts=await runtime.repository.list_attempts(row.id)
+    assert [a['status'] for a in attempts]==['failed','completed']
+    assert attempts[0]['facts']['raw_output']=='invalid [REDACTED]'

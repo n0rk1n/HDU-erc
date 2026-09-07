@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from chatbot.db.messages import MessageRepository
 from chatbot.emotion.graph import EmotionRuntime
+from chatbot.emotion_gate.runtime import GateRuntime
 from chatbot.llm.types import ChatModelAdapter
 
 
@@ -18,6 +19,7 @@ class NodeDependencies:
     messages: MessageRepository
     model: ChatModelAdapter
     emotion: EmotionRuntime
+    gate: GateRuntime
     context_message_limit: int = 40
     clock: Callable[[], datetime] = _utc_now
     flush_interval_seconds: float = 0.250

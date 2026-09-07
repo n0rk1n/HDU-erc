@@ -20,6 +20,9 @@ from chatbot.db.conversations import ConversationRepository
 from chatbot.db.messages import MessageRepository
 from chatbot.db.emotions import EmotionRepository
 from chatbot.emotion.graph import EmotionRuntime
+from chatbot.emotion_gate.runtime import GateRuntime
+from chatbot.emotion_gate.config import load_gate_settings
+from chatbot.db.emotion_gates import GateRepository
 from chatbot.emotion.config import load_emotion_settings, load_taxonomy
 from chatbot.emotion.prompt import load_examples
 from chatbot.emotion.model import OpenAICompatibleEmotionModel, ModelTokenCounter
@@ -46,7 +49,7 @@ _STATIC_DIR = Path(__file__).with_name("static")
 def create_app(
     config: AppConfig | None = None,
     model: ChatModelAdapter | None = None,
-    *, emotion: EmotionRuntime | None = None,
+    *, emotion: EmotionRuntime | None = None, gate: GateRuntime | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -71,11 +74,22 @@ def create_app(
                 emotion_model = OpenAICompatibleEmotionModel(emotion_settings)
                 runtime_emotion = EmotionRuntime(EmotionRepository(database), messages, emotion_model,
                     ModelTokenCounter(emotion_model.client, tokenizer_model=emotion_settings.tokenizer_model),
-                    emotion_settings.budget, taxonomy, load_examples(emotion_settings.examples_path, taxonomy))
+                    emotion_settings.budget, taxonomy, load_examples(emotion_settings.examples_path, taxonomy), emotion_settings.retrieval)
                 emotion_timeout = emotion_settings.timeout_seconds
             else:
                 runtime_emotion = emotion
-            recovery_report = await recover_interrupted_turns(messages, checkpointer, emotions=runtime_emotion.repository)
+            if gate is None:
+                if emotion is not None:
+                    emotion_settings = load_emotion_settings(runtime_config)
+                gate_settings = load_gate_settings(emotion_settings)
+                gate_model = OpenAICompatibleEmotionModel(gate_settings)
+                runtime_gate = GateRuntime(GateRepository(database), messages, runtime_emotion.repository,
+                    gate_model, ModelTokenCounter(gate_model.client, tokenizer_model=gate_settings.tokenizer_model),
+                    gate_settings)
+            else:
+                runtime_gate = gate
+            recovery_report = await recover_interrupted_turns(messages, checkpointer,
+                emotions=runtime_emotion.repository, gates=runtime_gate.repository)
             runtime_model = (
                 model
                 if model is not None
@@ -86,6 +100,7 @@ def create_app(
                     messages=messages,
                     model=runtime_model,
                     emotion=runtime_emotion,
+                    gate=runtime_gate,
                     context_message_limit=runtime_config.context_message_limit,
                 ),
                 checkpointer,
@@ -102,6 +117,7 @@ def create_app(
             app.state.conversations = conversations
             app.state.messages = messages
             app.state.emotions = runtime_emotion.repository
+            app.state.emotion_gates = runtime_gate.repository
             app.state.checkpointer = checkpointer
             app.state.coordinator = coordinator
             app.state.recovery_report = recovery_report
@@ -110,7 +126,7 @@ def create_app(
             shutdown_error: BaseException | None = None
             if coordinator is not None:
                 try:
-                    await coordinator.shutdown(runtime_config.llm_timeout_seconds + emotion_timeout)
+                    await coordinator.shutdown(runtime_config.llm_timeout_seconds + emotion_timeout + runtime_gate.settings.wait_seconds)
                 except BaseException as error:
                     shutdown_error = error
             if saver_connection is not None:

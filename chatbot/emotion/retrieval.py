@@ -4,6 +4,7 @@ import math
 import re
 from collections import Counter
 from typing import Any
+from chatbot.emotion.types import RetrievalConfig
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]")
 STOPWORDS = {
@@ -20,8 +21,11 @@ def select_dynamic_examples(
     examples: list[Any],
     dialogue_context: str,
     likely_emotions: list[str] | None = None,
-    limit: int = 4,
+    limit: int = RetrievalConfig().example_limit,
+    prior_boost: float = RetrievalConfig().prior_boost,
 ) -> list[dict[str, Any]]:
+    if limit == 0:
+        return []
     context_tokens = _tokenize(dialogue_context)
     tokenized_examples = [_tokenize(_example_value(example, "dialogue")) for example in examples]
     document_frequency = Counter(
@@ -41,6 +45,7 @@ def select_dynamic_examples(
             likely_emotions=likely_set,
             document_frequency=document_frequency,
             example_count=example_count,
+            prior_boost=prior_boost,
         )
         for index, example in enumerate(examples)
     ]
@@ -57,6 +62,7 @@ def _score_example(
     likely_emotions: set[str],
     document_frequency: Counter[str],
     example_count: int,
+    prior_boost: float,
 ) -> dict[str, Any]:
     dialogue = _example_value(example, "dialogue")
     emotion = _example_value(example, "emotion").strip().lower()
@@ -68,7 +74,7 @@ def _score_example(
     }
     score = sum(overlap_weights.values())
     if boosted:
-        score += 2.0
+        score += prior_boost
 
     reasons = []
     if overlap:
@@ -128,5 +134,5 @@ def _select_distinct_emotions(
     return selected
 
 
-def select_examples(examples, dialogue, likely_emotions, limit=4):
-    return select_dynamic_examples(examples=examples, dialogue_context=dialogue, likely_emotions=likely_emotions, limit=limit)
+def select_examples(examples, dialogue, likely_emotions, limit=RetrievalConfig().example_limit, prior_boost=RetrievalConfig().prior_boost):
+    return select_dynamic_examples(examples=examples, dialogue_context=dialogue, likely_emotions=likely_emotions, limit=limit, prior_boost=prior_boost)

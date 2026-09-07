@@ -37,3 +37,15 @@ def test_settings_prompt_override_and_budget(tmp_path,monkeypatch):
     with pytest.raises(ConfigError):load_gate_settings(emotion)
     config.write_text('{"version":"v1","history_turn_limit":2,"history_turn_limit":3}')
     with pytest.raises(ConfigError):load_gate_settings(emotion)
+
+@pytest.mark.parametrize('tokenizer',['',False,1,[]])
+def test_explicit_invalid_tokenizer_is_rejected(tmp_path,monkeypatch,tokenizer):
+    from chatbot.emotion.config import EmotionSettings
+    from chatbot.emotion.types import BudgetConfig
+    from chatbot.emotion_gate.config import load_gate_settings
+    from pydantic import SecretStr
+    emotion=EmotionSettings(SecretStr('test'),'fake',None,0,3,BudgetConfig(10000,100,10),'fake',tmp_path,tmp_path,tmp_path)
+    config=tmp_path/'invalid.json'
+    config.write_text(json.dumps({'version':'v1','tokenizer_model':tokenizer}))
+    monkeypatch.setenv('EMOTION_GATE_CONFIG_PATH',str(config))
+    with pytest.raises(ConfigError):load_gate_settings(emotion)

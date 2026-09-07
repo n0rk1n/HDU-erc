@@ -31,7 +31,7 @@ def load_gate_settings(emotion: EmotionSettings) -> GateSettings:
         overrides = {k: data[k] for k in budget_keys if data.get(k) is not None}
         budget = BudgetConfig(**{k: overrides.get(k, getattr(emotion.budget, k)) for k in budget_keys})
         model = env('EMOTION_GATE_LLM_MODEL', emotion.model)
-        tokenizer = data.get('tokenizer_model') or emotion.tokenizer_model
+        tokenizer = emotion.tokenizer_model if data.get('tokenizer_model') is None else data['tokenizer_model']
         if not isinstance(tokenizer, str) or not tokenizer.strip():
             raise ValueError('tokenizer_model must be a nonempty string')
         if model != emotion.model and (not data.get('tokenizer_model') or not data.get('context_tokens')):

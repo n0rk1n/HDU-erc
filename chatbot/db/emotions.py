@@ -107,6 +107,8 @@ class EmotionRepository:
             return len(rows)
 
     async def recent_labels(self, conversation_id, *, before_sequence, limit=3):
+        if limit == 0:
+            return []
         async with self.database.connect() as con:
             rows = await (await con.execute("SELECT a.result_json FROM emotion_analyses a JOIN messages m ON m.id=a.user_message_id WHERE a.conversation_id=? AND m.sequence_no<? AND a.status='completed' ORDER BY m.sequence_no DESC", (conversation_id,before_sequence))).fetchall()
         labels=[]
