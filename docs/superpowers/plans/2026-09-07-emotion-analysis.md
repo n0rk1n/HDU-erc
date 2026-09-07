@@ -571,3 +571,21 @@ FROM emotion_analyses ORDER BY created_at, id;
 | 不改变聊天窗口、不混入未提交改动 | 全局约束、7、8 |
 
 按 Task 1→8 顺序执行，每项独立红绿验证后提交。计划交付后默认可在本会话串行执行；用户明确要求子代理时才调整执行方式。
+
+
+## 执行记录（2026-09-07）
+
+- [x] Task 1：34 个选项的 JSON 配置、family 校验与共享数据类型。
+- [x] Task 2：schema v1→v2 迁移及独立审计仓储。
+- [x] Task 3：human/assistant 完整轮次配对及 60% token 预算。
+- [x] Task 4：few-shot 示例快照、提示词和严格输出校验。
+- [x] Task 5：独立模型参数、零重试、支持的 token 计数和脱敏诊断。
+- [x] Task 6：先落库后调用的情绪子图。
+- [x] Task 7：主图接入、失败普通回复、启动恢复和取消清理。
+- [x] Task 8：离线接口验收、配置说明和全套回归。
+
+实际接口细化：create_app 注入一个完整 EmotionRuntime，而非多个可选组件参数，保持依赖一致；旧测试通过 tests/emotion/helpers.py 显式注入离线依赖。EmotionAnalysis 放在仓储模块，子图运行类型在 graph.py。历史角色为 LangChain human/ai，审计明确映射 human/assistant，API 映射 user/assistant。取消异常按已安装 LangGraph 的 NodeCancelledError 语义处理，并用回归测试验证失败写入不能覆盖取消。
+
+测试环境使用原虚拟环境解释器、当前 worktree 为工作目录、PYTHON_DOTENV_DISABLED=1，以及 PATH 中的本地 Node.js。初始环境失败源于父目录 dotenv 和缺失 Node PATH，纠正后未改代码的基线为 136 passed / 1 skipped。最终执行完整 pytest：172 passed / 1 skipped，存在一项上游 Starlette 弃用警告。未调用真实供应商，不能据此声称真实模型计数/请求已验收。
+
+已运行 git diff --check；原工作区未提交代码保留。未合并或推送。实现基于 main 已提交版本，因此不包含原工作区未提交的系统提示词 JSON 配置改动，后续合并需保留这些改动。
