@@ -6,7 +6,7 @@ from chatbot.core.errors import ConfigError
 from chatbot.db.connection import Database
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 V1_DDL_STATEMENTS = (
@@ -114,7 +114,31 @@ V2_DDL_STATEMENTS = (
     )""",
     "CREATE INDEX ix_emotion_status_created ON emotion_analyses(status,created_at)",
 )
-DDL_STATEMENTS = (*V1_DDL_STATEMENTS, *V2_DDL_STATEMENTS)
+V3_DDL_STATEMENTS = (
+    """CREATE TABLE emotion_gate_decisions (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        request_id TEXT NOT NULL,
+        user_message_id TEXT NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+        status TEXT NOT NULL CHECK(status IN ('pending','running','completed','failed')),
+        action TEXT CHECK(action IN ('analyze','skip')),
+        reason TEXT, snapshot_json TEXT NOT NULL DEFAULT '{}', error_json TEXT,
+        analysis_id TEXT REFERENCES emotion_analyses(id),
+        created_at TEXT NOT NULL, completed_at TEXT,
+        UNIQUE(conversation_id,request_id)
+    )""",
+    "CREATE INDEX ix_gate_status_created ON emotion_gate_decisions(status,created_at)",
+    """CREATE TABLE emotion_gate_attempts (
+        id TEXT PRIMARY KEY,
+        decision_id TEXT NOT NULL REFERENCES emotion_gate_decisions(id) ON DELETE CASCADE,
+        attempt_no INTEGER NOT NULL CHECK(attempt_no>0),
+        status TEXT NOT NULL CHECK(status IN ('running','completed','failed')),
+        snapshot_json TEXT NOT NULL, facts_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL, completed_at TEXT,
+        UNIQUE(decision_id,attempt_no)
+    )""",
+)
+DDL_STATEMENTS = (*V1_DDL_STATEMENTS, *V2_DDL_STATEMENTS, *V3_DDL_STATEMENTS)
 
 async def initialize_schema(database: Database) -> None:
     version = await _read_schema_version(database)
@@ -129,8 +153,10 @@ async def initialize_schema(database: Database) -> None:
             raise ConfigError("unsupported database schema version")
         if version == SCHEMA_VERSION:
             return
-        for statement in (DDL_STATEMENTS if version == 0 else V2_DDL_STATEMENTS):
-            await connection.execute(statement)
+        migrations = {1: V1_DDL_STATEMENTS, 2: V2_DDL_STATEMENTS, 3: V3_DDL_STATEMENTS}
+        for target in range(version + 1, SCHEMA_VERSION + 1):
+            for statement in migrations[target]:
+                await connection.execute(statement)
         await connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

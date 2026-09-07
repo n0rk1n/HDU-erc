@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, asdict
+from math import isfinite
 from collections.abc import Sequence
 from typing import Protocol
 from langchain_core.messages import BaseMessage
@@ -23,7 +24,8 @@ class BudgetConfig:
                 (self.context_tokens, self.output_tokens, self.safety_tokens))
             or self.context_tokens <= 0 or self.output_tokens <= 0
             or self.output_tokens + self.safety_tokens >= self.context_tokens
-            or self.history_ratio != 0.60):
+            or type(self.history_ratio) not in (int, float)
+            or not isfinite(self.history_ratio) or not 0 < self.history_ratio <= 1):
             raise ValueError('invalid emotion budget')
 
 class TokenCounter(Protocol):

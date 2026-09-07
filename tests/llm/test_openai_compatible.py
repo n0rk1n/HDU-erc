@@ -86,7 +86,8 @@ def test_build_prompt_accepts_repository_context_and_preserves_order() -> None:
         "第一个回答",
         "第二个问题",
     ]
-    assert "v2" in str(prompt[0].content)
+    from chatbot.llm.prompt import get_system_prompt
+    assert prompt[0].content == get_system_prompt()
 
 
 def test_build_prompt_also_accepts_persisted_message_objects() -> None:

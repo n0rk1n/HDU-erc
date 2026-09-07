@@ -64,7 +64,7 @@ def load_emotion_settings(chat_config):
     if not tokenizer:
         raise ConfigError('EMOTION_TOKENIZER_MODEL is required and must match the deployed model')
     try:
-        budget=BudgetConfig(int(context),int(env('EMOTION_OUTPUT_TOKENS','1024')),int(env('EMOTION_SAFETY_TOKENS','256')))
+        budget=BudgetConfig(int(context),int(env('EMOTION_OUTPUT_TOKENS','1024')),int(env('EMOTION_SAFETY_TOKENS','256')),float(env('EMOTION_HISTORY_RATIO','0.60')))
         temperature=float(env('EMOTION_LLM_TEMPERATURE','0'))
         timeout=float(env('EMOTION_LLM_TIMEOUT_SECONDS',str(chat_config.llm_timeout_seconds)))
         if not 0<=temperature<=2 or not 0<timeout<float('inf'):

@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "max_interval_turns": 15,
+  "history_turn_limit": 5,
+  "force_first_analysis": true,
+  "gate_failure_action": "analyze",
+  "retry_failed_analysis_next_turn": true,
+  "reuse_last_success_on_skip": true,
+  "reuse_last_success_on_analysis_failure": false,
+  "model_retry_count": 0,
+  "retry_delay_seconds": 0,
+  "context_tokens": null,
+  "output_tokens": null,
+  "safety_tokens": null,
+  "history_ratio": null,
+  "tokenizer_model": null
+}

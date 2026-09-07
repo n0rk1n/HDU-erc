@@ -11,7 +11,7 @@ from chatbot.emotion.history import group_history
 from chatbot.emotion.budget import select_history
 from chatbot.emotion.retrieval import select_examples
 
-DEFAULT_EMOTION_PROMPT_PATH = PROJECT_ROOT / "data" / "config" / "emotion_prompts.json"
+DEFAULT_EMOTION_PROMPT_PATH = PROJECT_ROOT / "data" / "config" / "prompts" / "emotion_prompts.json"
 
 
 def get_emotion_prompt() -> dict[str, str]:

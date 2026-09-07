@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from pydantic import SecretStr
 
 from chatbot.core.errors import ConfigError
+from chatbot.core.paths import PROJECT_ROOT
 
 
 @dataclass(frozen=True)
@@ -22,7 +23,7 @@ class AppConfig:
 
     @classmethod
     def from_env(cls) -> "AppConfig":
-        load_dotenv(override=False)
+        load_dotenv(PROJECT_ROOT / ".env", override=False)
         api_key = _required("LLM_API_KEY")
         model = _optional("LLM_MODEL") or "gpt-4o-mini"
         base_url = _optional("LLM_BASE_URL")

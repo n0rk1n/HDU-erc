@@ -25,7 +25,7 @@ async def test_analysis_audit_is_bound_idempotent_and_durable(database):
     assert final.snapshot_json['prompt'][0]['content'] == '你好'
 
 async def test_v1_migration_preserves_rows(tmp_path):
-    from chatbot.db.schema import V1_DDL_STATEMENTS, initialize_schema
+    from chatbot.db.schema import V1_DDL_STATEMENTS, initialize_schema, SCHEMA_VERSION
     from chatbot.db.connection import Database
     db = Database(tmp_path/'old.sqlite3')
     async with db.transaction() as con:
@@ -36,7 +36,7 @@ async def test_v1_migration_preserves_rows(tmp_path):
     await initialize_schema(db)
     await initialize_schema(db)
     async with db.connect() as con:
-        assert (await (await con.execute('PRAGMA user_version')).fetchone())[0] == 2
+        assert (await (await con.execute('PRAGMA user_version')).fetchone())[0] == SCHEMA_VERSION
         assert (await (await con.execute('SELECT identifier FROM users')).fetchone())[0] == 'old'
 
 async def test_recovery_retains_running_snapshot_and_leaves_completed(database):
