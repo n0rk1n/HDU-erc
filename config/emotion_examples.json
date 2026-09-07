@@ -321,12 +321,12 @@
   },
   {
     "id": "neutral-v2",
-    "dialogue": "对此我既不高兴，也不难过。I feel neither happy nor sad about it.",
+    "dialogue": "I feel neither happy nor sad about it.",
     "emotion": "neutral"
   },
   {
     "id": "none-v2",
-    "dialogue": "请把这个文件转换成 PDF。Please convert this file to PDF.",
+    "dialogue": "Please convert this file to PDF.",
     "emotion": "no_emotion"
   }
 ]

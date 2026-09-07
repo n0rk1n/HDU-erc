@@ -31,6 +31,6 @@
   "ashamed": "painful negative judgment of oneself, broader than guilt about an act",
   "apprehensive": "cautious fear about a possible future problem",
   "faithful": "loyal commitment to a person, relationship, or belief",
-  "neutral": "明确表达不偏正面或负面的中性状态，例如对此既不高兴也不难过；不同于满足。",
-  "no_emotion": "当前输入未表达可识别的情绪，例如纯事实询问或任务指令；不表示识别失败或不确定。"
+  "neutral": "an explicitly expressed neutral state that is neither positive nor negative, such as feeling neither happy nor sad about something; distinct from contentment",
+  "no_emotion": "the current input expresses no identifiable emotion, such as a purely factual question or task instruction; does not indicate recognition failure or uncertainty"
 }
