@@ -7,28 +7,16 @@ from datetime import datetime
 import aiosqlite
 
 from chatbot.db.connection import Database
+from chatbot.emotion.config import emotion_labels_path, load_label_definitions
 
 
-EMOTION_NAMES = {
-    'surprised': '惊讶', 'excited': '兴奋', 'annoyed': '烦恼', 'proud': '自豪',
-    'angry': '生气', 'sad': '难过', 'grateful': '感激', 'lonely': '孤独',
-    'impressed': '赞叹', 'afraid': '害怕', 'disgusted': '厌恶', 'confident': '自信',
-    'terrified': '恐惧', 'hopeful': '充满希望', 'anxious': '焦虑', 'disappointed': '失望',
-    'joyful': '喜悦', 'prepared': '准备充分', 'guilty': '内疚', 'furious': '愤怒',
-    'nostalgic': '怀念', 'jealous': '嫉妒', 'anticipating': '期待', 'embarrassed': '尴尬',
-    'content': '满足', 'devastated': '悲痛', 'sentimental': '感怀', 'caring': '关切',
-    'trusting': '信任', 'ashamed': '羞愧', 'apprehensive': '忐忑', 'faithful': '忠诚',
-    'neutral': '情绪平稳', 'no_emotion': '未表达明确情绪',
-}
-
-
-def _emotion(row):
+def _emotion(row, emotion_names):
     if row['analysis_status'] != 'completed' or not row['result_json']:
         return None
     result = json.loads(row['result_json'])
     label = result['primary_emotion']
     return {
-        'label': label, 'display_label': EMOTION_NAMES.get(label, label),
+        'label': label, 'display_label': emotion_names.get(label, label),
         'confidence': result['confidence'], 'evidence': result['evidence'],
         'source_message_id': row['user_message_id'], 'sequence_no': row['user_sequence'],
         'analyzed_at': row['analysis_completed_at'],
@@ -45,7 +33,7 @@ def _elapsed(row):
         return None
 
 
-def _processing(row):
+def _processing(row, emotion_names):
     terminal = row['status'] in ('completed', 'failed')
     if terminal and row['gate_status'] is None and row['analysis_status'] is None:
         return None  # Legacy turns have no recorded processing facts.
@@ -75,7 +63,7 @@ def _processing(row):
     return {
         'steps': steps, 'emotion_status': emotion_status,
         'emotion_invoked': row['analysis_started_at'] is not None,
-        'emotion': _emotion(row), 'elapsed_ms': _elapsed(row),
+        'emotion': _emotion(row, emotion_names), 'elapsed_ms': _elapsed(row),
         'started_at': row['created_at'],
     }
 
@@ -83,6 +71,7 @@ def _processing(row):
 class PresentationService:
     def __init__(self, database: Database):
         self.database = database
+        _, self.emotion_names = load_label_definitions(emotion_labels_path())
 
     async def snapshot(self, conversation_id: str, request_ids: list[str]):
         """Batch visible turns, plus latest success across the entire conversation."""
@@ -107,7 +96,7 @@ class PresentationService:
                     WHERE m.conversation_id=? AND m.role='assistant'
                         AND m.request_id IN ({placeholders})
                 ''', (conversation_id, *request_ids))).fetchall()
-                processing = {row['request_id']: _processing(row) for row in rows}
+                processing = {row['request_id']: _processing(row, self.emotion_names) for row in rows}
             latest = await (await con.execute('''
                 SELECT a.status AS analysis_status,a.result_json,a.user_message_id,
                     u.sequence_no AS user_sequence,a.completed_at AS analysis_completed_at
@@ -115,7 +104,7 @@ class PresentationService:
                 WHERE a.conversation_id=? AND a.status='completed'
                 ORDER BY u.sequence_no DESC LIMIT 1
             ''', (conversation_id,))).fetchone()
-        return processing, _emotion(latest) if latest else None
+        return processing, _emotion(latest, self.emotion_names) if latest else None
 
     async def turn(self, conversation_id: str, request_id: str):
         processing, latest = await self.snapshot(conversation_id, [request_id])
