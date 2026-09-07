@@ -23,7 +23,7 @@ def prepare():
 def test_config_changes_reach_prompt_and_audit_next_analysis(tmp_path, monkeypatch):
     path = tmp_path / 'prompts.json'
     monkeypatch.setenv('EMOTION_SYSTEM_PROMPT_PATH', str(path))
-    path.write_text(json.dumps({'version': 'custom-1', 'emotion_system': '自定义识别规则'}))
+    path.write_text(json.dumps({'version': 'custom-1', 'system': '自定义识别规则'}))
     first = prepare()
     assert first.messages[0].content.startswith('自定义识别规则\n')
     assert '标签及描述：' in first.messages[0].content
@@ -31,18 +31,18 @@ def test_config_changes_reach_prompt_and_audit_next_analysis(tmp_path, monkeypat
     assert first.messages[-1].content == '你好'
     assert first.snapshot['prompt_version'] == 'custom-1'
     assert first.snapshot['prompt'][0]['content'] == first.messages[0].content
-    path.write_text(json.dumps({'version': 'custom-1', 'emotion_system': '更新识别规则'}))
+    path.write_text(json.dumps({'version': 'custom-1', 'system': '更新识别规则'}))
     second = prepare()
     assert second.messages[0].content.startswith('更新识别规则\n')
     assert second.snapshot['prompt_config_hash'] != first.snapshot['prompt_config_hash']
 
 
 @pytest.mark.parametrize('content', [None, '', '{', '[]', '{}',
-    '{"version":"v","emotion_system":" "}',
-    '{"version":2,"emotion_system":"rules"}',
-    '{"version":" ","emotion_system":"rules"}',
-    '{"version":"v","emotion_system":[]}',
-    '{"version":"v","version":"other","emotion_system":"rules"}'])
+    '{"version":"v","system":" "}',
+    '{"version":2,"system":"rules"}',
+    '{"version":" ","system":"rules"}',
+    '{"version":"v","system":[]}',
+    '{"version":"v","version":"other","system":"rules"}'])
 def test_invalid_config_is_not_silently_replaced(tmp_path, monkeypatch, content):
     path = tmp_path / 'prompts.json'
     if content is not None:
@@ -61,5 +61,5 @@ def test_default_config_is_resolved_independently_of_cwd(tmp_path, monkeypatch, 
         monkeypatch.setenv('EMOTION_SYSTEM_PROMPT_PATH', setting)
     monkeypatch.chdir(tmp_path)
     config = get_emotion_prompt()
-    assert config['emotion_system'].strip()
+    assert config['system'].strip()
     assert config['version'].strip()

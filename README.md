@@ -57,7 +57,7 @@ chatbot/
 └── static/              # 原生 HTML/CSS/JavaScript 聊天界面
 data/
 └── config/
-    ├── prompts.json         # 聊天系统提示词
+    ├── prompts.json         # 聊天系统提示词与版本
     ├── emotion_prompts.json # 情绪识别系统提示词与版本
     ├── emotion_labels.json  # 34 类情绪及描述
     ├── emotion_families.json # 情绪到 family 的映射
@@ -146,31 +146,34 @@ OpenAI-compatible HTTP 接口可用不代表分词器兼容。当前计数实现
 
 日常编辑 `data/config/` 下的文件：
 
-- `prompts.json`：包含非空字符串 `chat_system`，控制聊天角色和回复风格。
+- `prompts.json`：包含非空字符串 `version` 和 `system`，控制聊天角色和回复风格。
 - `emotion_labels.json`：`"情绪标签": "描述"`，包含 34 类情绪。
 - `emotion_families.json`：`"情绪标签": "family"`，键必须与标签集合完全一致。
 - `emotion_examples.json`：示例数组，每条包含非空字符串 `id`、`dialogue`、`emotion`；ID 唯一，标签必须已定义。
 
-聊天提示词的最小结构如下（如需调整角色，可替换内容）：
+两个提示词文件统一使用 `version` + `system` 格式，分别表示提示词版本和系统提示词正文。聊天提示词的最小结构如下（如需调整角色，可替换内容）：
 
 ```json
 {
-  "chat_system": "你是小禾，用自然、简洁的中文回应用户。"
+  "version": "v2",
+  "system": "你是小禾，用自然、简洁的中文回应用户。"
 }
 ```
 
-`CHAT_SYSTEM_PROMPT_PATH` 留空时，默认从项目位置定位 `data/config/prompts.json`；该默认文件缺失或为空时使用代码内置提示词。显式指定路径时，文件缺失或为空会报配置错误；无效 JSON 或缺少非空 `chat_system` 同样报错。提示词在每轮构造聊天 Prompt 时读取，修改 JSON 后下一轮生效。
+`CHAT_SYSTEM_PROMPT_PATH` 留空时，默认从项目位置定位 `data/config/prompts.json`；该默认文件缺失或为空时使用代码内置提示词。显式指定路径时，文件缺失或为空会报配置错误；无效 JSON、键重复，或 `version` / `system` 缺失、不是字符串、为空白时同样报错。提示词在每轮构造聊天 Prompt 时读取，修改 JSON 后下一轮生效。
 
 情绪识别提示词单独存放在 `data/config/emotion_prompts.json`，包含两个非空字符串字段：
 
 ```json
 {
   "version": "emotion-v2-1",
-  "emotion_system": "此处填写完整的情绪识别规则及 JSON 输出要求"
+  "system": "此处填写完整的情绪识别规则及 JSON 输出要求"
 }
 ```
 
-修改该文件的 `emotion_system` 即可调整识别规则，建议同时更新 `version`。标签与检索示例仍由程序动态附加。可通过 `EMOTION_SYSTEM_PROMPT_PATH` 指定其他文件；留空时按项目位置定位默认文件，不依赖启动目录。每次分析重新读取，修改后下一轮生效；默认或指定文件缺失、为空、JSON 无效、键重复或必填字段不合法时均报配置错误，不回退到硬编码规则。在分析流程中，该错误被记录为准备阶段失败，不调用情绪模型。审计快照保存实际提示词、配置版本及 `prompt_config_hash`，便于追溯修改。
+修改该文件的 `system` 即可调整识别规则，建议同时更新 `version`。标签与检索示例仍由程序动态附加。可通过 `EMOTION_SYSTEM_PROMPT_PATH` 指定其他文件；留空时按项目位置定位默认文件，不依赖启动目录。每次分析重新读取，修改后下一轮生效；默认或指定文件缺失、为空、JSON 无效、键重复或必填字段不合法时均报配置错误，不回退到硬编码规则。在分析流程中，该错误被记录为准备阶段失败，不调用情绪模型。审计快照保存实际提示词、配置版本及 `prompt_config_hash`，便于追溯修改。
+
+已有自定义提示词文件也需迁移：将 `chat_system` 或 `emotion_system` 重命名为 `system`，聊天配置补充 `version`（例如 `"v2"`）。旧字段不再作为提示词正文读取。两个文件的正文均保持原样，版本作为配置元数据，不会由加载器自动拼入正文。
 
 标签、family 和示例的三个 `EMOTION_*_PATH` 在模板中显式指向 `data/config/`；留空时分别回退到项目内 `config/` 的对应文件。两套情绪 JSON 是独立文件，编辑一套不会同步另一套。标签、family 和示例配置在启动时加载，修改后需重启。
 

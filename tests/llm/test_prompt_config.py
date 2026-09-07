@@ -17,7 +17,7 @@ from chatbot.llm.prompt import (
 def test_repo_default_config_matches_built_in_system_prompt() -> None:
     data = json.loads(DEFAULT_PROMPTS_CONFIG_PATH.read_text(encoding="utf-8"))
 
-    assert data["chat_system"] == DEFAULT_SYSTEM_PROMPT
+    assert data["system"] == DEFAULT_SYSTEM_PROMPT
 
 
 def test_get_system_prompt_returns_default_when_config_file_is_absent(
@@ -48,12 +48,12 @@ def test_get_system_prompt_returns_default_when_default_config_is_empty(
     assert get_system_prompt() == DEFAULT_SYSTEM_PROMPT
 
 
-def test_get_system_prompt_loads_chat_system_from_explicit_json(
+def test_get_system_prompt_loads_system_from_explicit_json(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config_path = tmp_path / "prompts.json"
     config_path.write_text(
-        json.dumps({"chat_system": "自定义系统提示"}, ensure_ascii=False),
+        json.dumps({"version": "v2", "system": "自定义系统提示"}, ensure_ascii=False),
         encoding="utf-8",
     )
     monkeypatch.setenv("CHAT_SYSTEM_PROMPT_PATH", str(config_path))
@@ -66,7 +66,7 @@ def test_build_prompt_prepends_configured_system_message(
 ) -> None:
     config_path = tmp_path / "prompts.json"
     config_path.write_text(
-        json.dumps({"chat_system": "仅回答具体问题"}, ensure_ascii=False),
+        json.dumps({"version": "v2", "system": "仅回答具体问题"}, ensure_ascii=False),
         encoding="utf-8",
     )
     monkeypatch.setenv("CHAT_SYSTEM_PROMPT_PATH", str(config_path))
@@ -84,8 +84,8 @@ def test_build_prompt_prepends_configured_system_message(
         "not-json",
         json.dumps(["not", "an", "object"]),
         json.dumps({"other_key": "value"}),
-        json.dumps({"chat_system": ""}),
-        json.dumps({"chat_system": 42}),
+        json.dumps({"version": "v2", "system": ""}),
+        json.dumps({"version": "v2", "system": 42}),
     ],
 )
 def test_invalid_explicit_config_raises_config_error(

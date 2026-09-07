@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from langchain_core.messages import SystemMessage
 from chatbot.core.errors import ConfigError
 from chatbot.core.paths import PROJECT_ROOT
+from chatbot.core.prompt_config import load_prompt_config
 from chatbot.emotion.config import read_json,content_hash
 from chatbot.emotion.history import group_history
 from chatbot.emotion.budget import select_history
@@ -17,13 +18,7 @@ def get_emotion_prompt() -> dict[str, str]:
     """Read and validate the prompt for each analysis; invalid config fails explicitly."""
     configured = os.getenv("EMOTION_SYSTEM_PROMPT_PATH", "").strip()
     path = Path(configured) if configured else DEFAULT_EMOTION_PROMPT_PATH
-    data = read_json(path)
-    if not isinstance(data, dict):
-        raise ConfigError(f"emotion prompts config {path} must contain a JSON object")
-    for key in ("version", "emotion_system"):
-        if not isinstance(data.get(key), str) or not data[key].strip():
-            raise ConfigError(f'emotion prompts config {path} requires a non-empty "{key}" string')
-    return {key: data[key] for key in ("version", "emotion_system")}
+    return load_prompt_config(path)
 
 
 @dataclass(frozen=True)
@@ -55,7 +50,7 @@ def prepare_analysis(rows,*,current_id,taxonomy,examples,recent_labels,counter,b
     candidate=select_history(turns,current,counter=counter,budget=budget,system_messages=[])
     likely=[label for label in recent_labels if label in taxonomy.labels]
     picked=select_examples(examples,json.dumps(serialize_messages(candidate.messages,audit=True),ensure_ascii=False),likely)
-    system=SystemMessage(content=prompt_config['emotion_system']+'\n标签及描述：\n'+json.dumps(taxonomy.labels,ensure_ascii=False)+'\n参考示例：\n'+json.dumps(picked,ensure_ascii=False))
+    system=SystemMessage(content=prompt_config['system']+'\n标签及描述：\n'+json.dumps(taxonomy.labels,ensure_ascii=False)+'\n参考示例：\n'+json.dumps(picked,ensure_ascii=False))
     candidate_ids=set(candidate.audit['retained_ids'])
     candidates=[turn for turn in turns if set(turn.message_ids)<=candidate_ids]
     selected=select_history(candidates,current,counter=counter,budget=budget,system_messages=[system])

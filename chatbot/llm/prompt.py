@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -9,6 +8,7 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 
 from chatbot.core.errors import ConfigError
 from chatbot.core.paths import PROJECT_ROOT
+from chatbot.core.prompt_config import load_prompt_config
 from chatbot.db.models import Message
 
 SYSTEM_PROMPT_VERSION = "v2"
@@ -41,7 +41,7 @@ def get_system_prompt() -> str:
 def _load_default_system_prompt(path: Path) -> str:
     if not path.exists() or path.stat().st_size == 0:
         return DEFAULT_SYSTEM_PROMPT
-    return _parse_chat_system_prompt(path)
+    return load_prompt_config(path)["system"]
 
 
 def _load_required_system_prompt(path: Path) -> str:
@@ -49,20 +49,7 @@ def _load_required_system_prompt(path: Path) -> str:
         raise ConfigError(f"CHAT_SYSTEM_PROMPT_PATH does not exist: {path}")
     if path.stat().st_size == 0:
         raise ConfigError(f"CHAT_SYSTEM_PROMPT_PATH is empty: {path}")
-    return _parse_chat_system_prompt(path)
-
-
-def _parse_chat_system_prompt(path: Path) -> str:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ConfigError(f"cannot read prompts config {path}: {exc}") from exc
-    if not isinstance(data, dict):
-        raise ConfigError(f"prompts config {path} must contain a JSON object")
-    value = data.get("chat_system")
-    if not isinstance(value, str) or not value.strip():
-        raise ConfigError(f'prompts config {path} requires a non-empty "chat_system" string')
-    return value
+    return load_prompt_config(path)["system"]
 
 
 def build_prompt(messages: Sequence[ContextMessage], *, emotion_context: str | None = None) -> list[BaseMessage]:
