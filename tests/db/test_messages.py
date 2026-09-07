@@ -157,6 +157,7 @@ async def test_list_visible_pages_latest_rows_in_display_order_without_private_f
         "role",
         "status",
         "content",
+        "bubbles",
         "error_code",
         "error_message",
         "created_at",

@@ -56,6 +56,7 @@ def test_history_returns_only_approved_fields_in_ascending_order(
         "role",
         "status",
         "content",
+        "bubbles",
         "error_code",
         "error_message",
         "created_at",

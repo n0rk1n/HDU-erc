@@ -11,6 +11,7 @@
 - 默认首轮识别，之后由判定 Agent 按情绪变化提前触发，最多间隔 15 轮强制识别；间隔和历史窗口均可配置。跳过时默认引用最近成功情绪，标明来源轮次；识别失败默认普通回复，下轮再试。
 - 聊天、情绪识别、是否需要识别的判定 Agent 系统提示词、情绪标签、分类映射和示例均可通过 JSON 文件配置。
 - 聊天记录展示真实处理进度与本轮情绪识别结果，支持展开/折叠；右上角显示最近一次成功识别的情绪和时间。跳过和识别失败分别提示，不把旧结果当成本轮识别。
+- 聊天回复按内容调整篇幅，通常展示 1～3 个完整气泡；每条可以包含几句话或完整段落。模型一次生成，页面按配置间隔逐条显示，刷新后保留分段。
 - 流式回复支持 request ID 幂等重放；进程重启会保留已完成消息和正常 checkpoint，并把遗留中的回复标记为 `failed/process_interrupted`。
 - 模型调用通过 OpenAI-compatible 接口完成；普通历史 API 和前端不会返回内部 `thread_id`、Prompt、reasoning 或 trace。
 
@@ -146,6 +147,7 @@ DeepSeek 的官方 tokenizer 和消息编码器随项目提供，固定版本与
 | `LLM_TEMPERATURE` | `0.7`，范围 0–2 | 默认采样温度。 |
 | `LLM_THINKING` | `disabled` | 共享思考模式：`disabled` / `enabled`；三个角色可独立覆盖。 |
 | `LLM_TIMEOUT_SECONDS` | `60`，大于 0 | 默认模型调用超时；各角色有效超时参与关闭等待预算。 |
+| `CHAT_BUBBLE_GAP_MS` | `500`，整数范围 0–10000 | 气泡在浏览器中的最短展示间隔（毫秒）；0 表示立即展示，不延迟后台生成与保存。修改后重启。 |
 | `CHAT_CONTEXT_MESSAGE_LIMIT` | `40`，范围 1–200 | 聊天 Prompt 中最近已完成消息的数量上限，含当前已入库的用户消息；不是轮数或 token 数。 |
 | `SQLITE_DB_PATH` | `data/chatbot.sqlite3` | 业务与 checkpoint 共用的 SQLite 文件。 |
 | `CHAT_SYSTEM_PROMPT_PATH` | 留空读取 `data/config/prompts/chat_prompts.json` | 聊天系统提示词文件。 |
@@ -240,6 +242,20 @@ WHERE d.conversation_id = :conversation_id AND d.request_id = :request_id ORDER 
 
 正式情绪识别的示例数量、先验加分和近期标签数量也可通过 `EMOTION_EXAMPLE_LIMIT`（默认 4）、`EMOTION_PRIOR_BOOST`（默认 2.0）、`EMOTION_RECENT_LABEL_LIMIT`（默认 3）配置；前后两项数量可设为 0 以关闭示例或标签先验。以上均集中校验，配置快照记录实际值。
 
+### 回复风格与多气泡
+
+`data/config/prompts/chat_prompts.json` 控制回复风格，默认倾向自然、口语化，按闲聊、倾诉或求助决定篇幅，不设固定字数，也不强制每次提问或输出三条。内容较多时可以保留完整段落、步骤和代码。提示词修改后下一轮生效。
+
+聊天适配器使用 OpenAI-compatible 的 `response_format={"type":"json_object"}`，接口需支持 JSON 输出模式（[DeepSeek 官方说明](https://api-docs.deepseek.com/api/create-chat-completion/#request)）。固定格式由程序附加到提示词：`{"messages":["第一条","第二条"]}`，不会在界面显示。服务端用 JSON 字符串的完成边界识别气泡，不按标点或普通换行拆分。一轮仍只保存一条助手记录；`content` 是用空行连接的正文，`bubbles_json` 保存原始气泡数组，模型历史与情绪识别继续使用原来的轮次和正文。
+
+首两条完整字符串解析后，先事务保存再推送；第三条等整个对象校验完成后推送。模型偶尔生成超过三项时，把多出的内容合入第三条，不截断正文。未按协议返回的普通文本作为一个气泡在生成结束后展示；JSON 结构错误、空内容或模型输出被截断时记录失败，保留已完成气泡，不把半段协议展示出来。供应商原始输出保存在内部调用轨迹，普通历史 API 不返回。
+
+页面收到 `run_started.bubble_gap_ms` 后启用整条展示：`bubble` 事件携带 `assistant_message_id`、从 0 开始的 `index` 和 `content`。`token` 保留给旧客户端；结构化回复对应的 token 是解码后的正文，不是原始 JSON。当前页面忽略逐字事件，在显示间隔内继续接收数据，展示完已有气泡后处理 `done`，随后允许下一轮发送。
+
+历史 API 和 `done.message` 均返回 `bubbles`：数组表示保存的气泡，空数组表示尚无完整气泡，`null` 表示旧消息，按原正文展示一个气泡。刷新、断线同步和幂等重放直接恢复已保存的分段，不重播显示间隔；切换用户或离开页面会取消尚未执行的展示队列。失败后保留已发气泡并提示生成未完成。
+
+启动时 schema 从 v3 增量升级到 v4，仅新增可空 `messages.bubbles_json` 列，保留旧正文和审计，不把历史段落重新切分。该升级不改变消息数或情绪轮次。本功能沿用一问一答流程，不包含连续输入、插话或主动开场。
+
 ### JSON 配置与路径
 
 日常编辑 `data/config/` 下的文件：
@@ -308,7 +324,7 @@ curl -sS http://127.0.0.1:8000/api/users/resolve \
   -d '{"identifier":"demo"}'
 ```
 
-SSE 事件包括 `run_started`、`user_message`、`progress`、`token`、`done`、`error`。同一对话中，重复提交相同 `request_id` 和正文不会重复生成，已结束的轮次可重放结果；该轮仍在运行，或同一用户已有另一轮生成中时返回 `409`。新一轮应生成新的 UUID4。客户端断连仅取消显示订阅，后台轮次继续执行，之后可通过历史接口查看结果。
+SSE 事件包括 `run_started`、`user_message`、`progress`、`token`、`bubble`、`done`、`error`。同一对话中，重复提交相同 `request_id` 和正文不会重复生成，已结束的轮次可重放结果；该轮仍在运行，或同一用户已有另一轮生成中时返回 `409`。新一轮应生成新的 UUID4。客户端断连仅取消显示订阅，后台轮次继续执行，之后可通过历史接口查看结果。
 
 普通 API 只返回公开消息字段与经过字段白名单筛选的情绪摘要，不暴露内部 `thread_id`、完整情绪审计、Prompt、reasoning 或 trace。
 

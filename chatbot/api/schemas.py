@@ -89,6 +89,7 @@ class PublicMessage(BaseModel):
     role: Literal["user", "assistant"]
     status: Literal["pending", "streaming", "completed", "failed"]
     content: str
+    bubbles: list[str] | None = None
     error_code: str | None
     error_message: str | None
     created_at: str

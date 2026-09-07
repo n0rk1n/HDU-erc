@@ -74,7 +74,8 @@ def test_build_prompt_prepends_configured_system_message(
     prompt = build_prompt([{"role": "user", "content": "你好"}])
 
     assert prompt[0].type == "system"
-    assert prompt[0].content == "仅回答具体问题"
+    assert prompt[0].content.startswith("仅回答具体问题\n\n")
+    assert '{"messages":["完整气泡正文"]}' in prompt[0].content
     assert prompt[1].content == "你好"
 
 

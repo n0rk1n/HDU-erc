@@ -367,6 +367,7 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
             node.parentNode = null;
           }
           insertBefore(node, reference) {
+            if (reference && !this.children.includes(reference)) throw new Error("NotFoundError: reference is not a direct child");
             if (node.parentNode) node.parentNode.removeChild(node);
             node.parentNode = this;
             const index = reference ? this.children.indexOf(reference) : -1;
@@ -375,7 +376,8 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           }
           querySelector(selector) {
             for (const child of this.children) {
-              if (child.tagName === selector) return child;
+              if (child.tagName === selector || (selector.startsWith(".") &&
+                  (child.className || "").split(" ").includes(selector.slice(1)))) return child;
               const nested = child.querySelector(selector);
               if (nested) return nested;
             }
@@ -423,8 +425,9 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           };
         }
 
-        async function settle(rounds = 12) {
-          for (let index = 0; index < rounds; index += 1) await Promise.resolve();
+        async function settle() {
+          // Let the real microtask queue drain; display timers stay manually controlled.
+          await new Promise(setImmediate);
         }
 
         async function boot(fetch) {
@@ -435,7 +438,8 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           const window = {
             addEventListener(name, listener) { listeners.set(name, listener); },
             dispatch(name, event = {}) { return listeners.get(name)?.(event); },
-            setTimeout(callback) {
+            setTimeout(callback, milliseconds) {
+              callback.milliseconds = milliseconds;
               callback.timerId = nextTimerId;
               nextTimerId += 1;
               timers.push(callback);
@@ -914,7 +918,67 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.equal(app.document.nodes["message-list"].children.length, 0);
         }
 
+        async function runBubblePacingAndHistory() {
+          const reply = { id: "a", request_id: "r", role: "assistant", sequence_no: 2,
+            status: "completed", content: "第一条。\n\n第二条。\n这里仍是同一个气泡。",
+            bubbles: ["第一条。", "第二条。\n这里仍是同一个气泡。"] };
+          let posted = false;
+          const app = await boot(async (url) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            if (url.endsWith("/messages")) return { ok: true, json: async () => ({ messages: posted ? [reply] : [] }) };
+            posted = true;
+            return sse([
+              { name: "run_started", data: { assistant_message_id: "a", bubble_gap_ms: 750 } },
+              { name: "user_message", data: { id: "u", sequence_no: 1, content: "你好" } },
+              { name: "token", data: { content: "不可逐字显示的内部流" } },
+              { name: "bubble", data: { assistant_message_id: "a", index: 0, content: reply.bubbles[0] } },
+              { name: "bubble", data: { assistant_message_id: "a", index: 0, content: reply.bubbles[0] } },
+              { name: "bubble", data: { assistant_message_id: "a", index: 1, content: reply.bubbles[1] } },
+              { name: "done", data: { message: reply } },
+            ]);
+          });
+          await enter(app);
+          app.document.nodes["message-input"].value = "你好";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(60);
+          const assistant = app.document.nodes["message-list"].children[1];
+          let body = assistant.querySelector(".message-bubbles");
+          assert.ok(body, "reply must own a bubble container");
+          assert.deepEqual(body.children.map((node) => node.textContent), ["第一条。"]);
+          assert.equal(app.document.nodes["message-input"].disabled, true);
+          assert.equal(app.timers.length, 1, "only the second distinct bubble waits");
+          assert.ok(app.timers[0].milliseconds > 0 && app.timers[0].milliseconds <= 750);
+          app.timers.shift()();
+          await settle(60);
+          body = assistant.querySelector(".message-bubbles");
+          assert.deepEqual(body.children.map((node) => node.textContent), reply.bubbles);
+          assert.equal(app.document.nodes["message-input"].disabled, false, "done must wait for visible bubbles");
+          app.document.nodes["switch-user"].dispatch("click");
+          await enter(app);
+          body = app.document.nodes["message-list"].children[0].querySelector(".message-bubbles");
+          assert.deepEqual(body.children.map((node) => node.textContent), reply.bubbles, "history preserves boundaries");
+          assert.equal(app.timers.length, 0, "history does not replay delays");
+        }
+
+        async function runHistoryLoadingKeepsSendDisabled() {
+          let releaseHistory;
+          const app = await boot(async (url) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({ user: { id: 1, identifier: "alice" } }) };
+            return new Promise(resolve => { releaseHistory = () => resolve({ ok: true, json: async () => ({ messages: [] }) }); });
+          });
+          app.document.nodes["identifier-input"].value = "alice";
+          const entering = app.document.nodes["identity-form"].dispatch("submit");
+          await settle();
+          assert.equal(app.document.nodes["chat-view"].hidden, false);
+          assert.equal(app.document.nodes["message-input"].disabled, true, "late history must not overwrite a new reply");
+          releaseHistory();
+          await entering;
+          assert.equal(app.document.nodes["message-input"].disabled, false);
+        }
+
         Promise.resolve()
+          .then(runHistoryLoadingKeepsSendDisabled)
+          .then(runBubblePacingAndHistory)
           .then(runEmotionPresentation)
           .then(runSlowRecovery)
           .then(runTwoTurns)

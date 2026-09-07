@@ -19,6 +19,7 @@ from chatbot.graph.dependencies import NodeDependencies
 from chatbot.graph.state import TurnContext, TurnState
 from chatbot.services.presentation import PresentationService
 from chatbot.llm.prompt import build_prompt
+from chatbot.llm.bubbles import BubbleStream
 from chatbot.emotion.graph import build_emotion_graph
 from chatbot.emotion_gate.runtime import decide_emotion
 from chatbot.emotion_gate.context import build_reply_emotion_context
@@ -44,6 +45,9 @@ class _RunFacts:
     last_flush_at: datetime | None = None
     flushed_characters: int = 0
     publish_failed: bool = False
+    reply: BubbleStream = field(default_factory=BubbleStream)
+    saved_bubbles: int = 0
+    plain_sent_characters: int = 0
 
 
 class TurnNodes:
@@ -262,6 +266,7 @@ class TurnNodes:
 
         error_code: str | None = None
         stream: AsyncIterator[ModelDelta] | None = None
+        await self.dependencies.messages.save_bubbles(assistant.id, [])
         try:
             stream = self.dependencies.model.stream(prompt).__aiter__()
         except Exception:
@@ -277,7 +282,12 @@ class TurnNodes:
                 break
 
             facts.chunk_count += 1
-            facts.content += delta.content
+            try:
+                facts.reply.feed(delta.content)
+            except ValueError:
+                error_code = "model_error"
+            facts.content = facts.reply.content
+            facts.trace["reply"] = {"format": facts.reply.mode, "raw_output": facts.reply.raw_output}
             facts.reasoning += delta.reasoning
             if delta.usage is not None:
                 facts.usage = _merge_usage(facts.usage, delta.usage)
@@ -290,11 +300,12 @@ class TurnNodes:
             now = self.dependencies.clock()
             if facts.first_token_ms is None and delta.content:
                 facts.first_token_ms = _duration_ms(started_at, now)
-            if delta.content and not facts.publish_failed:
+            if facts.reply.mode == "plain" and delta.content and not facts.publish_failed:
                 try:
                     delivered = await runtime.context.publisher.publish(
-                        "token", {"content": delta.content}
+                        "token", {"content": facts.reply.raw_output[facts.plain_sent_characters:]}
                     )
+                    facts.plain_sent_characters = len(facts.reply.raw_output)
                     if delivered is False:
                         facts.publish_failed = True
                 except Exception:
@@ -306,6 +317,7 @@ class TurnNodes:
                         }
                     )
 
+            await self._publish_bubbles(assistant.id, facts, runtime.context)
             if self._should_flush(facts, now):
                 _set_stream_trace(facts)
                 await self.dependencies.messages.flush_partial(
@@ -317,8 +329,21 @@ class TurnNodes:
                 facts.last_flush_at = now
                 facts.flushed_characters = _generated_characters(facts)
 
+        if error_code is None:
+            try:
+                if facts.finish_reason == "length":
+                    raise ValueError("reply exceeded model output limit")
+                facts.reply.finish()
+            except ValueError:
+                error_code = "model_error"
+            facts.content = facts.reply.content
+            await self._publish_bubbles(assistant.id, facts, runtime.context)
+
         if error_code is not None:
-            facts.finish_reason = "error"
+            if stream is not None and hasattr(stream, "aclose"):
+                await stream.aclose()
+            if facts.finish_reason != "length":
+                facts.finish_reason = "error"
             _trace_errors(facts.trace).append(
                 {"code": "model_error", "message": "model generation failed"}
             )
@@ -345,6 +370,36 @@ class TurnNodes:
             "phase": "failed" if error_code else "generated",
             "error_code": error_code,
         }
+
+    async def _publish_bubbles(self, assistant_id: str, facts: _RunFacts, context: TurnContext) -> None:
+        bubbles = facts.reply.bubbles
+        start = facts.saved_bubbles
+        if len(bubbles) == start:
+            return
+        await self.dependencies.messages.save_bubbles(assistant_id, bubbles)
+        facts.saved_bubbles = len(bubbles)
+        # A disconnected/slow subscriber never prevents the remaining DB writes.
+        for index in range(start, len(bubbles)):
+            if facts.publish_failed:
+                break
+            try:
+                if facts.reply.mode != "plain":
+                    delivered = await context.publisher.publish("token", {
+                        "content": ("\n\n" if index else "") + bubbles[index],
+                    })
+                    if delivered is False:
+                        facts.publish_failed = True
+                        break
+                delivered = await context.publisher.publish("bubble", {
+                    "assistant_message_id": assistant_id, "index": index, "content": bubbles[index],
+                })
+                if delivered is False:
+                    facts.publish_failed = True
+            except Exception:
+                facts.publish_failed = True
+                _trace_errors(facts.trace).append({
+                    "code": "event_publish_error", "message": "bubble event publication failed",
+                })
 
     def _record_infrastructure_failure(
         self, facts: _RunFacts, error_code: str, *, node_name: str = "generate_response"

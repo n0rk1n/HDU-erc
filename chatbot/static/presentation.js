@@ -69,7 +69,7 @@
       card = element("details", "process-card");
       card.open = !terminal;
       const article = item.querySelector("article");
-      article.insertBefore(card, item.querySelector("p"));
+      article.insertBefore(card, item.querySelector(".message-bubbles"));
     } else if (terminal && !wasTerminal) {
       card.open = false;
     }

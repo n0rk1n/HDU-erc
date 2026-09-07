@@ -72,27 +72,36 @@
 
   function applyMessage(item, message) {
     const state = typeof message.status === "string" ? message.status : "completed";
-    const body = item.querySelector("p");
+    const body = item.querySelector(".message-bubbles");
     const detail = item.querySelector("small");
 
     item.dataset.state = state;
     if (typeof message.id === "string") item.dataset.messageId = message.id;
     if (Number.isInteger(message.sequence_no)) item.dataset.sequence = String(message.sequence_no);
-    body.textContent = typeof message.content === "string" ? message.content : "";
+    const parts = Array.isArray(message.bubbles) ? message.bubbles : [message.content || ""];
+    item.replyBubbles = Array.isArray(message.bubbles) ? [...message.bubbles] : [];
+    body.replaceChildren(...parts.map(createBubble));
     detail.textContent = state === "failed" ? "生成未完成" : "";
     presentation.render(item, message.processing, state);
+  }
+
+  function createBubble(content) {
+    const body = document.createElement("p");
+    body.className = "message-body";
+    body.textContent = typeof content === "string" ? content : "";
+    return body;
   }
 
   function createMessage(message) {
     const item = document.createElement("li");
     const article = document.createElement("article");
-    const body = document.createElement("p");
+    const body = document.createElement("div");
     const detail = document.createElement("small");
     const role = message.role === "user" ? "user" : "assistant";
 
     item.className = `message message--${role}`;
     article.setAttribute("aria-label", role === "user" ? "用户消息" : "助手消息");
-    body.className = "message-body";
+    body.className = "message-bubbles";
     detail.className = "message-error";
     article.append(body, detail);
     item.append(article);
@@ -260,7 +269,9 @@
         role: "assistant",
         status: "streaming",
         content: "",
+        bubbles: Number.isInteger(message.bubble_gap_ms) ? [] : null,
       });
+      temporaryAssistant.dataset.bubbleMode = String(Number.isInteger(message.bubble_gap_ms));
     }
     return temporaryAssistant;
   }
@@ -328,9 +339,17 @@
       setStatus(chatStatus, presentation.headline(event.data.processing, "streaming"), "streaming");
     } else if (event.name === "token" && event.data && typeof event.data.content === "string") {
       const item = ensureTemporaryAssistant();
+      if (item.dataset.bubbleMode === "true") return false;
       const body = item.querySelector("p");
       followConversation(() => { body.textContent += event.data.content; });
       setStatus(chatStatus, "正在生成回复…", "streaming");
+    } else if (event.name === "bubble" && event.data && typeof event.data.content === "string") {
+      const item = ensureTemporaryAssistant(event.data);
+      if (item.dataset.messageId !== event.data.assistant_message_id ||
+          event.data.index !== item.replyBubbles.length || !event.data.content.trim()) return false;
+      item.replyBubbles.push(event.data.content);
+      followConversation(() => item.querySelector(".message-bubbles").append(createBubble(event.data.content)));
+      setStatus(chatStatus, "正在回复…", "streaming");
     } else if (event.name === "done" && event.data && event.data.message) {
       const message = event.data.message;
       updateTemporaryAssistant({
@@ -339,6 +358,7 @@
         sequence_no: message.sequence_no,
         status: message.status,
         content: message.content,
+        bubbles: message.bubbles,
         processing: message.processing,
       });
       presentation.updateBadge(event.data.latest_emotion);
@@ -346,7 +366,10 @@
       temporaryAssistant = null;
       return "done";
     } else if (event.name === "error") {
-      removeTemporaryAssistant();
+      if (temporaryAssistant) {
+        temporaryAssistant.dataset.state = "failed";
+        temporaryAssistant.querySelector("small").textContent = "生成未完成";
+      }
       setStatus(chatStatus, "回复未能完成，正在同步已保存的消息。", "failed");
       return "reconcile";
     }
@@ -385,6 +408,28 @@
     let streamStarted = false;
     let rejectedBeforeStream = false;
     let terminal = false;
+    let eventChain = Promise.resolve();
+    let bubbleGapMs = 0;
+    let lastBubbleAt = null;
+    const queueEvent = (event) => {
+      eventChain = eventChain.then(async () => {
+        if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
+        if (event.name === "run_started") {
+          bubbleGapMs = Number.isInteger(event.data?.bubble_gap_ms)
+            ? Math.max(0, Math.min(10000, event.data.bubble_gap_ms)) : 0;
+        }
+        const isNewBubble = event.name === "bubble" && temporaryAssistant &&
+          event.data?.assistant_message_id === temporaryAssistant.dataset.messageId &&
+          event.data?.index === temporaryAssistant.replyBubbles.length;
+        if (isNewBubble && lastBubbleAt !== null) {
+          const remaining = bubbleGapMs - (Date.now() - lastBubbleAt);
+          if (remaining > 0 && !await waitForDelay(remaining, controller.signal)) return;
+        }
+        if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
+        terminal = handleStreamEvent(event) === "done" || terminal;
+        if (isNewBubble) lastBubbleAt = Date.now();
+      });
+    };
     try {
       const response = await fetch(`/api/users/${session.user_id}/messages:stream`, {
         method: "POST",
@@ -411,19 +456,18 @@
         if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
         if (done) break;
         buffer += decoder.decode(value, { stream: true });
-        buffer = consumeFrames(buffer, (event) => {
-          terminal = handleStreamEvent(event) === "done" || terminal;
-        });
+        buffer = consumeFrames(buffer, queueEvent);
       }
       buffer += decoder.decode();
-      consumeFrames(buffer, (event) => {
-        terminal = handleStreamEvent(event) === "done" || terminal;
-      });
+      consumeFrames(buffer, queueEvent);
     } catch {
       if (sendIsCurrent(controller, expectedGeneration, session.user_id)) {
         setStatus(chatStatus, "连接中断，正在同步已保存的消息。", "failed");
       }
     } finally {
+      // Network reads remain independent from display pacing. Drain complete
+      // bubbles before finalizing or polling; abort also cancels pending delays.
+      try { await eventChain; } catch { terminal = false; }
       if (streamController === controller) streamController = null;
       if (!sendIsCurrent(controller, expectedGeneration, session.user_id)) return;
       if (terminal) {
@@ -462,6 +506,7 @@
       activeSession = { user_id: payload.user.id, identifier: payload.user.identifier };
       currentIdentifier.textContent = activeSession.identifier;
       clearChat();
+      setSending(true);
       showChatView();
       try {
         const messages = await loadHistory(expectedGeneration, controller.signal);

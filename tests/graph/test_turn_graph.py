@@ -373,7 +373,8 @@ async def test_generate_persists_versioned_prompt_redacted_model_facts_and_null_
     )
     assert prompt[0]["role"] == "system"
     from chatbot.llm.prompt import get_system_prompt
-    assert prompt[0]["content"] == get_system_prompt()
+    from chatbot.llm.bubbles import REPLY_FORMAT_PROMPT
+    assert prompt[0]["content"] == get_system_prompt() + "\n\n" + REPLY_FORMAT_PROMPT
     assert prompt[-1] == {"role": "user", "content": "来自 audit 的问题"}
     assert parameters == {
         "api_key": "[REDACTED]",

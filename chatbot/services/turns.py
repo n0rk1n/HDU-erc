@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Mapping
 from typing import Protocol
 from uuid import UUID
@@ -44,6 +45,7 @@ class TurnCoordinator:
         messages: MessageRepository,
         graph: TurnGraph,
         queue_capacity: int = 64,
+        bubble_gap_ms: int = 500,
     ) -> None:
         if queue_capacity < 1:
             raise ValueError("queue_capacity must be positive")
@@ -51,6 +53,7 @@ class TurnCoordinator:
         self._messages = messages
         self._graph = graph
         self._queue_capacity = queue_capacity
+        self._bubble_gap_ms = bubble_gap_ms
         self._locks: dict[int, asyncio.Lock] = {}
         self._active_requests: dict[int, str] = {}
         self._tasks: set[asyncio.Task[None]] = set()
@@ -139,6 +142,7 @@ class TurnCoordinator:
                         "request_id": request_id,
                         "user_message_id": turn.user.id,
                         "assistant_message_id": turn.assistant.id,
+                        "bubble_gap_ms": self._bubble_gap_ms,
                     },
                 )
                 await subscription.publish(
@@ -309,6 +313,7 @@ class TurnCoordinator:
                     "request_id": assistant.request_id,
                     "user_message_id": turn.user.id,
                     "assistant_message_id": assistant.id,
+                    "bubble_gap_ms": self._bubble_gap_ms,
                 },
             )
             await subscription.publish(
@@ -386,6 +391,7 @@ def _public_message(message: Message) -> dict[str, object]:
         "role": message.role,
         "status": message.status,
         "content": message.content,
+        "bubbles": None if message.bubbles_json is None else json.loads(message.bubbles_json),
         "error_code": message.error_code,
         "error_message": message.error_message,
         "created_at": message.created_at,
