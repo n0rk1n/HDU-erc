@@ -9,7 +9,7 @@
 - 以用户标识解析或复用用户，并自动创建一个默认对话。
 - 同一用户的已完成消息会进入下一轮模型 Prompt；不同用户的历史、Prompt 和 checkpoint 相互隔离。
 - 每轮识别 34 类情绪之一，动态检索示例，成功结果作为本轮回复参考；运行时情绪分析失败时保存诊断并继续普通回复。
-- 聊天系统提示词、情绪标签、分类映射和示例均可通过 JSON 文件配置。
+- 聊天和情绪识别系统提示词、情绪标签、分类映射和示例均可通过 JSON 文件配置。
 - 流式回复支持 request ID 幂等重放；进程重启会保留已完成消息和正常 checkpoint，并把遗留中的回复标记为 `failed/process_interrupted`。
 - 模型调用通过 OpenAI-compatible 接口完成；普通历史 API 和前端不会返回内部 `thread_id`、Prompt、reasoning 或 trace。
 
@@ -58,6 +58,7 @@ chatbot/
 data/
 └── config/
     ├── prompts.json         # 聊天系统提示词
+    ├── emotion_prompts.json # 情绪识别系统提示词与版本
     ├── emotion_labels.json  # 34 类情绪及描述
     ├── emotion_families.json # 情绪到 family 的映射
     └── emotion_examples.json # 66 条动态检索示例
@@ -132,6 +133,7 @@ python3 -m venv .venv
 | `EMOTION_SAFETY_TOKENS` | `256` | 输入计数的安全余量。 |
 | `EMOTION_LABELS_PATH` | 模板指向 `data/config/emotion_labels.json` | 标签及描述文件。 |
 | `EMOTION_FAMILIES_PATH` | 模板指向 `data/config/emotion_families.json` | 分类映射文件。 |
+| `EMOTION_SYSTEM_PROMPT_PATH` | 留空读取 `data/config/emotion_prompts.json` | 情绪识别提示词文件，每次分析重新读取。 |
 | `EMOTION_EXAMPLES_PATH` | 模板指向 `data/config/emotion_examples.json` | 动态检索示例文件。 |
 
 情绪模型的连接配置逐项继承。例如聊天服务使用其他供应商、情绪模型使用 OpenAI 时，应同时填写情绪模型的密钥、模型名和服务地址；仅修改模型名不会切换服务地址。
@@ -159,7 +161,18 @@ OpenAI-compatible HTTP 接口可用不代表分词器兼容。当前计数实现
 
 `CHAT_SYSTEM_PROMPT_PATH` 留空时，默认从项目位置定位 `data/config/prompts.json`；该默认文件缺失或为空时使用代码内置提示词。显式指定路径时，文件缺失或为空会报配置错误；无效 JSON 或缺少非空 `chat_system` 同样报错。提示词在每轮构造聊天 Prompt 时读取，修改 JSON 后下一轮生效。
 
-三个 `EMOTION_*_PATH` 在模板中显式指向 `data/config/`；留空时分别回退到项目内 `config/` 的对应文件。两套情绪 JSON 是独立文件，编辑一套不会同步另一套。情绪配置在启动时加载，修改后需重启。
+情绪识别提示词单独存放在 `data/config/emotion_prompts.json`，包含两个非空字符串字段：
+
+```json
+{
+  "version": "emotion-v2-1",
+  "emotion_system": "此处填写完整的情绪识别规则及 JSON 输出要求"
+}
+```
+
+修改该文件的 `emotion_system` 即可调整识别规则，建议同时更新 `version`。标签与检索示例仍由程序动态附加。可通过 `EMOTION_SYSTEM_PROMPT_PATH` 指定其他文件；留空时按项目位置定位默认文件，不依赖启动目录。每次分析重新读取，修改后下一轮生效；默认或指定文件缺失、为空、JSON 无效、键重复或必填字段不合法时均报配置错误，不回退到硬编码规则。在分析流程中，该错误被记录为准备阶段失败，不调用情绪模型。审计快照保存实际提示词、配置版本及 `prompt_config_hash`，便于追溯修改。
+
+标签、family 和示例的三个 `EMOTION_*_PATH` 在模板中显式指向 `data/config/`；留空时分别回退到项目内 `config/` 的对应文件。两套情绪 JSON 是独立文件，编辑一套不会同步另一套。标签、family 和示例配置在启动时加载，修改后需重启。
 
 环境变量中显式填写的相对文件路径，以及相对 SQLite 路径，均相对于启动目录；建议从项目根目录运行，或改填绝对路径。上述未显式配置时使用的内置 JSON 路径则相对于项目位置解析。
 
