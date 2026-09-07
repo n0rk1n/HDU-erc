@@ -107,16 +107,19 @@
     const update = () => {
       buttons.forEach((button) => {
         button.disabled = pending || Boolean(rating);
+        button.hidden = Boolean(rating);
         button.setAttribute("aria-pressed", String(button.dataset.rating === rating));
       });
       status.textContent = pending ? "保存中…" : rating === "like" ? "已赞" : rating === "dislike" ? "已踩" : "";
     };
-    for (const [value, label] of [["like", "赞"], ["dislike", "踩"]]) {
+    for (const value of ["like", "dislike"]) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "reply-feedback-button";
       button.dataset.rating = value;
-      button.textContent = label;
+      button.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M7 10v11H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3Zm0 0 5-7a3 3 0 0 1 3 3l-1 4h5a3 3 0 0 1 2.9 3.7l-1.4 5A3 3 0 0 1 17.6 21H7" />
+      </svg>`;
       button.setAttribute("aria-label", value === "like" ? "点赞这条回复" : "点踩这条回复");
       button.addEventListener("click", async () => {
         if (pending || rating || !isCurrent()) return;

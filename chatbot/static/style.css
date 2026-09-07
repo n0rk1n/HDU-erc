@@ -1135,16 +1135,19 @@ button:disabled {
   gap: 0.5rem;
 }
 .reply-feedback-button {
-  padding: 0.2rem 0.65rem;
-  border: 1px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 0;
   border-radius: 0.5rem;
   background: transparent;
   color: var(--text);
   font-size: 0.75rem;
 }
-.reply-feedback-button[aria-pressed="true"] {
-  background: var(--text);
-  color: var(--surface);
-  opacity: 1;
+.reply-feedback-button[data-rating="dislike"] svg {
+  transform: rotate(180deg);
 }
 .reply-feedback-status { font-size: 0.72rem; color: var(--text-muted); }

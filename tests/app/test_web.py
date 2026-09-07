@@ -1007,18 +1007,23 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.ok(controls, "completed assistant must offer a rating");
           await controls.children[0].dispatch("click");
           assert.equal(controls.children[0].disabled, false, "failed save must allow retry");
+          assert.equal(controls.children[0].hidden, false, "failed save keeps rating controls visible");
           assert.match(controls.querySelector(".reply-feedback-status").textContent, /失败/);
           fail = false;
           await controls.children[1].dispatch("click");
           assert.equal(saved, "dislike");
           assert.equal(controls.children[0].disabled, true);
           assert.equal(controls.children[1].disabled, true);
+          assert.equal(controls.children[0].hidden, true, "saved rating shows only status");
+          assert.equal(controls.children[1].hidden, true);
           assert.match(controls.querySelector(".reply-feedback-status").textContent, /已踩/);
           app.document.nodes["switch-user"].dispatch("click");
           await enter(app);
           const restored = app.document.nodes["message-list"].children[1].querySelector(".reply-feedback");
           assert.equal(restored.children[0].disabled, true);
           assert.equal(restored.children[1].disabled, true);
+          assert.equal(restored.children[0].hidden, true, "history shows only saved status");
+          assert.equal(restored.children[1].hidden, true);
           assert.equal(patches, 2);
         }
 
