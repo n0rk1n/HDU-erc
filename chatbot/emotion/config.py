@@ -59,10 +59,8 @@ class EmotionSettings:
 def load_emotion_settings(chat_config):
     def env(name, default=None):
         return os.getenv(name, '').strip() or default
-    model = env('EMOTION_LLM_MODEL', env('LLM_MODEL', 'gpt-4o-mini'))
-    deepseek_v4 = model == 'deepseek-v4-flash'
-    context=env('EMOTION_CONTEXT_TOKENS', '1048576' if deepseek_v4 else None)
-    tokenizer=env('EMOTION_TOKENIZER_MODEL', 'deepseek-v4-flash' if deepseek_v4 else None)
+    context=env('EMOTION_CONTEXT_TOKENS')
+    tokenizer=env('EMOTION_TOKENIZER_MODEL')
     if not context:
         raise ConfigError('EMOTION_CONTEXT_TOKENS is required for the deployed emotion model')
     if not tokenizer:

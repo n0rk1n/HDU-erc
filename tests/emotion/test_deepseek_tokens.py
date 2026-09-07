@@ -33,17 +33,30 @@ def test_deepseek_rejects_unaccounted_message_payload(message):
         counter.count([message])
 
 
-def test_deepseek_defaults_preserve_explicit_budget(monkeypatch):
+@pytest.mark.parametrize('model', ['deepseek-v4-flash', 'gpt-4o-mini', 'private-model'])
+@pytest.mark.parametrize('missing', ['EMOTION_CONTEXT_TOKENS', 'EMOTION_TOKENIZER_MODEL'])
+def test_all_models_require_explicit_configuration(monkeypatch, model, missing):
     monkeypatch.setenv('LLM_API_KEY', 'test-key')
-    monkeypatch.setenv('LLM_MODEL', 'deepseek-v4-flash')
+    monkeypatch.setenv('LLM_MODEL', model)
     monkeypatch.delenv('EMOTION_LLM_MODEL', raising=False)
-    monkeypatch.setenv('EMOTION_CONTEXT_TOKENS', '')
-    monkeypatch.setenv('EMOTION_TOKENIZER_MODEL', '')
-    settings = load_emotion_settings(None)
-    assert settings.budget.context_tokens == 1048576
-    assert settings.tokenizer_model == 'deepseek-v4-flash'
     monkeypatch.setenv('EMOTION_CONTEXT_TOKENS', '32000')
-    assert load_emotion_settings(None).budget.context_tokens == 32000
+    monkeypatch.setenv('EMOTION_TOKENIZER_MODEL', 'deepseek-v4-flash')
+    monkeypatch.setenv(missing, '')
+    with pytest.raises(ConfigError, match=missing):
+        load_emotion_settings(None)
+
+
+@pytest.mark.parametrize('model', ['deepseek-v4-flash', 'gpt-4o-mini', 'private-model'])
+def test_explicit_settings_are_independent_of_api_model_name(monkeypatch, model):
+    monkeypatch.setenv('LLM_API_KEY', 'test-key')
+    monkeypatch.setenv('LLM_MODEL', model)
+    monkeypatch.setenv('EMOTION_LLM_MODEL', 'deployment-alias')
+    monkeypatch.setenv('EMOTION_CONTEXT_TOKENS', '32000')
+    monkeypatch.setenv('EMOTION_TOKENIZER_MODEL', 'explicit-tokenizer')
+    settings = load_emotion_settings(None)
+    assert settings.model == 'deployment-alias'
+    assert settings.budget.context_tokens == 32000
+    assert settings.tokenizer_model == 'explicit-tokenizer'
 
 
 def test_role_override_does_not_inherit_deepseek_defaults(monkeypatch):
@@ -55,7 +68,7 @@ def test_role_override_does_not_inherit_deepseek_defaults(monkeypatch):
         load_emotion_settings(None)
 
 
-def test_startup_with_deepseek_and_blank_budget(monkeypatch, tmp_path):
+def test_startup_with_deepseek_and_explicit_budget(monkeypatch, tmp_path):
     import os
     from pathlib import Path
     from dotenv import dotenv_values
@@ -72,6 +85,8 @@ def test_startup_with_deepseek_and_blank_budget(monkeypatch, tmp_path):
     monkeypatch.setenv('PYTHON_DOTENV_DISABLED', '1')
     monkeypatch.setenv('LLM_MODEL', 'deepseek-v4-flash')
     monkeypatch.setenv('LLM_BASE_URL', 'https://api.deepseek.com')
+    monkeypatch.setenv('EMOTION_CONTEXT_TOKENS', '1048576')
+    monkeypatch.setenv('EMOTION_TOKENIZER_MODEL', 'deepseek-v4-flash')
     monkeypatch.setenv('SQLITE_DB_PATH', str(tmp_path / 'startup.sqlite3'))
     with TestClient(create_app()) as client:
         assert client.get('/').status_code == 200

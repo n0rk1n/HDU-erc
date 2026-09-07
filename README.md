@@ -93,7 +93,7 @@ python3 -m venv .venv
 
 `python3 --version` 必须显示 3.10、3.11、3.12 或更高版本。如果系统默认 `python3` 过旧，请把上述 `python3` 替换为实际的 Python 3.10+ 可执行文件；例如 Apple Silicon Homebrew 安装的 3.12 通常可用 `/opt/homebrew/bin/python3.12 -m venv .venv`。
 
-编辑 `.env`，至少填写模型服务的 `LLM_API_KEY`，并按供应商设置 `LLM_MODEL` 和可选的 `LLM_BASE_URL`。同时填写下述情绪模型的 `EMOTION_CONTEXT_TOKENS` 和 `EMOTION_TOKENIZER_MODEL`；当实际情绪模型为 `deepseek-v4-flash` 时，这两项留空会使用已内置的官方配置。随后以单 worker 启动：
+编辑 `.env`，至少填写模型服务的 `LLM_API_KEY`，并按供应商设置 `LLM_MODEL` 和可选的 `LLM_BASE_URL`。所有模型均必须显式填写下述情绪模型的 `EMOTION_CONTEXT_TOKENS` 和 `EMOTION_TOKENIZER_MODEL`；缺失或留空会直接阻止启动，不按模型名称推断。随后以单 worker 启动：
 
 ```bash
 .venv/bin/uvicorn chatbot.web:app --workers 1 --no-access-log
@@ -105,14 +105,18 @@ python3 -m venv .venv
 
 `chatbot.main:app` 是等价的兼容入口；如果需要工厂模式，也可运行 `.venv/bin/uvicorn chatbot.web:create_app --factory --workers 1 --no-access-log`。
 
-使用 DeepSeek V4 Flash 时，保留现有 API Key 和地址配置即可。两项留空等价于：
+模型连接与 Token 预算分别配置：`LLM_MODEL` / `EMOTION_LLM_MODEL` 是 API 模型名称，`EMOTION_TOKENIZER_MODEL` 明确指定本地计数器使用的分词器和消息模板。更换模型时，需要同步核对并填写实际上下文窗口和匹配的 tokenizer，代码不会自动补值。
+
+例如使用 DeepSeek V4 Flash 官方服务时，在 `.env` 中显式填写：
 
 ```dotenv
 EMOTION_CONTEXT_TOKENS=1048576
 EMOTION_TOKENIZER_MODEL=deepseek-v4-flash
 ```
 
-默认值按实际情绪模型（`EMOTION_LLM_MODEL` 优先于 `LLM_MODEL`）选择，显式配置始终优先。如果自部署或代理限制了上下文，请填写该服务实际允许的更小值。同模型门控默认继承这两项。升级代码后先运行 `.venv/bin/python -m pip install -r requirements.txt`，再执行 `sh startup-local.sh`。
+如果使用 OpenAI 模型，填写相匹配的 tokenizer（例如 `gpt-4o-mini`）和该部署的实际上下文窗口。如果自部署或代理限制了上下文，填写服务实际允许的值；不要把上面的 DeepSeek 数值套用到其他模型。未知或不支持的 tokenizer 会报错，需要接入对应计数器，不能只填写任意模型名称绕过校验。
+
+同模型门控按现有规则继承已显式填写的情绪配置；不同模型的门控必须在 `data/config/emotion_gate.json` 中显式设置 `context_tokens` 和 `tokenizer_model`。升级代码后先运行 `.venv/bin/python -m pip install -r requirements.txt`，再执行 `sh startup-local.sh`。
 
 DeepSeek 的官方 tokenizer 和消息编码器随项目提供，固定版本与许可证见 `chatbot/llm/vendor/deepseek_v4/README.md`；本地启动不下载模型。计数覆盖纯文本消息及角色、生成前缀，分别计算 chat/thinking 模板并取较大值，不支持将工具或图片载荷交给该情绪计数器。
 
@@ -142,8 +146,8 @@ DeepSeek 的官方 tokenizer 和消息编码器随项目提供，固定版本与
 | `EMOTION_LLM_BASE_URL` | 留空继承 `LLM_BASE_URL` | 情绪模型服务地址。 |
 | `EMOTION_LLM_TEMPERATURE` | 留空继承 `LLM_TEMPERATURE`，范围 0–2 | 情绪采样温度。 |
 | `EMOTION_LLM_TIMEOUT_SECONDS` | 留空继承 `LLM_TIMEOUT_SECONDS` | 情绪模型调用超时，必须大于 0。 |
-| `EMOTION_CONTEXT_TOKENS` | DeepSeek V4 Flash 默认 `1048576`；其他模型必填 | 所部署情绪模型的实际上下文窗口大小，显式值优先。 |
-| `EMOTION_TOKENIZER_MODEL` | DeepSeek V4 Flash 默认 `deepseek-v4-flash`；其他模型必填 | 与情绪模型匹配且受当前计数器支持的分词器/聊天模板模型。 |
+| `EMOTION_CONTEXT_TOKENS` | **必填，无默认值** | 所部署情绪模型的实际上下文窗口大小。 |
+| `EMOTION_TOKENIZER_MODEL` | **必填，无默认值** | 显式选择与部署匹配且受支持的分词器/聊天模板，不从 API 模型名称推断。 |
 | `EMOTION_OUTPUT_TOKENS` | `1024` | 情绪输出预留 token 数。 |
 | `EMOTION_SAFETY_TOKENS` | `256` | 输入计数的安全余量。 |
 | `EMOTION_LABELS_PATH` | 模板指向 `data/config/emotion_labels.json` | 标签及描述文件。 |
