@@ -48,6 +48,7 @@ class GateSettings:
     prompts_path: Path
     prompt: dict[str, str]
     version: str = 'v1'
+    thinking: str = 'disabled'
 
     @property
     def wait_seconds(self) -> float:

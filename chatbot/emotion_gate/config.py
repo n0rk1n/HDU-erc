@@ -41,4 +41,5 @@ def load_gate_settings(emotion: EmotionSettings) -> GateSettings:
     path = Path(env('EMOTION_GATE_SYSTEM_PROMPT_PATH', str(DEFAULT_PROMPT_PATH)))
     return GateSettings(policy, connection.api_key, model, connection.base_url,
                         connection.temperature, connection.timeout_seconds,
-                        budget, tokenizer, path, load_prompt_config(path), data['version'])
+                        budget, tokenizer, path, load_prompt_config(path), data['version'],
+                        thinking=connection.thinking)

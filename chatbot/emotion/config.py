@@ -85,6 +85,7 @@ class EmotionSettings:
     families_path: Path
     examples_path: Path
     retrieval: RetrievalConfig = RetrievalConfig()
+    thinking: str = 'disabled'
 
 def load_emotion_settings(chat_config):
     def env(name, default=None):
@@ -105,4 +106,5 @@ def load_emotion_settings(chat_config):
         connection.temperature, connection.timeout_seconds, budget, tokenizer,
         emotion_labels_path(),
         Path(env('EMOTION_FAMILIES_PATH',str(CONFIG_ROOT/'emotion_families.json'))),
-        Path(env('EMOTION_EXAMPLES_PATH',str(CONFIG_ROOT/'emotion_examples.json'))),retrieval)
+        Path(env('EMOTION_EXAMPLES_PATH',str(CONFIG_ROOT/'emotion_examples.json'))),retrieval,
+        thinking=connection.thinking)

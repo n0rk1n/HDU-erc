@@ -32,13 +32,8 @@ class OpenAICompatibleChatModel:
         self._base_url = config.llm_base_url
         self._temperature = config.llm_temperature
         self._timeout = config.llm_timeout_seconds
-        # DeepSeek V4 reply generation uses the configured thinking mode.
-        # Keep this extension scoped to the official API contract.
-        self._extra_body = (
-            {"thinking": {"type": config.llm_thinking}}
-            if urlsplit(config.llm_base_url or "").hostname == "api.deepseek.com"
-            and config.llm_model in {"deepseek-v4-flash", "deepseek-v4-pro"}
-            else None
+        self._extra_body = thinking_extra_body(
+            config.llm_model, config.llm_base_url, config.llm_thinking
         )
         self._client: _StreamingClient = (
             client
@@ -88,6 +83,14 @@ class OpenAICompatibleChatModel:
             f"base_url={_safe_base_url(self._base_url)!r}, temperature={self._temperature!r}, "
             f"timeout={self._timeout!r}, streaming=True)"
         )
+
+
+def thinking_extra_body(model: str, base_url: str | None, thinking: str) -> dict | None:
+    """Share the official DeepSeek V4 thinking contract across all model roles."""
+    if (urlsplit(base_url or "").hostname == "api.deepseek.com"
+            and model in {"deepseek-v4-flash", "deepseek-v4-pro"}):
+        return {"thinking": {"type": thinking}}
+    return None
 
 
 def parse_ai_message_chunk(chunk: AIMessageChunk) -> ModelDelta:

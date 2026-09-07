@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 from chatbot.core.errors import ConfigError
 from chatbot.emotion.types import ModelOutcome
 from chatbot.llm.types import TokenUsage
-from chatbot.llm.openai_compatible import _text_content, _reasoning_content, _token_usage
+from chatbot.llm.openai_compatible import _text_content, _reasoning_content, _token_usage, thinking_extra_body
 from chatbot.llm.redaction import redact_secrets
 
 
@@ -43,12 +43,15 @@ def error_facts(exc,*,stage,secret=''):
 class OpenAICompatibleEmotionModel:
     def __init__(self,settings,*,client=None):
         self.secret=settings.api_key.get_secret_value()
+        extra_body=thinking_extra_body(settings.model,settings.base_url,settings.thinking)
         self.parameters=safe_facts({'provider':'openai-compatible','model':settings.model,'base_url':settings.base_url,
             'temperature':settings.temperature,'timeout':settings.timeout_seconds,'max_tokens':settings.budget.output_tokens,
-            'max_retries':0,'streaming':False,'tokenizer_model':settings.tokenizer_model},self.secret)
+            'max_retries':0,'streaming':False,'tokenizer_model':settings.tokenizer_model,
+            **({'extra_body':extra_body} if extra_body else {})},self.secret)
         self.client=client if client is not None else ChatOpenAI(api_key=settings.api_key,model=settings.model,
             base_url=settings.base_url,temperature=settings.temperature,timeout=settings.timeout_seconds,
-            max_tokens=settings.budget.output_tokens,max_retries=0,streaming=False,tiktoken_model_name=settings.tokenizer_model)
+            max_tokens=settings.budget.output_tokens,max_retries=0,streaming=False,tiktoken_model_name=settings.tokenizer_model,
+            extra_body=extra_body)
 
     async def invoke(self,messages):
         try:

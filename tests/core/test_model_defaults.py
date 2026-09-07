@@ -67,6 +67,54 @@ def test_chat_thinking_rejects_invalid_values(model_env, value):
         AppConfig.from_env()
 
 
+def thinking_settings():
+    chat = AppConfig.from_env()
+    emotion = load_emotion_settings(chat)
+    gate = load_gate_settings(emotion)
+    return chat, emotion, gate
+
+
+@pytest.mark.parametrize('default', ['disabled', 'enabled'])
+@pytest.mark.parametrize('blank', [None, '', '   '])
+def test_thinking_roles_inherit_shared_default(model_env, default, blank):
+    """Catches a role retaining its own default when the shared setting changes."""
+    model_env.setenv('LLM_THINKING', default)
+    if blank is not None:
+        for prefix in ('CHAT_LLM', 'EMOTION_LLM', 'EMOTION_GATE_LLM'):
+            model_env.setenv(f'{prefix}_THINKING', blank)
+    chat, emotion, gate = thinking_settings()
+    assert [chat.llm_thinking, emotion.thinking, gate.thinking] == [default] * 3
+
+
+@pytest.mark.parametrize('role,prefix', list(enumerate(('CHAT_LLM', 'EMOTION_LLM', 'EMOTION_GATE_LLM'))))
+@pytest.mark.parametrize('default,override', [('disabled', 'enabled'), ('enabled', 'disabled')])
+def test_thinking_override_reaches_only_its_role_request_and_audit(model_env, role, prefix, default, override):
+    """Catches ignored overrides, cross-role leakage, or request/audit divergence."""
+    from chatbot.emotion.model import OpenAICompatibleEmotionModel
+    from chatbot.llm.openai_compatible import OpenAICompatibleChatModel
+    from langchain_core.messages import HumanMessage
+    model_env.setenv('LLM_MODEL', 'deepseek-v4-flash')
+    model_env.setenv('LLM_BASE_URL', 'https://api.deepseek.com')
+    model_env.setenv('LLM_THINKING', default)
+    model_env.setenv(f'{prefix}_THINKING', override)
+    chat, emotion, gate = thinking_settings()
+    adapters = [OpenAICompatibleChatModel(chat), OpenAICompatibleEmotionModel(emotion),
+                OpenAICompatibleEmotionModel(gate)]
+    expected = [default] * 3
+    expected[role] = override
+    for adapter, mode in zip(adapters, expected):
+        payload = adapter.client._get_request_payload([HumanMessage(content='你好')])
+        assert payload['extra_body'] == {'thinking': {'type': mode}}
+        assert adapter.parameters['extra_body'] == {'thinking': {'type': mode}}
+
+
+@pytest.mark.parametrize('prefix', ['LLM', 'CHAT_LLM', 'EMOTION_LLM', 'EMOTION_GATE_LLM'])
+def test_invalid_thinking_is_rejected_for_each_role(model_env, prefix):
+    model_env.setenv(f'{prefix}_THINKING', 'invalid')
+    with pytest.raises(ConfigError, match=f'{prefix}_THINKING'):
+        thinking_settings()
+
+
 @pytest.mark.parametrize('blank', [None, '', '   '])
 def test_all_roles_use_shared_defaults(model_env, blank):
     if blank is not None:

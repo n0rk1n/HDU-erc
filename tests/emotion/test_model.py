@@ -6,7 +6,7 @@ from chatbot.emotion.types import BudgetConfig
 
 @pytest.fixture
 def settings():
-    return SimpleNamespace(api_key=SecretStr('secret-test-key'),model='gpt-4o-mini',base_url=None,temperature=0,timeout_seconds=1,budget=BudgetConfig(4096,512,64),tokenizer_model='gpt-4o-mini')
+    return SimpleNamespace(api_key=SecretStr('secret-test-key'),model='gpt-4o-mini',base_url=None,temperature=0,timeout_seconds=1,budget=BudgetConfig(4096,512,64),tokenizer_model='gpt-4o-mini',thinking='disabled')
 
 async def test_provider_failure_keeps_safe_details(settings):
     from chatbot.emotion.model import OpenAICompatibleEmotionModel

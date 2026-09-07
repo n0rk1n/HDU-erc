@@ -45,7 +45,7 @@ class AppConfig:
             llm_timeout_seconds=model_settings.timeout_seconds,
             context_message_limit=context_limit,
             sqlite_db_path=sqlite_path,
-            llm_thinking=_optional("CHAT_LLM_THINKING") or "disabled",
+            llm_thinking=model_settings.thinking,
         )
 
 
@@ -91,6 +91,7 @@ class ModelSettings:
     base_url: str | None
     temperature: float
     timeout_seconds: float
+    thinking: str = "disabled"
 
 
 def resolve_model_settings(prefix: str) -> ModelSettings:
@@ -106,8 +107,12 @@ def resolve_model_settings(prefix: str) -> ModelSettings:
     timeout_name = effective_name("TIMEOUT_SECONDS")
     temperature = _float(temperature_name, 0.7)
     timeout = _float(timeout_name, 60.0)
+    thinking_name = effective_name("THINKING")
+    thinking = _optional(thinking_name) or "disabled"
+    if thinking not in {"disabled", "enabled"}:
+        raise ConfigError(f"{thinking_name} must be disabled or enabled")
     if not isfinite(temperature) or not 0 <= temperature <= 2:
         raise ConfigError(f"{temperature_name} must be finite and between 0 and 2")
     if not isfinite(timeout) or timeout <= 0:
         raise ConfigError(f"{timeout_name} must be finite and positive")
-    return ModelSettings(SecretStr(api_key), model, base_url, temperature, timeout)
+    return ModelSettings(SecretStr(api_key), model, base_url, temperature, timeout, thinking)
