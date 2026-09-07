@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Protocol, cast
+from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessageChunk, BaseMessage
 from langchain_openai import ChatOpenAI
@@ -31,6 +32,14 @@ class OpenAICompatibleChatModel:
         self._base_url = config.llm_base_url
         self._temperature = config.llm_temperature
         self._timeout = config.llm_timeout_seconds
+        # DeepSeek V4 reply generation uses the provider's non-thinking mode.
+        # Keep this extension scoped to the official API contract.
+        self._extra_body = (
+            {"thinking": {"type": "disabled"}}
+            if urlsplit(config.llm_base_url or "").hostname == "api.deepseek.com"
+            and config.llm_model in {"deepseek-v4-flash", "deepseek-v4-pro"}
+            else None
+        )
         self._client: _StreamingClient = (
             client
             if client is not None
@@ -41,6 +50,7 @@ class OpenAICompatibleChatModel:
                 temperature=config.llm_temperature,
                 timeout=config.llm_timeout_seconds,
                 streaming=True,
+                extra_body=self._extra_body,
             )
         )
 
@@ -60,6 +70,7 @@ class OpenAICompatibleChatModel:
             "temperature": self._temperature,
             "timeout": self._timeout,
             "streaming": True,
+            **({"extra_body": self._extra_body} if self._extra_body else {}),
         }
 
     async def stream(

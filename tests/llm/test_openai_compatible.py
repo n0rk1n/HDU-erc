@@ -37,6 +37,33 @@ def _config() -> AppConfig:
     )
 
 
+@pytest.mark.parametrize("model", ["deepseek-v4-flash", "deepseek-v4-pro"])
+@pytest.mark.parametrize("base_url", ["https://api.deepseek.com", "https://api.deepseek.com/v1"])
+def test_deepseek_chat_requests_disable_thinking(model, base_url) -> None:
+    """Catches reply generation silently inheriting DeepSeek's thinking default."""
+    adapter = OpenAICompatibleChatModel(
+        replace(_config(), llm_model=model, llm_base_url=base_url)
+    )
+    payload = adapter.client._get_request_payload([HumanMessage(content="你好")])
+    assert payload["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert adapter.parameters["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+@pytest.mark.parametrize("model,base_url", [
+    ("gpt-4o-mini", None),
+    ("deepseek-v4-flash", "https://example.invalid/v1"),
+    ("deepseek-v4-flash", "https://api.deepseek.com.example.invalid/v1"),
+])
+def test_other_endpoints_do_not_receive_deepseek_thinking_fields(model, base_url) -> None:
+    """Catches a provider-specific option leaking into unrelated API contracts."""
+    adapter = OpenAICompatibleChatModel(
+        replace(_config(), llm_model=model, llm_base_url=base_url)
+    )
+    payload = adapter.client._get_request_payload([HumanMessage(content="你好")])
+    assert not payload.get("extra_body")
+    assert "extra_body" not in adapter.parameters
+
+
 def _message(*, role: str, content: str, sequence_no: int) -> Message:
     return Message(
         id=f"message-{sequence_no}",

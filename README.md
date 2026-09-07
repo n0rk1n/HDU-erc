@@ -46,6 +46,8 @@ SQLite：用户、对话、消息、判定及逐次调用审计、情绪分析�
 
 `reasoning_content` 只保存供应商确实返回的 reasoning；供应商没有返回时保持 `NULL`。它不会显示在当前前端或普通历史 API 中。
 
+对话回复使用 DeepSeek 官方接口（`api.deepseek.com`）的 `deepseek-v4-flash` 或 `deepseek-v4-pro` 时，显式发送 `extra_body={"thinking":{"type":"disabled"}}`，以非思考模式直接生成回复；该参数也写入调用审计。情绪判定、情绪识别仍使用各自原有的模型配置。其他模型或兼容端点不自动添加此供应商专用参数。参见 [DeepSeek 思考模式文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。
+
 ## 项目结构
 
 ```text
