@@ -31,7 +31,7 @@
 SQLite：用户、对话、消息、判定及逐次调用审计、情绪分析和 LangGraph checkpoint
 ```
 
-同一个 SQLite 文件包含四张业务表和 LangGraph SQLite Saver 的两张官方内部表：
+同一个 SQLite 文件包含六张业务表和 LangGraph SQLite Saver 的两张官方内部表：
 
 | 表 | 职责 |
 | --- | --- |
@@ -43,6 +43,15 @@ SQLite：用户、对话、消息、判定及逐次调用审计、情绪分析�
 | `emotion_analyses` | 实际触发的情绪分析记录：完整请求快照、配置、预算裁剪、原始输出、解析结果及失败诊断。 |
 | `checkpoints` | 官方 Saver 保存的 LangGraph checkpoint；业务 API 不解析其 BLOB。 |
 | `writes` | 官方 Saver 保存的中间写入；由 LangGraph 管理。 |
+
+六张业务表的建表语句位于 `chatbot/db/schema.py`，每列均有中文备注。[SQLite 的注释语法](https://www.sqlite.org/lang_comment.html)使用 `--` 或 `/* ... */`，不提供 MySQL 式的独立列 `COMMENT` 元数据。本项目使用 `--` 列备注，新建表时会保存在 [`sqlite_schema.sql`](https://www.sqlite.org/schematab.html) 中，可在数据库客户端的建表 SQL/DDL 视图查看，例如：
+
+```sql
+SELECT sql FROM sqlite_schema
+WHERE type = 'table' AND name = 'emotion_analyses';
+```
+
+客户端的列属性“备注”栏不一定会解析这些 SQL 注释。仅修改建表源码不会更新已经创建的表，本次备注补充不提升 schema 版本、不重建现有表；既有数据库重启后仍保留原建表 SQL。`checkpoints`、`writes` 由 LangGraph 创建，`sqlite_sequence` 由 SQLite 自动维护，不属于上述业务列备注的范围。
 
 `reasoning_content` 只保存供应商确实返回的 reasoning；供应商没有返回时保持 `NULL`。它不会显示在当前前端或普通历史 API 中。
 
