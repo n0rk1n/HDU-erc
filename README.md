@@ -104,7 +104,7 @@ RUN_LIVE_LLM_TEST=1 .venv/bin/python -m pytest tests/app/test_live_llm.py -v
 
 当前输入单独超预算时，不截断它；保存 context_budget_exceeded，跳过情绪模型并继续普通回复。其他模型、解析和校验失败同样先保存可获取的信息再继续回复，不复用旧情绪。数据库持久化本身失败时本轮报基础设施错误。启动恢复把未完成分析标为 process_interrupted，保留已提交快照；不会自动重试旧分析。
 
-可用 `EMOTION_LABELS_PATH`、`EMOTION_FAMILIES_PATH`、`EMOTION_EXAMPLES_PATH` 覆盖默认配置路径。默认 config/ 路径相对于项目模块位置，不依赖启动目录。
+`.env.example` 已将 `EMOTION_LABELS_PATH`、`EMOTION_FAMILIES_PATH`、`EMOTION_EXAMPLES_PATH` 指向 `data/config/` 下对应的三个 JSON 文件，提供完整的 34 类情绪、family 映射和动态检索示例，可直接编辑并在修改后重启。使用这些相对路径时，请从项目根目录启动，或改填绝对路径。变量留空时仍使用上述 `config/` 内置配置，其路径相对于项目模块位置，不依赖启动目录。
 
 数据库启动时从 schema v1 增量升级到 v2，保留原消息和 checkpoint，不自动回填旧消息分析。查询每轮识别及失败信息：
 
