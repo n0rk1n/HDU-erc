@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import replace
 from uuid import uuid4
 
@@ -41,8 +42,8 @@ def send(client, user_id, request_id):
     })
 
 
-def test_bubbles_survive_history_and_idempotent_replay_without_protocol_in_context(app_config):
-    """Catches merged bubbles on reload, JSON leakage, or a replay calling the model again."""
+def test_bubbles_preserve_display_text_and_use_protocol_in_model_context(app_config):
+    """Keep display history intact while giving the next model a valid JSON example."""
     model = BubbleModel(['{"messages":["今天挺熬人的啊。",', '"想聊什么都行。\\n我在听。"]}'])
     app = create_app(config=app_config, model=model)
     with TestClient(app) as client:
@@ -63,7 +64,7 @@ def test_bubbles_survive_history_and_idempotent_replay_without_protocol_in_conte
         assert replay[-1][1]["replayed"] is True
         assert model.calls == 1
         send(client, user, str(uuid4()))
-        assert model.prompts[-1][2].content == done["content"]
+        assert json.loads(model.prompts[-1][2].content) == {"messages": [done["content"]]}
         assert all("bubbles_json" not in str(data) for _, data in events)
 
 

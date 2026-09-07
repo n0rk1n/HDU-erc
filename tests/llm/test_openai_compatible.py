@@ -122,7 +122,7 @@ def test_build_prompt_accepts_repository_context_and_preserves_order() -> None:
     ]
     assert [message.content for message in prompt[1:]] == [
         "第一个问题",
-        "第一个回答",
+        json.dumps({"messages": ["第一个回答"]}, ensure_ascii=False),
         "第二个问题",
     ]
     from chatbot.llm.prompt import get_system_prompt
@@ -143,7 +143,8 @@ def test_build_prompt_also_accepts_persisted_message_objects() -> None:
         HumanMessage,
         AIMessage,
     ]
-    assert [message.content for message in prompt[1:]] == ["问题", "回答"]
+    assert prompt[1].content == "问题"
+    assert json.loads(prompt[2].content) == {"messages": ["回答"]}
 
 
 def test_parse_chunk_keeps_actual_reasoning_separate() -> None:
@@ -371,3 +372,20 @@ async def test_adapter_error_does_not_expose_api_key() -> None:
 
     assert "sk-unit-secret" not in str(captured.value)
     assert "sk-unit-secret" not in repr(captured.value)
+
+
+@pytest.mark.parametrize('content', [
+    '上一轮的完整回复',
+    '第一段。\n\n```python\nprint("你好")\n```',
+    '{"messages":["这是用户要求解释的 JSON 示例"]}',
+])
+def test_assistant_history_uses_reply_protocol_without_changing_visible_text(content):
+    """A plain assistant example contradicts the required JSON reply protocol."""
+    context = [{'role': 'user', 'content': '原始问题'},
+               {'role': 'assistant', 'content': content},
+               {'role': 'user', 'content': '继续'}]
+    prompt = build_prompt(context)
+    assert json.loads(prompt[2].content) == {'messages': [content]}
+    assert prompt[1].content == '原始问题'
+    assert prompt[3].content == '继续'
+    assert context[1]['content'] == content

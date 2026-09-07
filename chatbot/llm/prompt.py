@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
@@ -64,7 +65,10 @@ def build_prompt(messages: Sequence[ContextMessage], *, emotion_context: str | N
         if role == "user":
             prompt.append(HumanMessage(content=content))
         elif role == "assistant":
-            prompt.append(AIMessage(content=content))
+            # Completed history stores display text, but the model must see examples
+            # in the same wire format it is required to generate. Always serialize
+            # the text as data, including literal JSON/code in an earlier reply.
+            prompt.append(AIMessage(content=json.dumps({"messages": [content]}, ensure_ascii=False)))
         else:
             raise ValueError(f"unsupported context role: {role}")
     return prompt
