@@ -43,3 +43,10 @@ def test_missing_context_configuration_rejected(monkeypatch):
     monkeypatch.delenv('EMOTION_CONTEXT_TOKENS',raising=False)
     with pytest.raises(ConfigError,match='EMOTION_CONTEXT_TOKENS'):
         load_emotion_settings(SimpleNamespace())
+
+
+def test_unknown_tokenizer_does_not_silently_fallback():
+    from chatbot.emotion.model import ModelTokenCounter
+    from chatbot.core.errors import ConfigError
+    with pytest.raises(ConfigError,match='unsupported emotion tokenizer'):
+        ModelTokenCounter(object(),tokenizer_model='unknown-private-model')

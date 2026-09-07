@@ -19,7 +19,7 @@ from chatbot.core.errors import ConfigError
 from chatbot.db.messages import MessageRepository
 from chatbot.llm.types import ModelDelta
 from chatbot.services.identity import IdentityService
-from chatbot.web import create_app
+from tests.emotion.helpers import create_app
 
 
 class OfflineModel:
@@ -235,7 +235,7 @@ def test_recovery_failure_prevents_half_available_app(
     app_config, offline_model, monkeypatch
 ) -> None:
     """Catches a failed startup recovery being ignored while routes become available."""
-    async def fail_recovery(messages, checkpointer):
+    async def fail_recovery(messages, checkpointer, *, emotions):
         raise RuntimeError("recovery failed")
 
     monkeypatch.setattr("chatbot.web.recover_interrupted_turns", fail_recovery)

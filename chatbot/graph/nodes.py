@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -10,12 +11,14 @@ from uuid import uuid4
 
 from langchain_core.messages import BaseMessage
 from langgraph.runtime import Runtime
+from langgraph.errors import NodeCancelledError
 
 from chatbot.core.errors import DatabaseError, InvalidMessageState
 from chatbot.db.models import Message, ReservedTurn
 from chatbot.graph.dependencies import NodeDependencies
 from chatbot.graph.state import TurnContext, TurnState
 from chatbot.llm.prompt import build_prompt
+from chatbot.emotion.graph import build_emotion_graph
 from chatbot.llm.redaction import redact_secrets
 from chatbot.llm.types import JSONValue, ModelDelta, TokenUsage, optional_string
 
@@ -46,6 +49,7 @@ class TurnNodes:
     def __init__(self, dependencies: NodeDependencies) -> None:
         self.dependencies = dependencies
         self._runs: dict[str, _RunFacts] = {}
+        self._emotion_graph = build_emotion_graph(dependencies.emotion)
 
     async def prepare_turn(
         self, state: TurnState, runtime: Runtime[TurnContext]
@@ -77,7 +81,48 @@ class TurnNodes:
         ended_at = self.dependencies.clock()
         _append_node(facts.trace, "prepare_turn", "completed", started_at, ended_at)
         self._runs[assistant.id] = facts
-        return {"phase": "streaming", "error_code": None}
+        return {"phase": "streaming", "error_code": None, "emotion_analysis_id": None, "emotion_status": None}
+
+    async def analyze_emotion(self, state: TurnState, runtime: Runtime[TurnContext]) -> TurnState:
+        turn = await self._load_valid_turn(state, runtime.context)
+        terminal = _terminal_update(turn.assistant)
+        if terminal is not None:
+            return terminal
+        assistant_id = turn.assistant.id
+        facts = self._runs.get(assistant_id)
+        if facts is None:
+            await self.dependencies.messages.fail_assistant(assistant_id,
+                error_code="process_interrupted", error_message="generation interrupted")
+            return {"phase": "failed", "error_code": "process_interrupted"}
+        started = self.dependencies.clock()
+        try:
+            result = await self._emotion_graph.ainvoke({
+                "conversation_id": runtime.context.conversation_id,
+                "request_id": runtime.context.request_id,
+                "user_message_id": runtime.context.user_message_id,
+            })
+            if result.get("analysis_status") not in ("completed", "failed"):
+                raise InvalidMessageState("emotion subgraph did not reach a terminal state")
+            _append_node(facts.trace, "analyze_emotion", result["analysis_status"],
+                         started, self.dependencies.clock())
+            facts.trace["emotion_analysis_id"] = result["analysis_id"]
+            return {"emotion_analysis_id": result["analysis_id"],
+                    "emotion_status": result["analysis_status"]}
+        except BaseException as exc:
+            logging.getLogger(__name__).warning("Emotion subgraph failure type: %s", type(exc).__name__)
+            code = "process_interrupted" if isinstance(exc, (asyncio.CancelledError, NodeCancelledError)) else "database_error"
+            try:
+                self._record_infrastructure_failure(facts, code, node_name="analyze_emotion")
+                await self._fail_with_facts(assistant_id, facts, error_code=code)
+            except Exception:
+                logging.getLogger(__name__).warning("Unable to persist failed turn %s", assistant_id)
+                if not isinstance(exc, (asyncio.CancelledError, NodeCancelledError)):
+                    raise DatabaseError() from None
+            finally:
+                self._runs.pop(assistant_id, None)
+            if isinstance(exc, (asyncio.CancelledError, NodeCancelledError)):
+                raise asyncio.CancelledError("emotion analysis interrupted") from exc
+            return {"phase": "failed", "error_code": code}
 
     async def generate_response(
         self, state: TurnState, runtime: Runtime[TurnContext]
@@ -137,7 +182,15 @@ class TurnNodes:
             runtime.context.conversation_id,
             limit=self.dependencies.context_message_limit,
         )
-        prompt = build_prompt(context_messages)
+        emotion_context = None
+        analysis_id = state.get("emotion_analysis_id")
+        if analysis_id:
+            analysis = await self.dependencies.emotion.repository.get(analysis_id)
+            if analysis is None or analysis.user_message_id != runtime.context.user_message_id:
+                raise InvalidMessageState("emotion analysis identity mismatch")
+            if analysis.status == "completed":
+                emotion_context = json.dumps(analysis.result_json, ensure_ascii=False)
+        prompt = build_prompt(context_messages, emotion_context=emotion_context)
         facts.prompt = [_serialize_message(message) for message in prompt]
         raw_parameters = getattr(self.dependencies.model, "parameters", None)
         facts.parameters = redact_secrets(raw_parameters)
@@ -239,7 +292,7 @@ class TurnNodes:
         facts.finish_reason = "error"
         _set_stream_trace(facts)
         calls = facts.trace.get("model_calls")
-        if not isinstance(calls, list) or not calls:
+        if node_name != "analyze_emotion" and (not isinstance(calls, list) or not calls):
             _append_model_call(facts)
         _trace_errors(facts.trace).append(
             {"code": error_code, "message": _safe_error_message(error_code)}

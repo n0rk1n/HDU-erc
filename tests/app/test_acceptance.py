@@ -16,7 +16,7 @@ from pydantic import SecretStr
 
 from chatbot.core.config import AppConfig
 from chatbot.llm.types import ModelDelta, TokenUsage
-from chatbot.web import create_app
+from tests.emotion.helpers import create_app
 from tests.api.helpers import parse_sse
 
 
@@ -330,6 +330,7 @@ def test_same_sqlite_path_preserves_completed_turn_and_checkpoint_across_restart
     trace = json.loads(trace_json)
     assert [node["name"] for node in trace["nodes"]] == [
         "prepare_turn",
+        "analyze_emotion",
         "generate_response",
         "finalize_turn",
     ]

@@ -38,3 +38,18 @@ async def test_v1_migration_preserves_rows(tmp_path):
     async with db.connect() as con:
         assert (await (await con.execute('PRAGMA user_version')).fetchone())[0] == 2
         assert (await (await con.execute('SELECT identifier FROM users')).fetchone())[0] == 'old'
+
+async def test_recovery_retains_running_snapshot_and_leaves_completed(database):
+    from chatbot.db.emotions import EmotionRepository
+    from chatbot.core.time import utc_now
+    repo=EmotionRepository(database)
+    convo=(await IdentityService(database).resolve('recovery')).conversation
+    turn=await MessageRepository(database).reserve_turn(convo.id,'r','hi')
+    row,_=await repo.reserve(convo.id,'r',turn.user.id)
+    await repo.start(row.id,snapshot={'parameters':{'model':'saved'}})
+    assert await repo.fail_interrupted(cutoff=utc_now())==1
+    final=await repo.get(row.id)
+    assert final.status=='failed'
+    assert final.snapshot_json['parameters']['model']=='saved'
+    assert final.error_json['code']=='process_interrupted'
+    assert await repo.fail_interrupted(cutoff=utc_now())==0

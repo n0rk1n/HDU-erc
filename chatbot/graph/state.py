@@ -10,6 +10,8 @@ class TurnState(TypedDict, total=False):
     request_id: str
     user_message_id: str
     assistant_message_id: str
+    emotion_analysis_id: str | None
+    emotion_status: str | None
     phase: str
     error_code: str | None
 

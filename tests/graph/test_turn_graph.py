@@ -20,13 +20,14 @@ from chatbot.core.errors import InvalidMessageState
 from chatbot.db.messages import MessageRepository
 from chatbot.graph import (
     EventPublisher,
-    NodeDependencies,
+
     TurnContext,
     TurnState,
     build_turn_graph,
     compile_turn_graph,
 )
 from chatbot.graph.nodes import TurnNodes
+from tests.emotion.helpers import dependencies as NodeDependencies
 from chatbot.llm.types import ModelDelta, TokenUsage
 from chatbot.services.events import TurnSubscription
 from chatbot.services.identity import IdentityService
@@ -38,6 +39,8 @@ STATE_FIELDS = {
     "request_id",
     "user_message_id",
     "assistant_message_id",
+    "emotion_analysis_id",
+    "emotion_status",
     "phase",
     "error_code",
 }
@@ -256,11 +259,13 @@ async def test_graph_runs_real_runtime_context_nodes_in_order(
     trace = json.loads(assistant.trace_json)
     assert [node["name"] for node in trace["nodes"]] == [
         "prepare_turn",
+        "analyze_emotion",
         "generate_response",
         "finalize_turn",
     ]
     assert [node["status"] for node in trace["nodes"]] == [
         "completed",
+        "failed",
         "completed",
         "completed",
     ]

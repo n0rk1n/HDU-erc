@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from chatbot.core.config import AppConfig
-from chatbot.web import create_app
+from tests.emotion.helpers import create_app
 from tests.api.helpers import OfflineModel
 
 

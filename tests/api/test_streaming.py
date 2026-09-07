@@ -12,7 +12,8 @@ from langchain_core.messages import BaseMessage
 from chatbot.db.messages import MessageRepository
 from chatbot.llm.types import ModelDelta
 from chatbot.services.events import SseEvent, TurnSubscription
-from chatbot.web import create_app, format_sse, stream_subscription
+from tests.emotion.helpers import create_app
+from chatbot.web import format_sse, stream_subscription
 from tests.api.helpers import OfflineModel, parse_sse
 
 
@@ -101,7 +102,7 @@ def test_model_failure_after_headers_is_only_a_safe_error_event(
     app_config,
 ) -> None:
     """Catches an in-stream failure changing HTTP status or leaking the raw exception."""
-    from chatbot.web import create_app
+    from tests.emotion.helpers import create_app
 
     app = create_app(config=app_config, model=OfflineModel(fail=True))
     with TestClient(app) as client:

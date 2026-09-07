@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from chatbot.db.messages import MessageRepository
+from chatbot.emotion.graph import EmotionRuntime
 from chatbot.llm.types import ChatModelAdapter
 
 
@@ -16,6 +17,7 @@ def _utc_now() -> datetime:
 class NodeDependencies:
     messages: MessageRepository
     model: ChatModelAdapter
+    emotion: EmotionRuntime
     context_message_limit: int = 40
     clock: Callable[[], datetime] = _utc_now
     flush_interval_seconds: float = 0.250

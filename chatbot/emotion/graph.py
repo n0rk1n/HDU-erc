@@ -2,6 +2,7 @@
 from __future__ import annotations
 import asyncio
 import json
+import logging
 from dataclasses import dataclass,asdict
 from time import monotonic
 from typing import TypedDict
@@ -81,8 +82,9 @@ def build_emotion_graph(runtime: EmotionRuntime):
         except asyncio.CancelledError:
             try:
                 await repo.finish(state['analysis_id'],status='failed',facts={'error':{'stage':'model','type':'CancelledError','code':'process_interrupted','message':'emotion analysis cancelled'}})
-            finally:
-                raise
+            except Exception:
+                logging.getLogger(__name__).warning("Unable to persist cancelled emotion analysis %s", state["analysis_id"])
+            raise
         except Exception as exc:
             return {'error':error_facts(exc,stage='model',secret=secret)}
         if outcome.error:

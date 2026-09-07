@@ -18,6 +18,11 @@ from chatbot.core.errors import DomainError
 from chatbot.db.connection import Database, configure_connection
 from chatbot.db.conversations import ConversationRepository
 from chatbot.db.messages import MessageRepository
+from chatbot.db.emotions import EmotionRepository
+from chatbot.emotion.graph import EmotionRuntime
+from chatbot.emotion.config import load_emotion_settings, load_taxonomy
+from chatbot.emotion.prompt import load_examples
+from chatbot.emotion.model import OpenAICompatibleEmotionModel, ModelTokenCounter
 from chatbot.db.schema import initialize_schema
 from chatbot.graph import NodeDependencies, compile_turn_graph
 from chatbot.llm.openai_compatible import OpenAICompatibleChatModel
@@ -41,6 +46,7 @@ _STATIC_DIR = Path(__file__).with_name("static")
 def create_app(
     config: AppConfig | None = None,
     model: ChatModelAdapter | None = None,
+    *, emotion: EmotionRuntime | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -58,7 +64,18 @@ def create_app(
             await _verify_saver_tables(saver_connection)
 
             messages = MessageRepository(database)
-            recovery_report = await recover_interrupted_turns(messages, checkpointer)
+            emotion_timeout = runtime_config.llm_timeout_seconds
+            if emotion is None:
+                emotion_settings = load_emotion_settings(runtime_config)
+                taxonomy = load_taxonomy(emotion_settings.labels_path, emotion_settings.families_path)
+                emotion_model = OpenAICompatibleEmotionModel(emotion_settings)
+                runtime_emotion = EmotionRuntime(EmotionRepository(database), messages, emotion_model,
+                    ModelTokenCounter(emotion_model.client, tokenizer_model=emotion_settings.tokenizer_model),
+                    emotion_settings.budget, taxonomy, load_examples(emotion_settings.examples_path, taxonomy))
+                emotion_timeout = emotion_settings.timeout_seconds
+            else:
+                runtime_emotion = emotion
+            recovery_report = await recover_interrupted_turns(messages, checkpointer, emotions=runtime_emotion.repository)
             runtime_model = (
                 model
                 if model is not None
@@ -68,6 +85,7 @@ def create_app(
                 NodeDependencies(
                     messages=messages,
                     model=runtime_model,
+                    emotion=runtime_emotion,
                     context_message_limit=runtime_config.context_message_limit,
                 ),
                 checkpointer,
@@ -83,6 +101,7 @@ def create_app(
             app.state.identity = IdentityService(database)
             app.state.conversations = conversations
             app.state.messages = messages
+            app.state.emotions = runtime_emotion.repository
             app.state.checkpointer = checkpointer
             app.state.coordinator = coordinator
             app.state.recovery_report = recovery_report
@@ -91,7 +110,7 @@ def create_app(
             shutdown_error: BaseException | None = None
             if coordinator is not None:
                 try:
-                    await coordinator.shutdown(runtime_config.llm_timeout_seconds)
+                    await coordinator.shutdown(runtime_config.llm_timeout_seconds + emotion_timeout)
                 except BaseException as error:
                     shutdown_error = error
             if saver_connection is not None:

@@ -18,10 +18,12 @@ def build_turn_graph(deps: NodeDependencies) -> StateGraph:
     nodes = TurnNodes(deps)
     builder = StateGraph(TurnState, context_schema=TurnContext)
     builder.add_node("prepare_turn", nodes.prepare_turn)
+    builder.add_node("analyze_emotion", nodes.analyze_emotion)
     builder.add_node("generate_response", nodes.generate_response)
     builder.add_node("finalize_turn", nodes.finalize_turn)
     builder.add_edge(START, "prepare_turn")
-    builder.add_edge("prepare_turn", "generate_response")
+    builder.add_edge("prepare_turn", "analyze_emotion")
+    builder.add_edge("analyze_emotion", "generate_response")
     builder.add_edge("generate_response", "finalize_turn")
     builder.add_edge("finalize_turn", END)
     return builder

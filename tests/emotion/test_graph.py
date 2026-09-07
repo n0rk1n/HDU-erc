@@ -43,3 +43,21 @@ async def test_graph_persists_before_call_and_failure_keeps_facts(database,raw,e
     if status=='failed': assert row.error_json
     await graph.ainvoke(state)
     assert model.calls==1
+
+async def test_oversize_current_input_is_audited_without_model_call(database):
+    from chatbot.emotion.graph import EmotionRuntime,build_emotion_graph
+    from tests.emotion.helpers import emotion_runtime
+    from dataclasses import replace
+    messages=MessageRepository(database)
+    convo=(await IdentityService(database).resolve('too-long')).conversation
+    turn=await messages.reserve_turn(convo.id,'long','x'*100)
+    class Never:
+        parameters={'model':'never'}
+        async def invoke(self,prompt):raise AssertionError('must not call')
+    runtime=replace(emotion_runtime(database,Never()),budget=BudgetConfig(100,10,5))
+    result=await build_emotion_graph(runtime).ainvoke({'conversation_id':convo.id,'request_id':'long','user_message_id':turn.user.id})
+    row=await runtime.repository.get(result['analysis_id'])
+    assert row.status=='failed'
+    assert row.error_json['code']=='context_budget_exceeded'
+    assert row.snapshot_json['budget']['history_token_cap']==60
+    assert row.input_tokens is None
