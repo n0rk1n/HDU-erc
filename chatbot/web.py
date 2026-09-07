@@ -110,6 +110,7 @@ def create_app(
                 conversations=conversations,
                 messages=messages,
                 graph=graph,
+                bubble_gap_ms=runtime_config.chat_bubble_gap_ms,
             )
 
             app.state.database = database

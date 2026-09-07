@@ -1011,6 +1011,17 @@ button:disabled {
 .message--assistant article { row-gap: 0.55rem; }
 .message--assistant article::before { grid-row: 1; background: var(--accent); border-color: var(--accent); color: #fff; }
 .message--assistant article .message-body { margin-top: 0.3rem; }
+.message-bubbles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.65rem; min-width: 0; }
+.message--assistant .message-bubbles { grid-column: 2; }
+.message--assistant article .message-bubbles .message-body {
+  max-width: 100%; margin: 0; padding: 0.65rem 0.9rem;
+  border: 1px solid var(--border); border-radius: 0.25rem 1rem 1rem;
+  background: var(--surface); overflow-wrap: anywhere;
+}
+.message--assistant[data-state="streaming"] .message-bubbles:empty::after,
+.message--assistant[data-state="pending"] .message-bubbles:empty::after {
+  content: "…"; color: var(--text-muted); padding: 0.25rem 0.9rem;
+}
 .message--assistant article .message-error { margin-top: 0; }
 .message-error:empty, .message-body:empty { display: none; }
 .message--assistant[data-state="streaming"], .message--assistant[data-state="pending"] { opacity: 1; }

@@ -39,11 +39,14 @@ async def test_v2_upgrade_preserves_analysis_and_recovers_attempt(tmp_path):
         for ddl in (*V1_DDL_STATEMENTS,*V2_DDL_STATEMENTS):await con.execute(ddl)
         await con.execute('PRAGMA user_version=2')
     convo=(await IdentityService(db).resolve('old')).conversation
-    turn=await MessageRepository(db).reserve_turn(convo.id,'r','hello')
-    analysis,_=await EmotionRepository(db).reserve(convo.id,'r',turn.user.id)
+    # Seed an actual v2 row, without asking the current repository to read an old schema.
+    async with db.transaction() as con:
+        await con.execute("""INSERT INTO messages(id,conversation_id,request_id,sequence_no,role,status,content,created_at,updated_at)
+            VALUES ('old-user',?,'r',1,'user','completed','hello','2026-09-03','2026-09-03')""",(convo.id,))
+    analysis,_=await EmotionRepository(db).reserve(convo.id,'r','old-user')
     await initialize_schema(db);await initialize_schema(db)
     assert (await EmotionRepository(db).get(analysis.id)).status=='pending'
-    repo=GateRepository(db);row,_=await repo.reserve(convo.id,'r',turn.user.id)
+    repo=GateRepository(db);row,_=await repo.reserve(convo.id,'r','old-user')
     await repo.start(row.id,snapshot={'retained':'yes'})
     await repo.start_attempt(row.id,snapshot={'input':'saved'})
     assert await repo.fail_interrupted(cutoff='9999')==1

@@ -17,7 +17,7 @@ _MESSAGE_COLUMNS = """
     id, conversation_id, request_id, sequence_no, role, status, content,
     reasoning_content, trace_json, prompt_json, provider, model, parameters_json,
     input_tokens, output_tokens, total_tokens, latency_ms, finish_reason,
-    error_code, error_message, created_at, updated_at, completed_at
+    error_code, error_message, created_at, updated_at, completed_at, bubbles_json
 """
 _UNSET = object()
 
@@ -117,7 +117,7 @@ class MessageRepository:
             cursor = await connection.execute(
                 f"""
                 SELECT id, request_id, sequence_no, role, status, content,
-                       error_code, error_message, created_at, updated_at, completed_at
+                       error_code, error_message, created_at, updated_at, completed_at, bubbles_json
                 FROM messages
                 WHERE {condition}
                 ORDER BY sequence_no DESC
@@ -138,8 +138,27 @@ class MessageRepository:
             "created_at",
             "updated_at",
             "completed_at",
+            "bubbles_json",
         )
-        return [dict(zip(keys, row, strict=True)) for row in reversed(rows)]
+        result = []
+        for row in reversed(rows):
+            message = dict(zip(keys, row, strict=True))
+            raw_bubbles = message.pop("bubbles_json")
+            message["bubbles"] = None if raw_bubbles is None else json.loads(raw_bubbles)
+            result.append(message)
+        return result
+
+    async def save_bubbles(self, assistant_message_id: str, bubbles: list[str]) -> None:
+        """Commit complete display text and boundaries together before publishing."""
+        if len(bubbles) > 3 or any(not isinstance(text, str) or not text.strip() for text in bubbles):
+            raise ValueError("invalid reply bubbles")
+        async with self.database.transaction(immediate=True) as connection:
+            cursor = await connection.execute(
+                """UPDATE messages SET content=?, bubbles_json=?, updated_at=?
+                   WHERE id=? AND role='assistant' AND status='streaming'""",
+                ("\n\n".join(bubbles), _stable_json(bubbles), utc_now(), assistant_message_id),
+            )
+            _require_single_update(cursor)
 
     async def list_context(
         self, conversation_id: str, *, limit: int

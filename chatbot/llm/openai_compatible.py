@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import aclosing
 from typing import Protocol, cast
 from urllib.parse import urlsplit
 
@@ -47,6 +48,7 @@ class OpenAICompatibleChatModel:
                 temperature=config.llm_temperature,
                 timeout=config.llm_timeout_seconds,
                 streaming=True,
+                model_kwargs={"response_format": {"type": "json_object"}},
                 extra_body=self._extra_body,
             )
         )
@@ -67,6 +69,7 @@ class OpenAICompatibleChatModel:
             "temperature": self._temperature,
             "timeout": self._timeout,
             "streaming": True,
+            "response_format": {"type": "json_object"},
             **({"extra_body": self._extra_body} if self._extra_body else {}),
         }
 
@@ -74,8 +77,9 @@ class OpenAICompatibleChatModel:
         self, prompt: Sequence[BaseMessage]
     ) -> AsyncIterator[ModelDelta]:
         try:
-            async for chunk in self._client.astream(prompt):
-                yield parse_ai_message_chunk(chunk)
+            async with aclosing(self._client.astream(prompt)) as stream:
+                async for chunk in stream:
+                    yield parse_ai_message_chunk(chunk)
         except Exception:
             raise ModelStreamError("OpenAI-compatible model stream failed") from None
 

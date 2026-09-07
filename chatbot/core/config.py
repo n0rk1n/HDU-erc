@@ -22,6 +22,7 @@ class AppConfig:
     context_message_limit: int
     sqlite_db_path: Path
     llm_thinking: str = "disabled"
+    chat_bubble_gap_ms: int = 500
     llm_reasoning_effort: str | None = None
 
     def __post_init__(self) -> None:
@@ -29,6 +30,8 @@ class AppConfig:
             raise ConfigError("CHAT_LLM_THINKING must be disabled or enabled")
         if self.llm_reasoning_effort not in {None, "low", "high", "max"}:
             raise ConfigError("CHAT_LLM_REASONING_EFFORT must be low, high or max")
+        if type(self.chat_bubble_gap_ms) is not int or not 0 <= self.chat_bubble_gap_ms <= 10000:
+            raise ConfigError("CHAT_BUBBLE_GAP_MS must be an integer between 0 and 10000")
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -50,6 +53,7 @@ class AppConfig:
             sqlite_db_path=sqlite_path,
             llm_thinking=model_settings.thinking,
             llm_reasoning_effort=model_settings.reasoning_effort,
+            chat_bubble_gap_ms=_integer("CHAT_BUBBLE_GAP_MS", 500),
         )
 
 

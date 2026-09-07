@@ -48,6 +48,7 @@ class Message:
     created_at: str
     updated_at: str
     completed_at: str | None
+    bubbles_json: str | None = None
 
 
 @dataclass(frozen=True)

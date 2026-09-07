@@ -67,6 +67,21 @@ def test_config_uses_documented_defaults(monkeypatch: pytest.MonkeyPatch) -> Non
     assert config.sqlite_db_path == Path("data/chatbot.sqlite3")
 
 
+@pytest.mark.parametrize("value", ["0", "750", "10000"])
+def test_bubble_gap_env_is_loaded(monkeypatch, value):
+    set_valid_environment(monkeypatch)
+    monkeypatch.setenv("CHAT_BUBBLE_GAP_MS", value)
+    assert AppConfig.from_env().chat_bubble_gap_ms == int(value)
+
+
+@pytest.mark.parametrize("value", ["-1", "10001", "1.5", "nan"])
+def test_invalid_bubble_gap_stops_startup(monkeypatch, value):
+    set_valid_environment(monkeypatch)
+    monkeypatch.setenv("CHAT_BUBBLE_GAP_MS", value)
+    with pytest.raises(ConfigError, match="CHAT_BUBBLE_GAP_MS"):
+        AppConfig.from_env()
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [

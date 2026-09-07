@@ -22,7 +22,7 @@ from chatbot.llm.openai_compatible import (
     OpenAICompatibleChatModel,
     parse_ai_message_chunk,
 )
-from chatbot.llm.prompt import SYSTEM_PROMPT, build_prompt
+from chatbot.llm.prompt import build_prompt
 
 
 def _config() -> AppConfig:
@@ -120,14 +120,14 @@ def test_build_prompt_accepts_repository_context_and_preserves_order() -> None:
         AIMessage,
         HumanMessage,
     ]
-    assert [message.content for message in prompt] == [
-        SYSTEM_PROMPT,
+    assert [message.content for message in prompt[1:]] == [
         "第一个问题",
         "第一个回答",
         "第二个问题",
     ]
     from chatbot.llm.prompt import get_system_prompt
-    assert prompt[0].content == get_system_prompt()
+    from chatbot.llm.bubbles import REPLY_FORMAT_PROMPT
+    assert prompt[0].content == get_system_prompt() + "\n\n" + REPLY_FORMAT_PROMPT
 
 
 def test_build_prompt_also_accepts_persisted_message_objects() -> None:
@@ -255,6 +255,7 @@ def test_adapter_constructs_real_chat_openai_with_exact_config() -> None:
     adapter = OpenAICompatibleChatModel(_config())
     client = adapter.client
 
+    assert client._get_request_payload(build_prompt([{"role": "user", "content": "hi"}]))["response_format"] == {"type": "json_object"}
     assert client.model_name == "unit-model"
     assert client.openai_api_base == "https://example.invalid/v1"
     assert client.temperature == 0.25
@@ -268,6 +269,7 @@ def test_adapter_constructs_real_chat_openai_with_exact_config() -> None:
         "temperature": 0.25,
         "timeout": 17.0,
         "streaming": True,
+        "response_format": {"type": "json_object"},
     }
     assert "sk-unit-secret" not in repr(adapter)
     assert "sk-unit-secret" not in repr(adapter.parameters)
@@ -308,6 +310,24 @@ class _ChunkSource:
             yield chunk
         if self._error is not None:
             raise self._error
+
+
+@pytest.mark.asyncio
+async def test_adapter_closes_provider_iterator_when_consumer_stops():
+    """Catches invalid-response handling leaving the upstream HTTP stream alive."""
+    closed = []
+    class Source:
+        async def astream(self, prompt):
+            try:
+                yield AIMessageChunk(content="first")
+                yield AIMessageChunk(content="second")
+            finally:
+                closed.append(True)
+    adapter = OpenAICompatibleChatModel(_config(), client=Source())
+    stream = adapter.stream([HumanMessage(content="hi")])
+    await anext(stream)
+    await stream.aclose()
+    assert closed == [True]
 
 
 @pytest.mark.asyncio

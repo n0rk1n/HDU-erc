@@ -44,6 +44,7 @@ def test_post_stream_emits_fetch_compatible_ordered_unicode_sse(
         "progress",
         "token",
         "token",
+        "bubble",
         "done",
     ]
     assert frames[0][1]["request_id"] == request_id
