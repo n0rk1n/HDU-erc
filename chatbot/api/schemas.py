@@ -58,6 +58,30 @@ class ResolveUserResponse(BaseModel):
     conversation: PublicConversation
 
 
+class PublicEmotion(BaseModel):
+    label: str
+    display_label: str
+    confidence: float = Field(ge=0, le=1)
+    evidence: str
+    source_message_id: str
+    sequence_no: int
+    analyzed_at: str | None
+
+
+class PublicStep(BaseModel):
+    id: Literal["received", "decision", "emotion", "response"]
+    status: Literal["pending", "running", "completed", "failed", "skipped"]
+
+
+class PublicProcessing(BaseModel):
+    steps: list[PublicStep]
+    emotion_status: Literal["not_started", "running", "completed", "failed", "skipped"]
+    emotion_invoked: bool
+    emotion: PublicEmotion | None
+    elapsed_ms: int | None
+    started_at: str
+
+
 class PublicMessage(BaseModel):
     id: str
     request_id: str
@@ -70,10 +94,12 @@ class PublicMessage(BaseModel):
     created_at: str
     updated_at: str
     completed_at: str | None
+    processing: PublicProcessing | None = None
 
 
 class MessageHistoryResponse(BaseModel):
     messages: list[PublicMessage]
+    latest_emotion: PublicEmotion | None = None
 
 
 class PublicError(BaseModel):

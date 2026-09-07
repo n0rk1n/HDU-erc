@@ -15,6 +15,7 @@ from chatbot.api.schemas import (
 )
 from chatbot.core.errors import SAFE_PUBLIC_ERROR_MESSAGES, UserNotFound
 from chatbot.services.events import SseEvent
+from chatbot.services.presentation import PresentationService
 
 
 class EventSubscription(Protocol):
@@ -41,8 +42,14 @@ async def list_messages(
         limit=limit,
         before_sequence=before_sequence,
     )
+    processing, latest = await PresentationService(request.app.state.database).snapshot(
+        conversation.id, [item["request_id"] for item in visible if item["role"] == "assistant"]
+    )
     return MessageHistoryResponse(
-        messages=[_safe_history_message(item) for item in visible]
+        messages=[{**_safe_history_message(item), "processing":
+                   processing.get(item["request_id"]) if item["role"] == "assistant" else None}
+                  for item in visible],
+        latest_emotion=latest,
     )
 
 

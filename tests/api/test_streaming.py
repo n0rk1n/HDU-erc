@@ -39,13 +39,16 @@ def test_post_stream_emits_fetch_compatible_ordered_unicode_sse(
     assert [event for event, _ in frames] == [
         "run_started",
         "user_message",
+        "progress",
+        "progress",
+        "progress",
         "token",
         "token",
         "done",
     ]
     assert frames[0][1]["request_id"] == request_id
     assert frames[1][1]["content"] == "你好"
-    assert [frames[2][1]["content"], frames[3][1]["content"]] == ["你", "好"]
+    assert [data["content"] for name, data in frames if name == "token"] == ["你", "好"]
     assert frames[-1][1]["message"]["status"] == "completed"
     assert "\\u4f60" not in response.text
     assert response.text.endswith("\n\n")
@@ -119,6 +122,9 @@ def test_model_failure_after_headers_is_only_a_safe_error_event(
     assert [name for name, _ in frames] == [
         "run_started",
         "user_message",
+        "progress",
+        "progress",
+        "progress",
         "token",
         "error",
     ]

@@ -275,7 +275,7 @@ async def test_graph_runs_real_runtime_context_nodes_in_order(
     ]
     assert assistant.content == "答案"
     assert assistant.reasoning_content == "真实依据"
-    assert context.publisher.events == [
+    assert [event for event in context.publisher.events if event[0] == "token"] == [
         ("token", {"content": "答"}),
         ("token", {"content": "案"}),
     ]

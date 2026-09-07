@@ -19,6 +19,7 @@ from chatbot.db.messages import MessageRepository
 from chatbot.db.models import Message, ReservedTurn
 from chatbot.graph.state import TurnContext, TurnState
 from chatbot.services.events import TurnSubscription
+from chatbot.services.presentation import PresentationService
 
 
 class TurnGraph(Protocol):
@@ -234,7 +235,7 @@ class TurnCoordinator:
             if assistant.status == "completed":
                 await subscription.publish(
                     "done",
-                    {"message": _public_message(assistant), "replayed": False},
+                    await self._done_payload(assistant, replayed=False),
                 )
             elif assistant.status == "failed":
                 await subscription.publish("error", _public_error(assistant.error_code))
@@ -312,12 +313,18 @@ class TurnCoordinator:
             )
             await subscription.publish(
                 "done",
-                {"message": _public_message(assistant), "replayed": True},
+                await self._done_payload(assistant, replayed=True),
             )
         else:
             await subscription.publish("error", _public_error(assistant.error_code))
         subscription.close()
         return subscription
+
+    async def _done_payload(self, assistant: Message, *, replayed: bool):
+        view = await PresentationService(self._messages.database).turn(
+            assistant.conversation_id, assistant.request_id)
+        return {"message": {**_public_message(assistant), "processing": view["processing"]},
+                "latest_emotion": view["latest_emotion"], "replayed": replayed}
 
     async def _repository_call(self, operation):
         try:

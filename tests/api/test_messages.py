@@ -61,6 +61,7 @@ def test_history_returns_only_approved_fields_in_ascending_order(
         "created_at",
         "updated_at",
         "completed_at",
+        "processing",
     }
     assert all(set(message) == approved for message in messages)
     failed = [message for message in messages if message["status"] == "failed"]

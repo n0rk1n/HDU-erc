@@ -395,6 +395,7 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
             "identity-view", "identity-form", "identifier-input", "identity-status",
             "chat-view", "current-identifier", "switch-user", "message-list",
             "chat-status", "message-form", "message-input", "send-message",
+            "emotion-label", "emotion-meta", "emotion-badge", "conversation-stage",
           ];
           const nodes = Object.fromEntries(ids.map((id) => [id, new Element()]));
           return {
@@ -454,6 +455,8 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
             fetch,
             window,
           };
+          const presentationPath = require("node:path").join(require("node:path").dirname(process.argv[1]), "presentation.js");
+          vm.runInNewContext(fs.readFileSync(presentationPath, "utf8"), context, { filename: "presentation.js" });
           vm.runInNewContext(fs.readFileSync(process.argv[1], "utf8"), context, { filename: "app.js" });
           return { document, timers, window };
         }
@@ -853,7 +856,66 @@ def test_chat_script_executes_recovery_ordering_and_initial_history_failures() -
           assert.equal(input.style.height, "", "sending restores the default composer height");
         }
 
+        function descendantText(element) {
+          return [element.textContent, ...element.children.map(descendantText)].join(" ");
+        }
+
+        async function runEmotionPresentation() {
+          const emotion = { label: "sad", display_label: "难过", confidence: .9,
+            evidence: "<img src=x onerror=alert(1)>", source_message_id: "u1",
+            sequence_no: 1, analyzed_at: "2026-09-07T03:00:00+00:00" };
+          const processing = { emotion_status: "completed", emotion_invoked: true,
+            emotion, elapsed_ms: 2400, started_at: "2026-09-07T02:59:58+00:00",
+            steps: [{ id: "received", status: "completed" },
+              { id: "decision", status: "completed" }, { id: "emotion", status: "completed" },
+              { id: "response", status: "completed" }] };
+          let user = 0;
+          const app = await boot(async (url) => {
+            if (url === "/api/users/resolve") return { ok: true, json: async () => ({
+              user: { id: ++user, identifier: user === 1 ? "alice" : "bob" }, conversation: { id: "c" } }) };
+            if (url.endsWith("/messages")) return { ok: true, json: async () => ({
+              latest_emotion: user === 1 ? emotion : null,
+              messages: user === 1 ? [{ id: "a1", request_id: "r1", sequence_no: 2,
+                role: "assistant", content: "回答", status: "completed", processing }] : [] }) };
+            return sse([
+              { name: "run_started", data: {} },
+              { name: "user_message", data: { id: "u2", sequence_no: 3, content: "继续聊聊" } },
+              { name: "progress", data: { processing: { ...processing, emotion: null,
+                emotion_status: "skipped", steps: [{ id: "emotion", status: "skipped" },
+                  { id: "response", status: "running" }] }, latest_emotion: emotion } },
+              { name: "token", data: { content: "新回答" } },
+              { name: "done", data: { message: { id: "a2", sequence_no: 4, status: "completed",
+                content: "新回答", processing: { ...processing, emotion_status: "skipped", emotion: null,
+                  steps: [{ id: "emotion", status: "skipped" }, { id: "response", status: "completed" }] } },
+                latest_emotion: emotion } },
+            ]);
+          });
+          await enter(app);
+          const first = app.document.nodes["message-list"].children[0];
+          assert.equal(app.document.nodes["emotion-label"].textContent, "难过");
+          assert.match(descendantText(first), /90%/);
+          assert.match(descendantText(first), /<img src=x onerror=alert\(1\)>/);
+          assert.equal(first.querySelector("img"), null, "evidence is plain text, never executable HTML");
+          assert.equal(first.querySelector("p").textContent, "回答", "card does not replace reply text");
+          const card = first.querySelector("details");
+          assert.equal(card.open, false);
+          app.document.nodes["message-input"].value = "继续聊聊";
+          app.document.nodes["message-form"].dispatch("submit");
+          await settle(60);
+          const last = app.document.nodes["message-list"].children[2];
+          assert.equal(last.querySelector("p").textContent, "新回答");
+          assert.match(descendantText(last), /本轮未调用情绪识别/);
+          assert.doesNotMatch(descendantText(last), /90%/);
+          assert.equal(app.document.nodes["emotion-label"].textContent, "难过");
+          app.document.nodes["switch-user"].dispatch("click");
+          assert.equal(app.document.nodes["emotion-label"].textContent, "尚未识别");
+          await enter(app);
+          assert.equal(app.document.nodes["emotion-label"].textContent, "尚未识别");
+          assert.equal(app.document.nodes["message-list"].children.length, 0);
+        }
+
         Promise.resolve()
+          .then(runEmotionPresentation)
           .then(runSlowRecovery)
           .then(runTwoTurns)
           .then(runFailedRecovery)

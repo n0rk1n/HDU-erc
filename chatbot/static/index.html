@@ -113,13 +113,16 @@
               <p class="eyebrow">智能助手</p>
               <h1 id="chat-title">新对话</h1>
             </div>
-            <div class="model-state">
-              <span class="online-dot" aria-hidden="true"></span>
-              AI 在线
+            <div id="emotion-badge" class="emotion-badge" role="status" aria-live="polite" data-state="empty">
+              <span class="emotion-orbit" aria-hidden="true">✧</span>
+              <div class="emotion-badge-copy">
+                <div class="emotion-badge-heading"><span>情绪状态</span><strong id="emotion-label">尚未识别</strong></div>
+                <span id="emotion-meta">随对话按需分析</span>
+              </div>
             </div>
           </header>
 
-          <div class="conversation-stage">
+          <div id="conversation-stage" class="conversation-stage" tabindex="0" role="region" aria-label="对话记录">
             <p id="chat-status" class="status chat-status" role="status" aria-live="polite"></p>
             <ol id="message-list" class="message-list" aria-label="聊天消息"></ol>
           </div>
@@ -140,6 +143,7 @@
         </div>
       </section>
     </main>
+    <script src="/static/presentation.js" defer></script>
     <script src="/static/app.js" defer></script>
   </body>
 </html>

@@ -10,6 +10,7 @@
 - 同一用户的已完成消息会进入下一轮模型 Prompt；不同用户的历史、Prompt 和 checkpoint 相互隔离。
 - 默认首轮识别，之后由判定 Agent 按情绪变化提前触发，最多间隔 15 轮强制识别；间隔和历史窗口均可配置。跳过时默认引用最近成功情绪，标明来源轮次；识别失败默认普通回复，下轮再试。
 - 聊天、情绪识别、是否需要识别的判定 Agent 系统提示词、情绪标签、分类映射和示例均可通过 JSON 文件配置。
+- 聊天记录展示真实处理进度与本轮情绪识别结果，支持展开/折叠；右上角显示最近一次成功识别的情绪和时间。跳过和识别失败分别提示，不把旧结果当成本轮识别。
 - 流式回复支持 request ID 幂等重放；进程重启会保留已完成消息和正常 checkpoint，并把遗留中的回复标记为 `failed/process_interrupted`。
 - 模型调用通过 OpenAI-compatible 接口完成；普通历史 API 和前端不会返回内部 `thread_id`、Prompt、reasoning 或 trace。
 
@@ -277,9 +278,20 @@ curl -sS http://127.0.0.1:8000/api/users/resolve \
   -d '{"identifier":"demo"}'
 ```
 
-SSE 事件包括 `run_started`、`user_message`、`token`、`done`、`error`。同一对话中，重复提交相同 `request_id` 和正文不会重复生成，已结束的轮次可重放结果；该轮仍在运行，或同一用户已有另一轮生成中时返回 `409`。新一轮应生成新的 UUID4。客户端断连仅取消显示订阅，后台轮次继续执行，之后可通过历史接口查看结果。
+SSE 事件包括 `run_started`、`user_message`、`progress`、`token`、`done`、`error`。同一对话中，重复提交相同 `request_id` 和正文不会重复生成，已结束的轮次可重放结果；该轮仍在运行，或同一用户已有另一轮生成中时返回 `409`。新一轮应生成新的 UUID4。客户端断连仅取消显示订阅，后台轮次继续执行，之后可通过历史接口查看结果。
 
-普通 API 只返回公开消息字段，不暴露内部 `thread_id`、情绪审计、Prompt、reasoning 或 trace。
+普通 API 只返回公开消息字段与经过字段白名单筛选的情绪摘要，不暴露内部 `thread_id`、完整情绪审计、Prompt、reasoning 或 trace。
+
+### 聊天处理过程与情绪展示
+
+- `progress` 事件在后端准备完成、情绪判定完成和情绪分析结束后发送，携带 `request_id`、`assistant_message_id`、`processing` 和 `latest_emotion`。页面展示的是业务处理步骤，不是模型原始思维链；不使用计时器伪造步骤完成。
+- `processing` 包含 `steps`、`emotion_status`、`emotion_invoked`、`emotion`、`started_at` 和 `elapsed_ms`。步骤状态包括待处理、进行中、已完成、未完成和已跳过；耗时是从本轮消息保存到回复结束的总时间。
+- `emotion` 仅在本轮成功识别时出现，包含标签、中译名、模型置信度、简短依据、来源消息和识别时间。准备阶段失败时 `emotion_invoked=false`；跳过和失败都不会套用历史结果。
+- 历史接口的助手消息和 `done.message` 均包含相同的 `processing`；历史接口及 `done` 顶层返回 `latest_emotion`。最近结果独立于历史分页查询，同一用户刷新、断线恢复或重放都能恢复显示；切换用户会清空上一用户的状态。
+- 右上角始终标记“最近识别”与时间；本轮未识别或失败时保留最近成功结果，没有成功结果时显示“尚未识别”。`neutral` 显示“情绪平稳”，`no_emotion` 显示“未表达明确情绪”；两者都不是识别失败。
+- 历史步骤由已有消息、判定和分析记录重建，不增加数据库表；缺少这些记录的旧消息不补造处理过程。
+
+离线浏览器验收：先运行 `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m tests.ui.preview_emotion`，再在另一个终端运行 `node tests/ui/emotion_browser.cjs`（需要本地 Playwright 与 Chromium，可分别用 `PLAYWRIGHT_MODULE` 和 `CHROMIUM_EXECUTABLE` 指定已有安装）。测试服务仅监听 `127.0.0.1:8765`，使用 `data/ui-preview.sqlite3` 和离线模型，测试截图写入 `docs/verification/emotion-ui/`。
 
 ## 测试
 
@@ -327,7 +339,7 @@ SELECT user_message_id, status,
 FROM emotion_analyses ORDER BY created_at, id;
 ```
 
-`snapshot_json` 保存实际入模提示词、human/assistant 历史、标签和 family、示例、有效参数、token 计数和裁剪 ID；`raw_output`、`result_json`、`response_metadata_json`、`error_json` 分别保留原始输出、校验结果、服务元数据及错误。错误诊断包含可获取的阶段、类型、状态码、服务端请求 ID 和错误正文；未知字段为 NULL。连接凭据脱敏。reasoning_content 只记录模型实际返回的内容。审计信息不公开到当前普通历史 API 或前端。
+`snapshot_json` 保存实际入模提示词、human/assistant 历史、标签和 family、示例、有效参数、token 计数和裁剪 ID；`raw_output`、`result_json`、`response_metadata_json`、`error_json` 分别保留原始输出、校验结果、服务元数据及错误。错误诊断包含可获取的阶段、类型、状态码、服务端请求 ID 和错误正文；未知字段为 NULL。连接凭据脱敏。reasoning_content 只记录模型实际返回的内容。完整审计信息不公开到普通历史 API 或前端；页面仅使用经过字段白名单筛选的处理状态和情绪结果摘要。
 
 ## 数据、安全与部署边界
 

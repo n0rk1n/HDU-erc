@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from typing import Literal, cast
 
 
-EventName = Literal["run_started", "user_message", "token", "done", "error"]
-_EVENT_NAMES = frozenset({"run_started", "user_message", "token", "done", "error"})
+EventName = Literal["run_started", "user_message", "token", "done", "error", "progress"]
+_EVENT_NAMES = frozenset({"run_started", "user_message", "token", "done", "error", "progress"})
 _END = object()
 
 

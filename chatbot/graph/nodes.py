@@ -17,6 +17,7 @@ from chatbot.core.errors import DatabaseError, InvalidMessageState
 from chatbot.db.models import Message, ReservedTurn
 from chatbot.graph.dependencies import NodeDependencies
 from chatbot.graph.state import TurnContext, TurnState
+from chatbot.services.presentation import PresentationService
 from chatbot.llm.prompt import build_prompt
 from chatbot.emotion.graph import build_emotion_graph
 from chatbot.emotion_gate.runtime import decide_emotion
@@ -53,6 +54,18 @@ class TurnNodes:
         self._runs: dict[str, _RunFacts] = {}
         self._emotion_graph = build_emotion_graph(dependencies.emotion)
 
+    async def _publish_progress(self, context: TurnContext) -> None:
+        # Display delivery is best effort and must never change the model outcome.
+        try:
+            view = await PresentationService(self.dependencies.messages.database).turn(
+                context.conversation_id, context.request_id)
+            await context.publisher.publish("progress", {
+                "request_id": context.request_id,
+                "assistant_message_id": context.assistant_message_id, **view,
+            })
+        except Exception:
+            logging.getLogger(__name__).warning("Unable to publish processing progress")
+
     async def prepare_turn(
         self, state: TurnState, runtime: Runtime[TurnContext]
     ) -> TurnState:
@@ -83,6 +96,7 @@ class TurnNodes:
         ended_at = self.dependencies.clock()
         _append_node(facts.trace, "prepare_turn", "completed", started_at, ended_at)
         self._runs[assistant.id] = facts
+        await self._publish_progress(runtime.context)
         return {"phase": "streaming", "error_code": None, "emotion_analysis_id": None, "emotion_status": None, "gate_decision_id": None, "gate_action": None}
 
     async def decide_emotion(self, state: TurnState, runtime: Runtime[TurnContext]) -> TurnState:
@@ -105,6 +119,7 @@ class TurnNodes:
             _append_node(facts.trace, "decide_emotion", decision.status,
                          started, self.dependencies.clock())
             facts.trace["gate_decision_id"] = decision.id
+            await self._publish_progress(runtime.context)
             return {"gate_decision_id": decision.id, "gate_action": decision.action}
         except BaseException as exc:
             logging.getLogger(__name__).warning("Emotion gate failure type: %s", type(exc).__name__)
@@ -147,6 +162,7 @@ class TurnNodes:
             if state.get("gate_decision_id"):
                 await self.dependencies.gate.repository.attach_analysis(state["gate_decision_id"], result["analysis_id"])
             facts.trace["emotion_analysis_id"] = result["analysis_id"]
+            await self._publish_progress(runtime.context)
             return {"emotion_analysis_id": result["analysis_id"],
                     "emotion_status": result["analysis_status"]}
         except BaseException as exc:

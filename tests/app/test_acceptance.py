@@ -186,7 +186,7 @@ def test_completed_and_failed_request_replay_never_calls_model_again(tmp_path) -
 
     assert first[-1] == (
         "done",
-        {"message": first[-1][1]["message"], "replayed": False},
+        {"message": first[-1][1]["message"], "latest_emotion": None, "replayed": False},
     )
     assert [event for event, _ in replay] == ["run_started", "done"]
     assert replay[-1][1]["replayed"] is True

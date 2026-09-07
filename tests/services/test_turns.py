@@ -167,6 +167,7 @@ async def test_done_is_emitted_after_database_completion(database) -> None:
         "created_at": assistant.created_at,
         "updated_at": assistant.updated_at,
         "completed_at": assistant.completed_at,
+        "processing": None,
     }
     assert events[-1].data["replayed"] is False
     assert not ({"reasoning_content", "trace_json", "prompt_json", "parameters_json", "thread_id"} & events[-1].data["message"].keys())

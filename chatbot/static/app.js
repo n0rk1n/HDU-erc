@@ -1,6 +1,8 @@
 (() => {
   "use strict";
 
+  const presentation = window.ChatPresentation;
+
   const identityView = document.querySelector("#identity-view");
   const identityForm = document.querySelector("#identity-form");
   const identifierInput = document.querySelector("#identifier-input");
@@ -8,6 +10,7 @@
   const chatView = document.querySelector("#chat-view");
   const currentIdentifier = document.querySelector("#current-identifier");
   const switchUserButton = document.querySelector("#switch-user");
+  const conversationStage = document.querySelector("#conversation-stage");
   const messageList = document.querySelector("#message-list");
   const chatStatus = document.querySelector("#chat-status");
   const messageForm = document.querySelector("#message-form");
@@ -60,6 +63,7 @@
 
   function clearChat() {
     messageList.replaceChildren();
+    presentation.updateBadge(null);
     temporaryAssistant = null;
     resetMessageInput();
     setStatus(chatStatus, "");
@@ -76,6 +80,7 @@
     if (Number.isInteger(message.sequence_no)) item.dataset.sequence = String(message.sequence_no);
     body.textContent = typeof message.content === "string" ? message.content : "";
     detail.textContent = state === "failed" ? "生成未完成" : "";
+    presentation.render(item, message.processing, state);
   }
 
   function createMessage(message) {
@@ -87,6 +92,11 @@
 
     item.className = `message message--${role}`;
     article.setAttribute("aria-label", role === "user" ? "用户消息" : "助手消息");
+    body.className = "message-body";
+    detail.className = "message-error";
+    if (role === "assistant") article.append(Object.assign(document.createElement("div"), {
+      className: "assistant-heading", textContent: "小禾 · 对话助手",
+    }));
     article.append(body, detail);
     item.append(article);
     applyMessage(item, message);
@@ -107,9 +117,15 @@
     messageList.insertBefore(item, following ?? null);
   }
 
+  function followConversation(update, force = false) {
+    const follow = force || conversationStage.scrollHeight - conversationStage.scrollTop - conversationStage.clientHeight < 100;
+    update();
+    if (follow) conversationStage.scrollTop = conversationStage.scrollHeight;
+  }
+
   function appendMessage(message) {
     const item = createMessage(message);
-    placeMessage(item);
+    followConversation(() => placeMessage(item), true);
     return item;
   }
 
@@ -119,7 +135,7 @@
           .filter((message) => message && Number.isInteger(message.sequence_no))
           .sort((left, right) => left.sequence_no - right.sequence_no)
       : [];
-    messageList.replaceChildren(...publicMessages.map(createMessage));
+    followConversation(() => messageList.replaceChildren(...publicMessages.map(createMessage)), messageList.children.length === 0);
     temporaryAssistant = null;
   }
 
@@ -146,6 +162,7 @@
     const payload = await response.json();
     if (!sessionIsCurrent(expectedGeneration, session.user_id)) return;
     renderHistory(payload.messages);
+    presentation.updateBadge(payload.latest_emotion);
     return Array.isArray(payload.messages) ? payload.messages : [];
   }
 
@@ -253,8 +270,10 @@
 
   function updateTemporaryAssistant(message) {
     const item = ensureTemporaryAssistant();
-    applyMessage(item, message);
-    placeMessage(item);
+    followConversation(() => {
+      applyMessage(item, message);
+      placeMessage(item);
+    });
   }
 
   function removeTemporaryAssistant() {
@@ -294,7 +313,7 @@
   function handleStreamEvent(event) {
     if (event.name === "run_started") {
       ensureTemporaryAssistant(event.data ?? {});
-      setStatus(chatStatus, "正在生成回复…", "streaming");
+      setStatus(chatStatus, "正在处理你的消息…", "streaming");
     } else if (event.name === "user_message") {
       if (event.data && Number.isInteger(event.data.sequence_no)) {
         appendMessage({
@@ -305,10 +324,15 @@
           sequence_no: event.data.sequence_no,
         });
       }
+    } else if (event.name === "progress" && event.data?.processing) {
+      const item = ensureTemporaryAssistant(event.data);
+      followConversation(() => presentation.render(item, event.data.processing, "streaming"));
+      presentation.updateBadge(event.data.latest_emotion);
+      setStatus(chatStatus, presentation.headline(event.data.processing, "streaming"), "streaming");
     } else if (event.name === "token" && event.data && typeof event.data.content === "string") {
       const item = ensureTemporaryAssistant();
       const body = item.querySelector("p");
-      body.textContent += event.data.content;
+      followConversation(() => { body.textContent += event.data.content; });
       setStatus(chatStatus, "正在生成回复…", "streaming");
     } else if (event.name === "done" && event.data && event.data.message) {
       const message = event.data.message;
@@ -318,7 +342,9 @@
         sequence_no: message.sequence_no,
         status: message.status,
         content: message.content,
+        processing: message.processing,
       });
+      presentation.updateBadge(event.data.latest_emotion);
       setStatus(chatStatus, "回复已完成。", "completed");
       temporaryAssistant = null;
       return "done";
