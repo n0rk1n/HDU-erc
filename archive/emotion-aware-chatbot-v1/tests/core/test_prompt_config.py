@@ -7,7 +7,7 @@ from chatbot.core.prompt_config import DEFAULT_PROMPT_CONFIG_PATH, load_prompt_c
 def test_default_prompt_config_is_in_project_data_directory():
     path = Path(DEFAULT_PROMPT_CONFIG_PATH)
 
-    assert path.name == "prompts.json"
+    assert path.name == "chat_prompts.json"
     assert path.parent.name == "config"
     assert path.parent.parent.name == "data"
     assert path.parent.parent.parent == Path(__file__).resolve().parents[2]
@@ -23,7 +23,7 @@ def test_load_prompt_config_returns_defaults_when_file_missing(tmp_path, monkeyp
 
 
 def test_load_prompt_config_overrides_non_empty_prompt_values(tmp_path, monkeypatch):
-    config_file = tmp_path / "prompts.json"
+    config_file = tmp_path / "chat_prompts.json"
     config_file.write_text(
         json.dumps({
             "chat_system": "Custom chat system.",
@@ -40,7 +40,7 @@ def test_load_prompt_config_overrides_non_empty_prompt_values(tmp_path, monkeypa
 
 
 def test_load_prompt_config_keeps_defaults_for_empty_or_invalid_values(tmp_path, monkeypatch):
-    config_file = tmp_path / "prompts.json"
+    config_file = tmp_path / "chat_prompts.json"
     config_file.write_text(
         json.dumps({
             "chat_system": "",

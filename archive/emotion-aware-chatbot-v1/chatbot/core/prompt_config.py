@@ -7,7 +7,7 @@ from pathlib import Path
 
 from chatbot.core.paths import PROJECT_ROOT
 
-DEFAULT_PROMPT_CONFIG_PATH = str(PROJECT_ROOT / "data" / "config" / "prompts.json")
+DEFAULT_PROMPT_CONFIG_PATH = str(PROJECT_ROOT / "data" / "config" / "chat_prompts.json")
 
 DEFAULT_CHAT_SYSTEM_PROMPT = (
     "You are a gentle emotional companion in a private chat. Talk like a steady, "

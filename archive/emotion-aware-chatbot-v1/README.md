@@ -266,7 +266,7 @@ EMOTION_INTERVAL=5
 可以复制 `data/config/prompts.example.json`：
 
 ```bash
-cp data/config/prompts.example.json data/config/prompts.json
+cp data/config/prompts.example.json data/config/chat_prompts.json
 ```
 
 支持两个字段：

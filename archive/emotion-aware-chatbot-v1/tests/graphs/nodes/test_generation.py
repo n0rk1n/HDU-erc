@@ -45,7 +45,7 @@ def test_build_chat_prompt_keeps_contexts_separate():
 
 def test_build_chat_prompt_uses_prompt_config_file(tmp_path, monkeypatch):
     """Catches the graph path bypassing the configured companion system prompt."""
-    config_file = tmp_path / "prompts.json"
+    config_file = tmp_path / "chat_prompts.json"
     config_file.write_text('{"chat_system": "Custom companion rules."}', encoding="utf-8")
     monkeypatch.setenv("PROMPT_CONFIG_PATH", str(config_file))
 

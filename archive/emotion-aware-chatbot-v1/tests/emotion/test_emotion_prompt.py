@@ -131,7 +131,7 @@ def test_build_emotion_analysis_prompt_can_disable_examples():
 
 
 def test_build_emotion_analysis_prompt_uses_prompt_config_file(tmp_path, monkeypatch):
-    config_file = tmp_path / "prompts.json"
+    config_file = tmp_path / "chat_prompts.json"
     config_file.write_text(
         '{"emotion_analysis": "Custom labels={emotion_labels}\\n'
         'Examples:{example_block}\\nLikely:{likely_line}\\nContext:{dialogue_context}"}',

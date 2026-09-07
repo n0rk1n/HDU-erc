@@ -21,7 +21,7 @@ def prepare():
 
 
 def test_config_changes_reach_prompt_and_audit_next_analysis(tmp_path, monkeypatch):
-    path = tmp_path / 'prompts.json'
+    path = tmp_path / 'chat_prompts.json'
     monkeypatch.setenv('EMOTION_SYSTEM_PROMPT_PATH', str(path))
     path.write_text(json.dumps({'version': 'custom-1', 'system': '自定义识别规则'}))
     first = prepare()
@@ -44,7 +44,7 @@ def test_config_changes_reach_prompt_and_audit_next_analysis(tmp_path, monkeypat
     '{"version":"v","system":[]}',
     '{"version":"v","version":"other","system":"rules"}'])
 def test_invalid_config_is_not_silently_replaced(tmp_path, monkeypatch, content):
-    path = tmp_path / 'prompts.json'
+    path = tmp_path / 'chat_prompts.json'
     if content is not None:
         path.write_text(content)
     monkeypatch.setenv('EMOTION_SYSTEM_PROMPT_PATH', str(path))

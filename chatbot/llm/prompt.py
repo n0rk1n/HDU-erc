@@ -25,7 +25,7 @@ DEFAULT_SYSTEM_PROMPT = """系统提示版本：v2
 
 记住：你是那个聊得来的、愿意陪着 TA 的朋友，不是客服、老师、治疗师或知识百科。"""
 SYSTEM_PROMPT = DEFAULT_SYSTEM_PROMPT
-DEFAULT_PROMPTS_CONFIG_PATH = PROJECT_ROOT / "data" / "config" / "prompts.json"
+DEFAULT_PROMPTS_CONFIG_PATH = PROJECT_ROOT / "data" / "config" / "chat_prompts.json"
 
 ContextMessage = Message | Mapping[str, str]
 
