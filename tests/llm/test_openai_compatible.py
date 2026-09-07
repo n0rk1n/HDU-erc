@@ -39,14 +39,15 @@ def _config() -> AppConfig:
 
 @pytest.mark.parametrize("model", ["deepseek-v4-flash", "deepseek-v4-pro"])
 @pytest.mark.parametrize("base_url", ["https://api.deepseek.com", "https://api.deepseek.com/v1"])
-def test_deepseek_chat_requests_disable_thinking(model, base_url) -> None:
-    """Catches reply generation silently inheriting DeepSeek's thinking default."""
+@pytest.mark.parametrize("thinking", ["disabled", "enabled"])
+def test_deepseek_chat_requests_use_configured_thinking(model, base_url, thinking) -> None:
+    """Catches reply requests or audit ignoring the configured thinking mode."""
     adapter = OpenAICompatibleChatModel(
-        replace(_config(), llm_model=model, llm_base_url=base_url)
+        replace(_config(), llm_model=model, llm_base_url=base_url, llm_thinking=thinking)
     )
     payload = adapter.client._get_request_payload([HumanMessage(content="你好")])
-    assert payload["extra_body"] == {"thinking": {"type": "disabled"}}
-    assert adapter.parameters["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert payload["extra_body"] == {"thinking": {"type": thinking}}
+    assert adapter.parameters["extra_body"] == {"thinking": {"type": thinking}}
 
 
 @pytest.mark.parametrize("model,base_url", [

@@ -21,6 +21,11 @@ class AppConfig:
     llm_timeout_seconds: float
     context_message_limit: int
     sqlite_db_path: Path
+    llm_thinking: str = "disabled"
+
+    def __post_init__(self) -> None:
+        if self.llm_thinking not in {"disabled", "enabled"}:
+            raise ConfigError("CHAT_LLM_THINKING must be disabled or enabled")
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -40,6 +45,7 @@ class AppConfig:
             llm_timeout_seconds=model_settings.timeout_seconds,
             context_message_limit=context_limit,
             sqlite_db_path=sqlite_path,
+            llm_thinking=_optional("CHAT_LLM_THINKING") or "disabled",
         )
 
 

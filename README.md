@@ -46,7 +46,7 @@ SQLite：用户、对话、消息、判定及逐次调用审计、情绪分析�
 
 `reasoning_content` 只保存供应商确实返回的 reasoning；供应商没有返回时保持 `NULL`。它不会显示在当前前端或普通历史 API 中。
 
-对话回复使用 DeepSeek 官方接口（`api.deepseek.com`）的 `deepseek-v4-flash` 或 `deepseek-v4-pro` 时，显式发送 `extra_body={"thinking":{"type":"disabled"}}`，以非思考模式直接生成回复；该参数也写入调用审计。情绪判定、情绪识别仍使用各自原有的模型配置。其他模型或兼容端点不自动添加此供应商专用参数。参见 [DeepSeek 思考模式文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。
+对话回复使用 DeepSeek 官方接口（`api.deepseek.com`）的 `deepseek-v4-flash` 或 `deepseek-v4-pro` 时，通过 `.env` 中的 `CHAT_LLM_THINKING` 配置思考模式：`disabled` 关闭（默认），`enabled` 开启；未设置或留空时默认关闭，非法值会阻止启动。修改后重启服务生效。请求显式发送对应的 `extra_body={"thinking":{"type":"disabled"}}` 或 `enabled`，该参数也写入调用审计。情绪判定、情绪识别仍使用各自原有的模型配置。其他模型或兼容端点不自动添加此供应商专用参数。参见 [DeepSeek 思考模式文档](https://api-docs.deepseek.com/zh-cn/guides/thinking_mode/)。
 
 ## 项目结构
 
@@ -169,6 +169,7 @@ DeepSeek 的官方 tokenizer 和消息编码器随项目提供，固定版本与
 | `CHAT_LLM_BASE_URL` | `LLM_BASE_URL` |
 | `CHAT_LLM_TEMPERATURE` | `LLM_TEMPERATURE` |
 | `CHAT_LLM_TIMEOUT_SECONDS` | `LLM_TIMEOUT_SECONDS` |
+| `CHAT_LLM_THINKING` | `disabled`；聊天专用，不继承 `LLM_*`，仅接受 `disabled` / `enabled`。 |
 
 兼容已有 `.env`：原 `LLM_*` 继续生效，含义变为共享默认配置；如果原配置仅供聊天使用，请移到 `CHAT_LLM_*`，并为 `LLM_*` 填写共享默认值。情绪识别温度需要保持为 0 时，显式设置 `EMOTION_LLM_TEMPERATURE=0`。
 

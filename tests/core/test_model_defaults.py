@@ -48,6 +48,25 @@ def settings():
 DEFAULT = ('default-key', 'default-model', 'https://default.example/v1', 0.4, 17)
 
 
+@pytest.mark.parametrize('value,expected', [
+    (None, 'disabled'), ('', 'disabled'), ('   ', 'disabled'),
+    ('disabled', 'disabled'), ('enabled', 'enabled'), (' enabled ', 'enabled'),
+])
+def test_chat_thinking_environment(model_env, value, expected):
+    """Catches ignored thinking overrides and a changed default for replies."""
+    if value is not None:
+        model_env.setenv('CHAT_LLM_THINKING', value)
+    assert AppConfig.from_env().llm_thinking == expected
+
+
+@pytest.mark.parametrize('value', ['true', 'false', 'enable', 'invalid'])
+def test_chat_thinking_rejects_invalid_values(model_env, value):
+    """Catches configuration typos silently restoring provider thinking defaults."""
+    model_env.setenv('CHAT_LLM_THINKING', value)
+    with pytest.raises(ConfigError, match='CHAT_LLM_THINKING'):
+        AppConfig.from_env()
+
+
 @pytest.mark.parametrize('blank', [None, '', '   '])
 def test_all_roles_use_shared_defaults(model_env, blank):
     if blank is not None:

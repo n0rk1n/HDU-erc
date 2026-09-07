@@ -32,10 +32,10 @@ class OpenAICompatibleChatModel:
         self._base_url = config.llm_base_url
         self._temperature = config.llm_temperature
         self._timeout = config.llm_timeout_seconds
-        # DeepSeek V4 reply generation uses the provider's non-thinking mode.
+        # DeepSeek V4 reply generation uses the configured thinking mode.
         # Keep this extension scoped to the official API contract.
         self._extra_body = (
-            {"thinking": {"type": "disabled"}}
+            {"thinking": {"type": config.llm_thinking}}
             if urlsplit(config.llm_base_url or "").hostname == "api.deepseek.com"
             and config.llm_model in {"deepseek-v4-flash", "deepseek-v4-pro"}
             else None
