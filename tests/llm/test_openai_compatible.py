@@ -86,7 +86,7 @@ def test_build_prompt_accepts_repository_context_and_preserves_order() -> None:
         "第一个回答",
         "第二个问题",
     ]
-    assert "v1" in str(prompt[0].content)
+    assert "v2" in str(prompt[0].content)
 
 
 def test_build_prompt_also_accepts_persisted_message_objects() -> None:

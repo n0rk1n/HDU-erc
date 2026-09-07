@@ -368,7 +368,7 @@ async def test_generate_persists_versioned_prompt_redacted_model_facts_and_null_
         ensure_ascii=False,
     )
     assert prompt[0]["role"] == "system"
-    assert "v1" in prompt[0]["content"]
+    assert "v2" in prompt[0]["content"]
     assert prompt[-1] == {"role": "user", "content": "来自 audit 的问题"}
     assert parameters == {
         "api_key": "[REDACTED]",

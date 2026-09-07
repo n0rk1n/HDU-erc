@@ -1,0 +1,1 @@
+.venv/bin/uvicorn chatbot.web:app --workers 1 --no-access-log
