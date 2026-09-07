@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 from chatbot.core.errors import ConfigError
+from chatbot.core.config import resolve_model_settings
 from chatbot.emotion.types import Taxonomy
 
 CONFIG_ROOT = Path(__file__).resolve().parents[2] / 'config'
@@ -67,14 +68,11 @@ def load_emotion_settings(chat_config):
     try:
         budget=BudgetConfig(int(context),int(env('EMOTION_OUTPUT_TOKENS','1024')),int(env('EMOTION_SAFETY_TOKENS','256')),float(env('EMOTION_HISTORY_RATIO','0.60')))
         retrieval=RetrievalConfig(int(env('EMOTION_EXAMPLE_LIMIT','4')),float(env('EMOTION_PRIOR_BOOST','2.0')),int(env('EMOTION_RECENT_LABEL_LIMIT','3')))
-        temperature=float(env('EMOTION_LLM_TEMPERATURE','0'))
-        timeout=float(env('EMOTION_LLM_TIMEOUT_SECONDS',str(chat_config.llm_timeout_seconds)))
-        if not 0<=temperature<=2 or not 0<timeout<float('inf'):
-            raise ValueError()
     except ValueError as exc:
         raise ConfigError('invalid emotion model parameters') from exc
-    return EmotionSettings(SecretStr(env('EMOTION_LLM_API_KEY',chat_config.llm_api_key.get_secret_value())),
-        env('EMOTION_LLM_MODEL',chat_config.llm_model),env('EMOTION_LLM_BASE_URL',chat_config.llm_base_url),temperature,timeout,budget,tokenizer,
+    connection = resolve_model_settings('EMOTION_LLM')
+    return EmotionSettings(connection.api_key, connection.model, connection.base_url,
+        connection.temperature, connection.timeout_seconds, budget, tokenizer,
         Path(env('EMOTION_LABELS_PATH',str(CONFIG_ROOT/'emotion_labels.json'))),
         Path(env('EMOTION_FAMILIES_PATH',str(CONFIG_ROOT/'emotion_families.json'))),
         Path(env('EMOTION_EXAMPLES_PATH',str(CONFIG_ROOT/'emotion_examples.json'))),retrieval)

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import fields
-from math import isfinite
 from pathlib import Path
-from pydantic import SecretStr
 from chatbot.core.errors import ConfigError
+from chatbot.core.config import resolve_model_settings
 from chatbot.core.paths import PROJECT_ROOT
 from chatbot.core.prompt_config import load_prompt_config
 from chatbot.emotion.config import EmotionSettings, read_json
@@ -30,19 +29,16 @@ def load_gate_settings(emotion: EmotionSettings) -> GateSettings:
         policy = GatePolicy(**{k: data[k] for k in policy_keys if k in data})
         overrides = {k: data[k] for k in budget_keys if data.get(k) is not None}
         budget = BudgetConfig(**{k: overrides.get(k, getattr(emotion.budget, k)) for k in budget_keys})
-        model = env('EMOTION_GATE_LLM_MODEL', emotion.model)
+        connection = resolve_model_settings('EMOTION_GATE_LLM')
+        model = connection.model
         tokenizer = emotion.tokenizer_model if data.get('tokenizer_model') is None else data['tokenizer_model']
         if not isinstance(tokenizer, str) or not tokenizer.strip():
             raise ValueError('tokenizer_model must be a nonempty string')
         if model != emotion.model and (not data.get('tokenizer_model') or not data.get('context_tokens')):
             raise ValueError('different gate model requires explicit context_tokens and tokenizer_model')
-        temperature = float(env('EMOTION_GATE_LLM_TEMPERATURE', str(emotion.temperature)))
-        timeout = float(env('EMOTION_GATE_LLM_TIMEOUT_SECONDS', str(emotion.timeout_seconds)))
-        if not isfinite(temperature) or not 0 <= temperature <= 2 or not isfinite(timeout) or timeout <= 0:
-            raise ValueError('invalid gate temperature or timeout')
     except (ValueError, TypeError) as exc:
         raise ConfigError(f'invalid emotion gate settings: {exc}') from exc
     path = Path(env('EMOTION_GATE_SYSTEM_PROMPT_PATH', str(DEFAULT_PROMPT_PATH)))
-    return GateSettings(policy, SecretStr(env('EMOTION_GATE_LLM_API_KEY', emotion.api_key.get_secret_value())),
-                        model, env('EMOTION_GATE_LLM_BASE_URL', emotion.base_url), temperature, timeout,
+    return GateSettings(policy, connection.api_key, model, connection.base_url,
+                        connection.temperature, connection.timeout_seconds,
                         budget, tokenizer, path, load_prompt_config(path), data['version'])

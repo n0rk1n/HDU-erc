@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from math import isfinite
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,27 +25,19 @@ class AppConfig:
     @classmethod
     def from_env(cls) -> "AppConfig":
         load_dotenv(PROJECT_ROOT / ".env", override=False)
-        api_key = _required("LLM_API_KEY")
-        model = _optional("LLM_MODEL") or "gpt-4o-mini"
-        base_url = _optional("LLM_BASE_URL")
-        temperature = _float("LLM_TEMPERATURE", 0.7)
-        timeout = _float("LLM_TIMEOUT_SECONDS", 60.0)
+        model_settings = resolve_model_settings("CHAT_LLM")
         context_limit = _integer("CHAT_CONTEXT_MESSAGE_LIMIT", 40)
         sqlite_path = Path(_optional("SQLITE_DB_PATH") or "data/chatbot.sqlite3")
 
-        if not 0 <= temperature <= 2:
-            raise ConfigError("LLM_TEMPERATURE must be between 0 and 2")
-        if timeout <= 0:
-            raise ConfigError("LLM_TIMEOUT_SECONDS must be positive")
         if not 1 <= context_limit <= 200:
             raise ConfigError("CHAT_CONTEXT_MESSAGE_LIMIT must be between 1 and 200")
 
         return cls(
-            llm_api_key=SecretStr(api_key),
-            llm_model=model,
-            llm_base_url=base_url,
-            llm_temperature=temperature,
-            llm_timeout_seconds=timeout,
+            llm_api_key=model_settings.api_key,
+            llm_model=model_settings.model,
+            llm_base_url=model_settings.base_url,
+            llm_temperature=model_settings.temperature,
+            llm_timeout_seconds=model_settings.timeout_seconds,
             context_message_limit=context_limit,
             sqlite_db_path=sqlite_path,
         )
@@ -83,3 +76,32 @@ def _integer(name: str, default: int) -> int:
         return int(value)
     except ValueError as exc:
         raise ConfigError(f"{name} must be an integer") from exc
+
+
+@dataclass(frozen=True)
+class ModelSettings:
+    api_key: SecretStr
+    model: str
+    base_url: str | None
+    temperature: float
+    timeout_seconds: float
+
+
+def resolve_model_settings(prefix: str) -> ModelSettings:
+    """Resolve one role directly against LLM_* defaults, never another role."""
+    def effective_name(field: str) -> str:
+        override = f"{prefix}_{field}"
+        return override if _optional(override) is not None else f"LLM_{field}"
+
+    api_key = _required(effective_name("API_KEY"))
+    model = _optional(effective_name("MODEL")) or "gpt-4o-mini"
+    base_url = _optional(effective_name("BASE_URL"))
+    temperature_name = effective_name("TEMPERATURE")
+    timeout_name = effective_name("TIMEOUT_SECONDS")
+    temperature = _float(temperature_name, 0.7)
+    timeout = _float(timeout_name, 60.0)
+    if not isfinite(temperature) or not 0 <= temperature <= 2:
+        raise ConfigError(f"{temperature_name} must be finite and between 0 and 2")
+    if not isfinite(timeout) or timeout <= 0:
+        raise ConfigError(f"{timeout_name} must be finite and positive")
+    return ModelSettings(SecretStr(api_key), model, base_url, temperature, timeout)

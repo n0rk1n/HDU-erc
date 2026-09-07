@@ -29,6 +29,8 @@ def test_settings_prompt_override_and_budget(tmp_path,monkeypatch):
     prompt=tmp_path/'prompt.json';prompt.write_text(json.dumps({'version':'custom','system':'custom decision instruction'}))
     config=tmp_path/'gate.json';config.write_text(json.dumps({'version':'v1','history_turn_limit':9,'max_interval_turns':2,'history_ratio':0.3}))
     monkeypatch.setenv('EMOTION_GATE_CONFIG_PATH',str(config));monkeypatch.setenv('EMOTION_GATE_SYSTEM_PROMPT_PATH',str(prompt))
+    monkeypatch.setenv('LLM_API_KEY', 'test')
+    monkeypatch.setenv('LLM_MODEL', 'fake')
     result=load_gate_settings(emotion)
     assert result.policy.history_turn_limit==9 and result.policy.max_interval_turns==2
     assert result.prompt['system']=='custom decision instruction'
@@ -45,6 +47,8 @@ def test_explicit_invalid_tokenizer_is_rejected(tmp_path,monkeypatch,tokenizer):
     from chatbot.emotion_gate.config import load_gate_settings
     from pydantic import SecretStr
     emotion=EmotionSettings(SecretStr('test'),'fake',None,0,3,BudgetConfig(10000,100,10),'fake',tmp_path,tmp_path,tmp_path)
+    monkeypatch.setenv('LLM_API_KEY', 'test')
+    monkeypatch.setenv('LLM_MODEL', 'fake')
     config=tmp_path/'invalid.json'
     config.write_text(json.dumps({'version':'v1','tokenizer_model':tokenizer}))
     monkeypatch.setenv('EMOTION_GATE_CONFIG_PATH',str(config))

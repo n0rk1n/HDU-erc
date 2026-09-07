@@ -113,11 +113,11 @@ python3 -m venv .venv
 
 | 变量 | 默认值或要求 | 用途 |
 | --- | --- | --- |
-| `LLM_API_KEY` | 必填 | 聊天模型服务密钥。 |
-| `LLM_MODEL` | `gpt-4o-mini` | 供应商模型名称。 |
+| `LLM_API_KEY` | 必填 | 默认模型服务密钥。 |
+| `LLM_MODEL` | `gpt-4o-mini` | 默认供应商模型名称。 |
 | `LLM_BASE_URL` | 留空使用 SDK 默认地址 | OpenAI-compatible 服务地址。 |
-| `LLM_TEMPERATURE` | `0.7`，范围 0–2 | 聊天采样温度。 |
-| `LLM_TIMEOUT_SECONDS` | `60`，大于 0 | 聊天模型调用超时；也参与关闭等待预算。 |
+| `LLM_TEMPERATURE` | `0.7`，范围 0–2 | 默认采样温度。 |
+| `LLM_TIMEOUT_SECONDS` | `60`，大于 0 | 默认模型调用超时；各角色有效超时参与关闭等待预算。 |
 | `CHAT_CONTEXT_MESSAGE_LIMIT` | `40`，范围 1–200 | 聊天 Prompt 中最近已完成消息的数量上限，含当前已入库的用户消息；不是轮数或 token 数。 |
 | `SQLITE_DB_PATH` | `data/chatbot.sqlite3` | 业务与 checkpoint 共用的 SQLite 文件。 |
 | `CHAT_SYSTEM_PROMPT_PATH` | 留空读取 `data/config/prompts/chat_prompts.json` | 聊天系统提示词文件。 |
@@ -129,8 +129,8 @@ python3 -m venv .venv
 | `EMOTION_LLM_API_KEY` | 留空继承 `LLM_API_KEY` | 情绪模型服务密钥。 |
 | `EMOTION_LLM_MODEL` | 留空继承 `LLM_MODEL` | 情绪模型名称。 |
 | `EMOTION_LLM_BASE_URL` | 留空继承 `LLM_BASE_URL` | 情绪模型服务地址。 |
-| `EMOTION_LLM_TEMPERATURE` | `0`，范围 0–2 | 情绪采样温度。 |
-| `EMOTION_LLM_TIMEOUT_SECONDS` | 留空继承聊天超时 | 情绪模型调用超时，必须大于 0。 |
+| `EMOTION_LLM_TEMPERATURE` | 留空继承 `LLM_TEMPERATURE`，范围 0–2 | 情绪采样温度。 |
+| `EMOTION_LLM_TIMEOUT_SECONDS` | 留空继承 `LLM_TIMEOUT_SECONDS` | 情绪模型调用超时，必须大于 0。 |
 | `EMOTION_CONTEXT_TOKENS` | **必填** | 所部署情绪模型的实际上下文窗口大小。 |
 | `EMOTION_TOKENIZER_MODEL` | **必填** | 与情绪模型匹配且受当前计数器支持的分词器/聊天模板模型。 |
 | `EMOTION_OUTPUT_TOKENS` | `1024` | 情绪输出预留 token 数。 |
@@ -140,7 +140,19 @@ python3 -m venv .venv
 | `EMOTION_SYSTEM_PROMPT_PATH` | 留空读取 `data/config/prompts/emotion_prompts.json` | 情绪识别提示词文件，每次分析重新读取。 |
 | `EMOTION_EXAMPLES_PATH` | 模板指向 `data/config/emotion_examples.json` | 动态检索示例文件。 |
 
-情绪模型的连接配置逐项继承。例如聊天服务使用其他供应商、情绪模型使用 OpenAI 时，应同时填写情绪模型的密钥、模型名和服务地址；仅修改模型名不会切换服务地址。
+`LLM_*` 是统一默认模型配置。三个角色分别通过 `CHAT_LLM_*`（聊天）、`EMOTION_LLM_*`（情绪识别）、`EMOTION_GATE_LLM_*`（入口判定）独立覆盖，未设置、空字符串或纯空白字段均直接继承对应的 `LLM_*`，不会继承其他角色的配置。
+
+例如 `LLM_MODEL=default-model`、`CHAT_LLM_MODEL=chat-model`，其余两组模型留空时，聊天使用 `chat-model`，情绪识别和入口判定均使用 `default-model`。仅覆盖模型名不会切换密钥或服务地址；切换供应商时应同时配置对应角色的密钥和地址。
+
+| 聊天覆盖项 | 留空时使用 |
+| --- | --- |
+| `CHAT_LLM_API_KEY` | `LLM_API_KEY` |
+| `CHAT_LLM_MODEL` | `LLM_MODEL` |
+| `CHAT_LLM_BASE_URL` | `LLM_BASE_URL` |
+| `CHAT_LLM_TEMPERATURE` | `LLM_TEMPERATURE` |
+| `CHAT_LLM_TIMEOUT_SECONDS` | `LLM_TIMEOUT_SECONDS` |
+
+兼容已有 `.env`：原 `LLM_*` 继续生效，含义变为共享默认配置；如果原配置仅供聊天使用，请移到 `CHAT_LLM_*`，并为 `LLM_*` 填写共享默认值。情绪识别温度需要保持为 0 时，显式设置 `EMOTION_LLM_TEMPERATURE=0`。
 
 **情绪分析是当前默认启动流程的必需组件，没有 `.env` 开关可关闭。** 模板故意留空两个必填预算/计数器参数，需要按实际部署填写。缺少参数、情绪 JSON 无效或计数器不受支持都会阻止启动，这与运行中情绪分析失败后继续回复的行为不同。
 
@@ -165,7 +177,7 @@ OpenAI-compatible HTTP 接口可用不代表分词器兼容。当前计数实现
 
 判定 Agent 的 prompt **独立存放于 `data/config/prompts/emotion_gate_prompts.json`**，包含 `version` 和 `system`，通过 `EMOTION_GATE_SYSTEM_PROMPT_PATH` 覆盖路径。情绪变化标准和判定指令都在该文件中维护。输出协议固定为 `should_analyze`（布尔值）和 `reason`（简短理由），修改提示词时须保留此协议。启动校验并加载提示词，修改后重启；每次判定保存实际版本、正文与调用快照。
 
-判定连接支持 `EMOTION_GATE_LLM_API_KEY`、`EMOTION_GATE_LLM_MODEL`、`EMOTION_GATE_LLM_BASE_URL`、`EMOTION_GATE_LLM_TEMPERATURE`、`EMOTION_GATE_LLM_TIMEOUT_SECONDS`，留空逐项继承有效情绪模型配置。更换模型必须显式提供匹配的 `context_tokens` 和 `tokenizer_model`；服务地址和密钥不会随模型名自动切换。
+判定连接支持 `EMOTION_GATE_LLM_API_KEY`、`EMOTION_GATE_LLM_MODEL`、`EMOTION_GATE_LLM_BASE_URL`、`EMOTION_GATE_LLM_TEMPERATURE`、`EMOTION_GATE_LLM_TIMEOUT_SECONDS`，留空逐项直接继承 `LLM_*` 默认配置。判定模型与情绪识别模型不同时，必须在策略 JSON 显式提供匹配的 `context_tokens` 和 `tokenizer_model`；服务地址和密钥不会随模型名自动切换。
 
 一轮是一条被接受的新用户输入，重复 request_id 不计新轮，同文不同请求计新轮。第 1 轮识别成功后，无提前触发时第 16 轮再次识别；若第 8 轮提前成功，则最迟第 23 轮识别。完整历史轮次指用户消息＋已完成助手回复，当前输入另算；失败或未完成配对排除。判定窗口与正式识别历史预算独立，正式识别仍按自己的 token 预算选择历史。
 
@@ -280,7 +292,7 @@ RUN_LIVE_LLM_TEST=1 .venv/bin/python -m pytest tests/app/test_live_llm.py -v
 
 `neutral` 指明确表达中性状态，例如“既不高兴，也不难过”；`no_emotion` 指未表达情绪，例如“转换这个文件”。二者都不是失败标记。配置加载拒绝重复键、空值、未知示例标签及不完整 family 映射；修改后重启生效，每次调用保存当时配置快照及哈希。
 
-情绪模型连接参数 `EMOTION_LLM_API_KEY/MODEL/BASE_URL` 可分别覆盖聊天配置；默认温度 0，超时继承聊天超时，自动重试次数为 0。`EMOTION_LLM_TIMEOUT_SECONDS` 可独立调整。两次串行调用的关闭等待预算相加。
+情绪模型连接参数 `EMOTION_LLM_*` 可逐项覆盖共享的 `LLM_*` 默认配置；温度和超时留空也继承共享默认值，自动重试次数为 0。`EMOTION_LLM_TIMEOUT_SECONDS` 可独立调整。两次串行调用的关闭等待预算相加。
 
 历史候选来自当前会话，截至本条用户输入。按 request_id 配对为完整 human→assistant 轮次，排除未完成或失败的历史轮次；API 发送时映射为 user/assistant。优先保留最近轮次和完整的当前 human 消息，超预算删除最早整轮，不截断单条、不跳选更早短轮，也不删除数据库原始历史。
 
