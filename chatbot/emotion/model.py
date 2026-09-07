@@ -66,6 +66,13 @@ class OpenAICompatibleEmotionModel:
 
 class ModelTokenCounter:
     def __init__(self,client,*,tokenizer_model):
+        self._deepseek_counter = None
+        if tokenizer_model == 'deepseek-v4-flash':
+            from chatbot.llm.deepseek_tokens import DeepSeekV4TokenCounter
+            self._deepseek_counter = DeepSeekV4TokenCounter()
+            self.identity = self._deepseek_counter.identity
+            self.version = self._deepseek_counter.version
+            return
         # LangChain can silently fall back to another encoding: explicitly reject that.
         import tiktoken
         try:
@@ -78,4 +85,6 @@ class ModelTokenCounter:
         self.identity=tokenizer_model
         self.version='langchain-openai:'+version('langchain-openai')+';tiktoken:'+version('tiktoken')
     def count(self,messages):
+        if self._deepseek_counter is not None:
+            return self._deepseek_counter.count(messages)
         return self.client.get_num_tokens_from_messages(list(messages)) if messages else 0
