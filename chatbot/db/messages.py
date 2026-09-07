@@ -159,6 +159,14 @@ class MessageRepository:
             rows = await cursor.fetchall()
         return [dict(zip(("role", "content"), row, strict=True)) for row in reversed(rows)]
 
+    async def list_emotion_history(self, conversation_id: str, *, through_sequence: int) -> list[Message]:
+        async with self.database.connect() as connection:
+            rows = await (await connection.execute(
+                f"SELECT {_MESSAGE_COLUMNS} FROM messages WHERE conversation_id=? AND sequence_no<=? ORDER BY sequence_no",
+                (conversation_id, through_sequence),
+            )).fetchall()
+        return [_message_from_row(row) for row in rows]
+
     async def mark_streaming(self, assistant_message_id: str) -> Message:
         now = utc_now()
         async with self.database.transaction(immediate=True) as connection:
