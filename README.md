@@ -230,14 +230,24 @@ WHERE d.conversation_id = :conversation_id AND d.request_id = :request_id ORDER 
 日常编辑 `data/config/` 下的文件：
 
 - `prompts/chat_prompts.json`：包含非空字符串 `version` 和 `system`，控制聊天角色和回复风格。
-- `emotion_names.json`：`"情绪标签": "前端显示名称"`，控制情绪徽标与处理卡片的文案。
-- `emotion_labels.json`：`"情绪标签": "描述"`，包含 34 类情绪。
+- `emotion_labels.json`：每个标签包含 `description`（识别描述）和 `display_name`（前端显示名称），包含 34 类情绪。
 - `emotion_families.json`：`"情绪标签": "family"`，键必须与标签集合完全一致。
 - `emotion_examples.json`：示例数组，每条包含非空字符串 `id`、`dialogue`、`emotion`；ID 唯一，标签必须已定义。
 
-前端情绪名称可直接修改 `data/config/emotion_names.json`，例如将 `"sad": "难过"` 改为 `"sad": "低落"`。也可通过 `EMOTION_NAMES_PATH` 指定其他 JSON 文件；留空时按项目位置定位默认文件。自定义文件替代整份映射，未列出的标签显示原始标签，`{}` 表示全部显示原始标签。只影响 `display_label`，不改变模型识别标签或数据库结果。
+前端情绪名称配置在 `emotion_labels.json` 的每个标签下面，例如：
 
-映射在每次构造展示数据时重新读取，修改后下一次进度事件、历史查询或请求重放生效，历史结果也使用当前名称；已显示的页面需刷新或等待新数据。缺失文件、无效 JSON、重复键和空白名称会报配置错误，修正文件后重试。
+```json
+{
+  "sad": {
+    "description": "general unhappiness or sorrow",
+    "display_name": "难过"
+  }
+}
+```
+
+修改 `display_name` 即可调整情绪徽标和处理卡片的名称。识别模型仍只读取 `description`，显示名称不会进入模型提示词，也不改变已保存的识别结果。兼容旧的 `"sad": "描述"` 格式；未提供 `display_name` 的标签显示原始标签。
+
+识别和展示统一使用 `EMOTION_LABELS_PATH`：模板指向 `data/config/emotion_labels.json`，留空时按项目位置定位 `config/emotion_labels.json`。显示名称在每次构造展示数据时重新读取，修改后下一次进度事件、历史查询或请求重放生效，已显示的页面需刷新或等待新数据；识别描述和标签集合修改后仍需重启。缺失文件、无效 JSON、重复键、空白名称或未知字段会报配置错误，修正文件后重试。
 
 三个提示词文件统一使用 `version` + `system` 格式，分别表示提示词版本和系统提示词正文。聊天提示词的最小结构如下（如需调整角色，可替换内容）：
 
@@ -318,7 +328,7 @@ RUN_LIVE_LLM_TEST=1 .venv/bin/python -m pytest tests/app/test_live_llm.py -v
 
 主图按 `prepare_turn → analyze_emotion → generate_response → finalize_turn` 执行；情绪节点内部为独立的准备、调用、保存子图。每个新 request_id 分析一次，相同文字的新请求仍会重新分析；重复请求不重复调用模型。
 
-- `data/config/emotion_labels.json`：`"情绪": "描述"`，包括原有 32 类以及 `neutral` 和 `no_emotion`。
+- `data/config/emotion_labels.json`：`"情绪": {"description": "描述", "display_name": "显示名称"}`，包括原有 32 类以及 `neutral` 和 `no_emotion`。
 - `data/config/emotion_families.json`：`"情绪": "family"`，例如 sad 和 lonely 都属于 sadness_loss。family 由程序查表派生。
 - `data/config/emotion_examples.json`：包含 66 条带标签的 few-shot 示例，动态检索最多 4 条，并保存选择理由和分数。
 

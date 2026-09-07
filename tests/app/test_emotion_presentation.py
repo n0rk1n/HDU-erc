@@ -185,11 +185,11 @@ def test_older_analysis_without_gate_does_not_invent_a_failed_decision(app_confi
         assert not any(step['id'] == 'decision' for step in processing['steps'])
 
 
-@pytest.mark.parametrize(('names', 'expected'), [({'sad': '低落'}, '低落'), ({}, 'sad')])
+@pytest.mark.parametrize(('names', 'expected'), [({'sad': {'description': 'sorrow', 'display_name': '低落'}}, '低落'), ({'sad': 'sorrow'}, 'sad')])
 def test_configured_names_reach_progress_done_replay_and_history(app_config, tmp_path, monkeypatch, names, expected):
     names_path = tmp_path / 'names.json'
     names_path.write_text(json.dumps(names), encoding='utf-8')
-    monkeypatch.setenv('EMOTION_NAMES_PATH', str(names_path))
+    monkeypatch.setenv('EMOTION_LABELS_PATH', str(names_path))
     db = Database(app_config.sqlite_db_path)
     with TestClient(create_app(config=app_config, model=OfflineModel(),
             emotion=emotion_runtime(db, Recognizer()), gate=gate_runtime(db))) as client:
@@ -209,18 +209,18 @@ def test_configured_names_reach_progress_done_replay_and_history(app_config, tmp
         history = client.get(f'/api/users/{user}/messages').json()
         assert history['messages'][-1]['processing']['emotion']['display_label'] == expected
         assert history['latest_emotion']['display_label'] == expected
-        names_path.write_text('{"sad": "伤心"}', encoding='utf-8')
+        names_path.write_text('{"sad": {"description": "sorrow", "display_name": "伤心"}}', encoding='utf-8')
         assert client.get(f'/api/users/{user}/messages').json()['latest_emotion']['display_label'] == '伤心'
 
 
 @pytest.mark.parametrize('content', ['[]', '{', '{"sad": 1}', '{"sad": " "}',
-                                     '{" ": "伤心"}', '{"sad":"a","sad":"b"}', None])
+                                     '{" ": "伤心"}', '{"sad": {"description": "sorrow", "display_name": " "}}', '{"sad":"a","sad":"b"}', None])
 def test_invalid_emotion_names_are_rejected(tmp_path, monkeypatch, content):
     from chatbot.core.errors import ConfigError
     from chatbot.services.presentation import PresentationService
     names_path = tmp_path / 'names.json'
     if content is not None:
         names_path.write_text(content, encoding='utf-8')
-    monkeypatch.setenv('EMOTION_NAMES_PATH', str(names_path))
+    monkeypatch.setenv('EMOTION_LABELS_PATH', str(names_path))
     with pytest.raises(ConfigError):
         PresentationService(Database(tmp_path / 'unused.sqlite3'))

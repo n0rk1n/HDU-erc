@@ -26,8 +26,38 @@ def content_hash(value: object) -> str:
     raw = json.dumps(value, sort_keys=True, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
     return hashlib.sha256(raw.encode()).hexdigest()
 
+def emotion_labels_path() -> Path:
+    return Path(os.getenv('EMOTION_LABELS_PATH', '').strip() or CONFIG_ROOT / 'emotion_labels.json')
+
+
+def load_label_definitions(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    entries = read_json(path)
+    if not isinstance(entries, dict) or not entries:
+        raise ConfigError('emotion labels must be a nonempty object')
+    labels, names = {}, {}
+    for label, entry in entries.items():
+        if not label.strip():
+            raise ConfigError('emotion labels must be nonempty strings')
+        if isinstance(entry, str):
+            description = entry
+        elif isinstance(entry, dict) and not entry.keys() - {'description', 'display_name'}:
+            description = entry.get('description')
+            if 'display_name' in entry:
+                name = entry['display_name']
+                if not isinstance(name, str) or not name.strip():
+                    raise ConfigError('emotion display_name must be a nonempty string')
+                names[label] = name
+        else:
+            raise ConfigError('emotion label must be a description string or description/display_name object')
+        if not isinstance(description, str) or not description.strip():
+            raise ConfigError('emotion description must be a nonempty string')
+        labels[label] = description
+    return labels, names
+
+
 def load_taxonomy(labels_path=CONFIG_ROOT/'emotion_labels.json', families_path=CONFIG_ROOT/'emotion_families.json'):
-    labels, families = read_json(labels_path), read_json(families_path)
+    labels, _ = load_label_definitions(labels_path)
+    families = read_json(families_path)
     for mapping in (labels, families):
         if not isinstance(mapping, dict) or not mapping:
             raise ConfigError('emotion config must be a nonempty object')
@@ -73,6 +103,6 @@ def load_emotion_settings(chat_config):
     connection = resolve_model_settings('EMOTION_LLM')
     return EmotionSettings(connection.api_key, connection.model, connection.base_url,
         connection.temperature, connection.timeout_seconds, budget, tokenizer,
-        Path(env('EMOTION_LABELS_PATH',str(CONFIG_ROOT/'emotion_labels.json'))),
+        emotion_labels_path(),
         Path(env('EMOTION_FAMILIES_PATH',str(CONFIG_ROOT/'emotion_families.json'))),
         Path(env('EMOTION_EXAMPLES_PATH',str(CONFIG_ROOT/'emotion_examples.json'))),retrieval)

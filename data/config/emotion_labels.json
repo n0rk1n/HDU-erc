@@ -1,36 +1,138 @@
 {
-  "surprised": "an unexpected event, without assuming it is good or bad",
-  "excited": "high-energy positive anticipation or enthusiasm",
-  "annoyed": "mild irritation, less intense than angry or furious",
-  "proud": "satisfaction in one's own or another person's achievement",
-  "angry": "clear anger at a wrong or obstacle, stronger than annoyed",
-  "sad": "general unhappiness or sorrow",
-  "grateful": "appreciation for help, kindness, or a benefit received",
-  "lonely": "distress from lacking companionship or connection",
-  "impressed": "admiration caused by something notably skillful or good",
-  "afraid": "fear of a concrete threat, less overwhelming than terrified",
-  "disgusted": "strong revulsion or moral/physical aversion",
-  "confident": "belief in one's ability or a favorable outcome",
-  "terrified": "overwhelming or extreme fear",
-  "hopeful": "desire and belief that a positive outcome may happen",
-  "anxious": "uneasy worry about an uncertain outcome",
-  "disappointed": "sadness because an expectation was not met",
-  "joyful": "strong happiness caused by a positive event",
-  "prepared": "readiness because planning or practice is complete",
-  "guilty": "remorse for one's own action or responsibility",
-  "furious": "extreme, highly intense anger",
-  "nostalgic": "longing for or warmly recalling the past",
-  "jealous": "fear or resentment about losing status, attention, or a bond",
-  "anticipating": "looking forward to an upcoming event; valence may be mixed",
-  "embarrassed": "social discomfort after awkward exposure or attention",
-  "content": "calm satisfaction, lower arousal than joyful or excited",
-  "devastated": "overwhelming sadness after severe loss or bad news",
-  "sentimental": "tender emotional attachment to a person, object, or memory",
-  "caring": "concern for another person's wellbeing",
-  "trusting": "willingness to rely on another person or believe them",
-  "ashamed": "painful negative judgment of oneself, broader than guilt about an act",
-  "apprehensive": "cautious fear about a possible future problem",
-  "faithful": "loyal commitment to a person, relationship, or belief",
-  "neutral": "an explicitly expressed neutral state that is neither positive nor negative, such as feeling neither happy nor sad about something; distinct from contentment",
-  "no_emotion": "the current input expresses no identifiable emotion, such as a purely factual question or task instruction; does not indicate recognition failure or uncertainty"
+  "surprised": {
+    "description": "an unexpected event, without assuming it is good or bad",
+    "display_name": "惊讶"
+  },
+  "excited": {
+    "description": "high-energy positive anticipation or enthusiasm",
+    "display_name": "兴奋"
+  },
+  "annoyed": {
+    "description": "mild irritation, less intense than angry or furious",
+    "display_name": "烦恼"
+  },
+  "proud": {
+    "description": "satisfaction in one's own or another person's achievement",
+    "display_name": "自豪"
+  },
+  "angry": {
+    "description": "clear anger at a wrong or obstacle, stronger than annoyed",
+    "display_name": "生气"
+  },
+  "sad": {
+    "description": "general unhappiness or sorrow",
+    "display_name": "难过"
+  },
+  "grateful": {
+    "description": "appreciation for help, kindness, or a benefit received",
+    "display_name": "感激"
+  },
+  "lonely": {
+    "description": "distress from lacking companionship or connection",
+    "display_name": "孤独"
+  },
+  "impressed": {
+    "description": "admiration caused by something notably skillful or good",
+    "display_name": "赞叹"
+  },
+  "afraid": {
+    "description": "fear of a concrete threat, less overwhelming than terrified",
+    "display_name": "害怕"
+  },
+  "disgusted": {
+    "description": "strong revulsion or moral/physical aversion",
+    "display_name": "厌恶"
+  },
+  "confident": {
+    "description": "belief in one's ability or a favorable outcome",
+    "display_name": "自信"
+  },
+  "terrified": {
+    "description": "overwhelming or extreme fear",
+    "display_name": "恐惧"
+  },
+  "hopeful": {
+    "description": "desire and belief that a positive outcome may happen",
+    "display_name": "充满希望"
+  },
+  "anxious": {
+    "description": "uneasy worry about an uncertain outcome",
+    "display_name": "焦虑"
+  },
+  "disappointed": {
+    "description": "sadness because an expectation was not met",
+    "display_name": "失望"
+  },
+  "joyful": {
+    "description": "strong happiness caused by a positive event",
+    "display_name": "喜悦"
+  },
+  "prepared": {
+    "description": "readiness because planning or practice is complete",
+    "display_name": "准备充分"
+  },
+  "guilty": {
+    "description": "remorse for one's own action or responsibility",
+    "display_name": "内疚"
+  },
+  "furious": {
+    "description": "extreme, highly intense anger",
+    "display_name": "愤怒"
+  },
+  "nostalgic": {
+    "description": "longing for or warmly recalling the past",
+    "display_name": "怀念"
+  },
+  "jealous": {
+    "description": "fear or resentment about losing status, attention, or a bond",
+    "display_name": "嫉妒"
+  },
+  "anticipating": {
+    "description": "looking forward to an upcoming event; valence may be mixed",
+    "display_name": "期待"
+  },
+  "embarrassed": {
+    "description": "social discomfort after awkward exposure or attention",
+    "display_name": "尴尬"
+  },
+  "content": {
+    "description": "calm satisfaction, lower arousal than joyful or excited",
+    "display_name": "满足"
+  },
+  "devastated": {
+    "description": "overwhelming sadness after severe loss or bad news",
+    "display_name": "悲痛"
+  },
+  "sentimental": {
+    "description": "tender emotional attachment to a person, object, or memory",
+    "display_name": "感怀"
+  },
+  "caring": {
+    "description": "concern for another person's wellbeing",
+    "display_name": "关切"
+  },
+  "trusting": {
+    "description": "willingness to rely on another person or believe them",
+    "display_name": "信任"
+  },
+  "ashamed": {
+    "description": "painful negative judgment of oneself, broader than guilt about an act",
+    "display_name": "羞愧"
+  },
+  "apprehensive": {
+    "description": "cautious fear about a possible future problem",
+    "display_name": "忐忑"
+  },
+  "faithful": {
+    "description": "loyal commitment to a person, relationship, or belief",
+    "display_name": "忠诚"
+  },
+  "neutral": {
+    "description": "an explicitly expressed neutral state that is neither positive nor negative, such as feeling neither happy nor sad about something; distinct from contentment",
+    "display_name": "情绪平稳"
+  },
+  "no_emotion": {
+    "description": "the current input expresses no identifiable emotion, such as a purely factual question or task instruction; does not indicate recognition failure or uncertainty",
+    "display_name": "未表达明确情绪"
+  }
 }

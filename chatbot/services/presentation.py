@@ -7,7 +7,7 @@ from datetime import datetime
 import aiosqlite
 
 from chatbot.db.connection import Database
-from chatbot.core.presentation_config import load_emotion_names
+from chatbot.emotion.config import emotion_labels_path, load_label_definitions
 
 
 def _emotion(row, emotion_names):
@@ -71,7 +71,7 @@ def _processing(row, emotion_names):
 class PresentationService:
     def __init__(self, database: Database):
         self.database = database
-        self.emotion_names = load_emotion_names()
+        _, self.emotion_names = load_label_definitions(emotion_labels_path())
 
     async def snapshot(self, conversation_id: str, request_ids: list[str]):
         """Batch visible turns, plus latest success across the entire conversation."""
