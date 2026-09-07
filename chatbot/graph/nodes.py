@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import cast
 from uuid import uuid4
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 from langgraph.runtime import Runtime
 from langgraph.errors import NodeCancelledError
 
@@ -19,7 +19,7 @@ from chatbot.graph.dependencies import NodeDependencies
 from chatbot.graph.state import TurnContext, TurnState
 from chatbot.services.presentation import PresentationService
 from chatbot.llm.prompt import build_prompt
-from chatbot.llm.bubbles import BubbleStream
+from chatbot.llm.bubbles import BubbleStream, REPLY_FORMAT_PROMPT
 from chatbot.emotion.graph import build_emotion_graph
 from chatbot.emotion_gate.runtime import decide_emotion
 from chatbot.emotion_gate.context import build_reply_emotion_context
@@ -264,93 +264,123 @@ class TurnNodes:
         ) or _mapping_string(facts.parameters, "provider")
         facts.model = _mapping_string(facts.parameters, "model")
 
-        error_code: str | None = None
-        stream: AsyncIterator[ModelDelta] | None = None
-        await self.dependencies.messages.save_bubbles(assistant.id, [])
-        try:
-            stream = self.dependencies.model.stream(prompt).__aiter__()
-        except Exception:
-            error_code = "model_error"
-
-        while error_code is None and stream is not None:
+        require_object = (
+            isinstance(facts.parameters, dict)
+            and facts.parameters.get("response_format") == {"type": "json_object"}
+        )
+        for attempt in range(2):
+            facts.reply = BubbleStream(require_object=require_object)
+            error_code: str | None = None
+            stream: AsyncIterator[ModelDelta] | None = None
+            await self.dependencies.messages.save_bubbles(assistant.id, [])
             try:
-                delta = await anext(stream)
-            except StopAsyncIteration:
-                break
+                stream = self.dependencies.model.stream(prompt).__aiter__()
             except Exception:
                 error_code = "model_error"
-                break
 
-            facts.chunk_count += 1
-            try:
-                facts.reply.feed(delta.content)
-            except ValueError:
-                error_code = "model_error"
-            facts.content = facts.reply.content
-            facts.trace["reply"] = {"format": facts.reply.mode, "raw_output": facts.reply.raw_output}
-            facts.reasoning += delta.reasoning
-            if delta.usage is not None:
-                facts.usage = _merge_usage(facts.usage, delta.usage)
-            if delta.finish_reason is not None:
-                facts.finish_reason = delta.finish_reason
-            metadata = redact_secrets(delta.response_metadata)
-            if isinstance(metadata, dict):
-                facts.response_metadata.update(cast(dict[str, object], metadata))
-
-            now = self.dependencies.clock()
-            if facts.first_token_ms is None and delta.content:
-                facts.first_token_ms = _duration_ms(started_at, now)
-            if facts.reply.mode == "plain" and delta.content and not facts.publish_failed:
+            while error_code is None and stream is not None:
                 try:
-                    delivered = await runtime.context.publisher.publish(
-                        "token", {"content": facts.reply.raw_output[facts.plain_sent_characters:]}
-                    )
-                    facts.plain_sent_characters = len(facts.reply.raw_output)
-                    if delivered is False:
-                        facts.publish_failed = True
+                    delta = await anext(stream)
+                except StopAsyncIteration:
+                    break
                 except Exception:
-                    facts.publish_failed = True
-                    _trace_errors(facts.trace).append(
-                        {
-                            "code": "event_publish_error",
-                            "message": "token event publication failed",
-                        }
+                    error_code = "model_error"
+                    break
+
+                facts.chunk_count += 1
+                try:
+                    facts.reply.feed(delta.content)
+                except ValueError:
+                    error_code = "reply_format_error"
+                facts.content = facts.reply.content
+                facts.trace["reply"] = {"format": facts.reply.mode, "raw_output": facts.reply.raw_output}
+                facts.reasoning += delta.reasoning
+                if delta.usage is not None:
+                    facts.usage = _merge_usage(facts.usage, delta.usage)
+                if delta.finish_reason is not None:
+                    facts.finish_reason = delta.finish_reason
+                metadata = redact_secrets(delta.response_metadata)
+                if isinstance(metadata, dict):
+                    facts.response_metadata.update(cast(dict[str, object], metadata))
+
+                now = self.dependencies.clock()
+                if facts.first_token_ms is None and delta.content:
+                    facts.first_token_ms = _duration_ms(started_at, now)
+                if facts.reply.mode == "plain" and delta.content and not facts.publish_failed:
+                    try:
+                        delivered = await runtime.context.publisher.publish(
+                            "token", {"content": facts.reply.raw_output[facts.plain_sent_characters:]}
+                        )
+                        facts.plain_sent_characters = len(facts.reply.raw_output)
+                        if delivered is False:
+                            facts.publish_failed = True
+                    except Exception:
+                        facts.publish_failed = True
+                        _trace_errors(facts.trace).append(
+                            {
+                                "code": "event_publish_error",
+                                "message": "token event publication failed",
+                            }
+                        )
+
+                await self._publish_bubbles(assistant.id, facts, runtime.context)
+                if self._should_flush(facts, now):
+                    _set_stream_trace(facts)
+                    await self.dependencies.messages.flush_partial(
+                        assistant.id,
+                        content=facts.content,
+                        reasoning_content=facts.reasoning or None,
+                        trace=facts.trace,
                     )
+                    facts.last_flush_at = now
+                    facts.flushed_characters = _generated_characters(facts)
 
-            await self._publish_bubbles(assistant.id, facts, runtime.context)
-            if self._should_flush(facts, now):
-                _set_stream_trace(facts)
-                await self.dependencies.messages.flush_partial(
-                    assistant.id,
-                    content=facts.content,
-                    reasoning_content=facts.reasoning or None,
-                    trace=facts.trace,
-                )
-                facts.last_flush_at = now
-                facts.flushed_characters = _generated_characters(facts)
+            if error_code is None:
+                try:
+                    if facts.finish_reason == "length":
+                        raise ValueError("reply exceeded model output limit")
+                    facts.reply.finish()
+                except ValueError:
+                    error_code = "model_error" if facts.finish_reason == "length" else "reply_format_error"
+                facts.content = facts.reply.content
+                await self._publish_bubbles(assistant.id, facts, runtime.context)
 
-        if error_code is None:
-            try:
-                if facts.finish_reason == "length":
-                    raise ValueError("reply exceeded model output limit")
-                facts.reply.finish()
-            except ValueError:
-                error_code = "model_error"
-            facts.content = facts.reply.content
-            await self._publish_bubbles(assistant.id, facts, runtime.context)
-
-        if error_code is not None:
             if stream is not None and hasattr(stream, "aclose"):
                 await stream.aclose()
-            if facts.finish_reason != "length":
-                facts.finish_reason = "error"
-            _trace_errors(facts.trace).append(
-                {"code": "model_error", "message": "model generation failed"}
+            if error_code is not None:
+                if facts.finish_reason != "length":
+                    facts.finish_reason = "error"
+                _trace_errors(facts.trace).append(
+                    {"code": error_code, "message": _safe_error_message(error_code)}
+                )
+
+            attempts = facts.trace.setdefault("reply_attempts", [])
+            assert isinstance(attempts, list)
+            attempts.append({
+                "attempt_no": attempt + 1,
+                "prompt": [_serialize_message(message) for message in prompt],
+                "raw_output": facts.reply.raw_output,
+                "error_code": error_code,
+            })
+            _append_model_call(facts)
+            if error_code != "reply_format_error" or attempt == 1 or facts.saved_bubbles:
+                break
+            # Persist the failed attempt before the next network call.
+            await self.dependencies.messages.flush_partial(
+                assistant.id, content=facts.content,
+                reasoning_content=facts.reasoning or None, trace=facts.trace,
             )
+            # No visible content has been published, so regeneration cannot duplicate it.
+            prompt = [*prompt, SystemMessage(content=REPLY_FORMAT_PROMPT)]
+            facts.content = ""
+            facts.reasoning = ""
+            facts.usage = None
+            facts.finish_reason = None
+            facts.response_metadata = {}
+            facts.flushed_characters = 0
 
         ended_at = self.dependencies.clock()
         _set_stream_trace(facts)
-        _append_model_call(facts)
         _append_node(
             facts.trace,
             "generate_response",
@@ -697,6 +727,8 @@ def _duration_ms(started_at: datetime, ended_at: datetime) -> int:
 
 
 def _safe_error_message(error_code: str) -> str:
+    if error_code == "reply_format_error":
+        return "model reply does not match the required messages object"
     if error_code == "model_error":
         return "model generation failed"
     if error_code == "process_interrupted":

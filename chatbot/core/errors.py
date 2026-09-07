@@ -61,6 +61,7 @@ class ProcessInterrupted(DomainError):
 
 
 SAFE_PUBLIC_ERROR_MESSAGES: dict[str, str] = {
+    "reply_format_error": "model reply does not match the required messages object",
     "model_error": "model generation failed",
     "database_error": "database error",
     "process_interrupted": "generation interrupted",

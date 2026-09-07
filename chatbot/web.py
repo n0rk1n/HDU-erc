@@ -41,6 +41,7 @@ _SAFE_ERRORS: dict[str, tuple[int, str]] = {
     "user_not_found": (404, "user not found"),
     "turn_in_progress": (409, "turn already in progress"),
     "model_error": (502, "model generation failed"),
+    "reply_format_error": (502, "model reply does not match the required messages object"),
     "database_error": (500, "database error"),
     "process_interrupted": (503, "service unavailable"),
 }
@@ -129,7 +130,7 @@ def create_app(
             shutdown_error: BaseException | None = None
             if coordinator is not None:
                 try:
-                    await coordinator.shutdown(runtime_config.llm_timeout_seconds + emotion_timeout + runtime_gate.settings.wait_seconds)
+                    await coordinator.shutdown(2 * runtime_config.llm_timeout_seconds + emotion_timeout + runtime_gate.settings.wait_seconds)
                 except BaseException as error:
                     shutdown_error = error
             if saver_connection is not None:

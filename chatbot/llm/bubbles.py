@@ -8,7 +8,8 @@ import re
 
 REPLY_FORMAT_PROMPT = """回复传输格式（必须遵守，不向用户解释）：
 仅输出一个 JSON 对象，格式为 {"messages":["完整气泡正文"]}。
-messages 是字符串数组，通常包含 1–3 个自然的聊天气泡。每个气泡可以有几句话或完整段落。
+顶层必须是对象，不能直接输出字符串数组、纯文本或其他 JSON 类型。
+messages 是非空字符串数组，通常包含 1–3 个自然的聊天气泡。每个气泡可以有几句话或完整段落。
 不要为了凑数拆分内容。正文中的换行、引号和代码按 JSON 字符串转义。
 不要在 JSON 外输出文字或包裹 Markdown 代码围栏，不要添加其他字段。
 用户需要代码、列表或详细解释时，把完整内容放在字符串中，仍然使用同一传输格式。
@@ -33,7 +34,8 @@ class BubbleStream:
     for full validation at EOF; excess items are combined without truncation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, require_object: bool = False) -> None:
+        self.require_object = require_object
         self.raw_output = ""
         self.mode: str | None = None
         self.bubbles: list[str] = []
@@ -51,7 +53,7 @@ class BubbleStream:
         self.raw_output += text
         if self.mode is None and self.raw_output.strip():
             first = self.raw_output.lstrip()[0]
-            self.mode = "json" if first in '{[`' else "plain"
+            self.mode = "json" if self.require_object or first in '{[`' else "plain"
         if self.mode != "json" or self._closed:
             return
         if self._cursor is None:
