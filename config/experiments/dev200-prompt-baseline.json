@@ -1,5 +1,5 @@
 {
-  "name": "GoEmotions dev200 prompt-examples baseline",
+  "name": "GoEmotions GLM-5.3 dev200 prompt-examples baseline",
   "research_question": "在相同模型与4条训练示例预算下，标签区分提示词加词面对照示例能否改善原生28类多标签识别",
   "comparison_group": "goemotions-dev200-prompt-examples-20260908",
   "corpus_set": "goemotions-train",
@@ -10,21 +10,22 @@
   "candidate_count": 50,
   "max_attempts": 2,
   "max_total_attempts": 400,
-  "concurrency": 2,
+  "concurrency": 4,
   "repetition_no": 1,
   "deduplicate": true,
   "require_evidence": false,
   "parser_version": "labels-v1",
   "model": {
-    "name": "deepseek-v4-flash",
-    "base_url": "https://api.deepseek.com",
+    "name": "ZHIPU/GLM-5.3",
+    "base_url": "https://ws-s716tgzenkjl39vr.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
     "temperature": 0,
-    "thinking": "disabled",
+    "thinking": "enabled",
+    "reasoning_effort": "low",
     "timeout_seconds": 120,
-    "max_tokens": 4096,
+    "max_tokens": 8192,
     "context_tokens": 32768,
     "safety_tokens": 256,
-    "tokenizer_model": "deepseek-v4-flash"
+    "tokenizer_model": "ZHIPU/GLM-5.3"
   },
   "prompt_version": "native-labels-v1",
   "example_policy": "ranked"
