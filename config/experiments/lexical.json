@@ -1,0 +1,29 @@
+{
+  "name": "GoEmotions dev200 lexical",
+  "research_question": "固定现成模型，比较不同示例检索方式对易混情绪的识别影响",
+  "comparison_group": "goemotions-dev200-baselines-v1",
+  "corpus_set": "goemotions-train",
+  "evaluation_set": "goemotions-dev200",
+  "method": "lexical",
+  "seed": 42,
+  "k": 4,
+  "candidate_count": 50,
+  "max_attempts": 2,
+  "max_total_attempts": 400,
+  "concurrency": 2,
+  "repetition_no": 1,
+  "deduplicate": true,
+  "require_evidence": false,
+  "parser_version": "labels-v1",
+  "model": {
+    "name": "deepseek-v4-flash",
+    "base_url": "https://api.deepseek.com",
+    "temperature": 0,
+    "thinking": "disabled",
+    "timeout_seconds": 120,
+    "max_tokens": 4096,
+    "context_tokens": 32768,
+    "safety_tokens": 256,
+    "tokenizer_model": "deepseek-v4-flash"
+  }
+}

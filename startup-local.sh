@@ -1,1 +1,4 @@
-.venv/bin/uvicorn chatbot.web:app --workers 1 --no-access-log
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+exec .venv/bin/python -m emotion_lab "$@"

@@ -16,17 +16,17 @@ CREATE TABLE artifacts (
   artifact_id TEXT PRIMARY KEY NOT NULL,
   -- SHA-256 完整性指纹：content
   content_sha256 TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：kind
+  -- 工件或步骤类型
   kind TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：media_type
+  -- 内容媒体类型（MIME）
   media_type TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：encoding
+  -- 保存字节的字符编码或 binary
   encoding TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：compression
+  -- 物理存储压缩算法
   compression TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：logical_bytes
+  -- 压缩前内容字节数
   logical_bytes INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：stored_bytes
+  -- 实际存储字节数
   stored_bytes INTEGER NOT NULL,
   -- SHA-256 完整性指纹：storage
   storage_sha256 TEXT NOT NULL,
@@ -34,9 +34,9 @@ CREATE TABLE artifacts (
   inline_bytes BLOB,
   -- 工件根目录下的相对路径
   relative_path TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：redaction_policy_version
+  -- 凭据脱敏规则版本；无脱敏为 none
   redaction_policy_version TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：capture_level
+  -- 采集层级，区分实际 HTTP 内容与应用生成内容
   capture_level TEXT NOT NULL,
   -- 结构化来源元数据
   metadata_json TEXT NOT NULL CHECK(json_valid(metadata_json)),
@@ -51,13 +51,13 @@ CREATE TABLE artifacts (
 CREATE TABLE dataset_versions (
   -- 关联记录唯一标识：dataset_version
   dataset_version_id TEXT PRIMARY KEY NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：name
+  -- 用户定义名称
   name TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：version_key
+  -- 源文件与导入规则的联合版本指纹
   version_key TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：source_repository
+  -- 官方来源仓库
   source_repository TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：source_revision
+  -- 固定源提交或发布版本
   source_revision TEXT NOT NULL,
   -- 关联不可变证据工件：source_manifest
   source_manifest_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -65,9 +65,9 @@ CREATE TABLE dataset_versions (
   source_bundle_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
   -- SHA-256 完整性指纹：label_manifest
   label_manifest_sha256 TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：importer_version
+  -- 导入程序版本
   importer_version TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：normalization_version
+  -- 仅用于去重的文本标准化规则版本
   normalization_version TEXT NOT NULL,
   -- 经过 JSON 校验的结构化内容：expected_counts
   expected_counts_json TEXT NOT NULL CHECK(json_valid(expected_counts_json)),
@@ -89,9 +89,9 @@ CREATE TABLE label_definitions (
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
   -- 数据集原生情绪编号
   label_id INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：label_name
+  -- 数据集原生标签名称
   label_name TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：source_order
+  -- 官方标签列表顺序，从零开始
   source_order INTEGER NOT NULL,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -109,11 +109,11 @@ CREATE TABLE samples (
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
   -- 官方原始样本标识
   source_id TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：split
+  -- 官方 train、dev 或 test 划分
   split TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：source_line
+  -- 源文件行号，从一开始
   source_line INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：language
+  -- 文本语言
   language TEXT NOT NULL,
   -- 未经改写的原文
   raw_text TEXT NOT NULL,
@@ -142,9 +142,9 @@ CREATE TABLE sample_labels (
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
   -- 数据集原生情绪编号
   label_id INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：annotation_source
+  -- 标注来源
   annotation_source TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：source_label_position
+  -- 源文件标签顺序，仅表示来源顺序
   source_label_position INTEGER NOT NULL,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -160,17 +160,17 @@ CREATE TABLE sample_sets (
   sample_set_id TEXT PRIMARY KEY NOT NULL,
   -- 关联记录唯一标识：dataset_version
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：name
+  -- 用户定义名称
   name TEXT NOT NULL,
   -- 用途
   purpose TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：source_split
+  -- 集合采用的官方划分
   source_split TEXT NOT NULL,
   -- 关联不可变证据工件：selection_config
   selection_config_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
   -- SHA-256 完整性指纹：members
   members_sha256 TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：sample_count
+  -- 冻结集合样本数量
   sample_count INTEGER NOT NULL,
   -- 生命周期状态
   status TEXT NOT NULL,
@@ -193,9 +193,9 @@ CREATE TABLE sample_set_members (
   sample_id TEXT NOT NULL REFERENCES samples(sample_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：dataset_version
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：ordinal
+  -- 固定执行或集合顺序，从一开始
   ordinal INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：selection_reason
+  -- 样本入选规则说明
   selection_reason TEXT NOT NULL,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -222,13 +222,13 @@ CREATE TABLE embedding_indexes (
   input_manifest_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
   -- 关联不可变证据工件：index_bundle
   index_bundle_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：dimension
+  -- 向量维度，索引构建完成前可为空
   dimension INTEGER,
-  -- 实验审计字段（语义见设计第 5 节）：dtype
+  -- 实际向量数值精度
   dtype TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：metric
+  -- 向量距离或相似度定义
   metric TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：fingerprint
+  -- 语料、模型和索引配置联合指纹
   fingerprint TEXT NOT NULL UNIQUE,
   -- 生命周期状态
   status TEXT NOT NULL,
@@ -249,7 +249,7 @@ CREATE TABLE embedding_items (
   index_id TEXT NOT NULL REFERENCES embedding_indexes(index_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：sample
   sample_id TEXT NOT NULL REFERENCES samples(sample_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：vector_offset
+  -- 样本向量在矩阵中的行号，从零开始
   vector_offset INTEGER NOT NULL,
   -- SHA-256 完整性指纹：input
   input_sha256 TEXT NOT NULL,
@@ -257,7 +257,7 @@ CREATE TABLE embedding_items (
   vector_sha256 TEXT NOT NULL,
   -- 关联记录唯一标识：source_call_attempt
   source_call_attempt_id TEXT REFERENCES call_attempts(call_attempt_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：batch_offset
+  -- 样本在调用批次中的位置
   batch_offset INTEGER,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -270,9 +270,9 @@ CREATE TABLE embedding_items (
 CREATE TABLE experiments (
   -- 关联记录唯一标识：experiment
   experiment_id TEXT PRIMARY KEY NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：name
+  -- 用户定义名称
   name TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：research_question
+  -- 实验要检验的研究问题
   research_question TEXT NOT NULL,
   -- 关联记录唯一标识：dataset_version
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
@@ -282,7 +282,7 @@ CREATE TABLE experiments (
   evaluation_set_id TEXT NOT NULL REFERENCES sample_sets(sample_set_id) ON DELETE RESTRICT,
   -- 关联不可变证据工件：protocol
   protocol_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：comparison_group
+  -- 共享比较协议分组
   comparison_group TEXT NOT NULL,
   -- 生命周期状态
   status TEXT NOT NULL,
@@ -299,7 +299,7 @@ CREATE TABLE experiment_runs (
   run_id TEXT PRIMARY KEY NOT NULL,
   -- 关联记录唯一标识：experiment
   experiment_id TEXT NOT NULL REFERENCES experiments(experiment_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：method_name
+  -- 本次检索或推理方法
   method_name TEXT NOT NULL,
   -- 关联不可变证据工件：method_config
   method_config_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -315,13 +315,13 @@ CREATE TABLE experiment_runs (
   price_snapshot_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：index
   index_id TEXT REFERENCES embedding_indexes(index_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：code_commit
+  -- 运行时 Git 提交
   code_commit TEXT NOT NULL,
   -- 关联不可变证据工件：working_diff
   working_diff_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：seed
+  -- 固定随机种子
   seed INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：repetition_no
+  -- 独立重复运行编号，从一开始
   repetition_no INTEGER NOT NULL,
   -- SHA-256 完整性指纹：config
   config_sha256 TEXT NOT NULL,
@@ -331,7 +331,7 @@ CREATE TABLE experiment_runs (
   started_at TEXT,
   -- UTC 时间：completed
   completed_at TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：stop_reason
+  -- 暂停、终止或失败的原因
   stop_reason TEXT,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -347,7 +347,7 @@ CREATE TABLE run_items (
   run_id TEXT NOT NULL REFERENCES experiment_runs(run_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：sample
   sample_id TEXT NOT NULL REFERENCES samples(sample_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：ordinal
+  -- 固定执行或集合顺序，从一开始
   ordinal INTEGER NOT NULL,
   -- SHA-256 完整性指纹：input
   input_sha256 TEXT NOT NULL,
@@ -357,7 +357,7 @@ CREATE TABLE run_items (
   final_prediction_id TEXT REFERENCES predictions(prediction_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：worker
   worker_id TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：lease_token
+  -- 防止过期工作者写入的租约令牌
   lease_token TEXT,
   -- UTC 时间：lease_expires
   lease_expires_at TEXT,
@@ -365,9 +365,9 @@ CREATE TABLE run_items (
   started_at TEXT,
   -- UTC 时间：completed
   completed_at TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：failure_stage
+  -- 失败发生的处理阶段
   failure_stage TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：failure_code
+  -- 稳定的失败原因代码
   failure_code TEXT,
   -- 关联不可变证据工件：error
   error_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -390,15 +390,15 @@ CREATE TABLE execution_steps (
   run_item_id TEXT REFERENCES run_items(run_item_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：index
   index_id TEXT REFERENCES embedding_indexes(index_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：step_key
+  -- 所属样本或索引内唯一的步骤名称
   step_key TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：step_no
+  -- 算法步骤顺序，从一开始
   step_no INTEGER NOT NULL,
   -- 关联记录唯一标识：parent_step
   parent_step_id TEXT REFERENCES execution_steps(step_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：kind
+  -- 工件或步骤类型
   kind TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：implementation_version
+  -- 步骤实现版本
   implementation_version TEXT NOT NULL,
   -- 关联不可变证据工件：config
   config_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -412,11 +412,11 @@ CREATE TABLE execution_steps (
   started_at TEXT,
   -- UTC 时间：completed
   completed_at TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：latency_ms
+  -- 使用单调时钟测得的耗时（毫秒）
   latency_ms INTEGER CHECK(latency_ms IS NULL OR latency_ms>=0),
   -- 关联不可变证据工件：error
   error_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：trace_complete
+  -- 是否完整记录本步骤可观察信息，0 或 1
   trace_complete INTEGER NOT NULL,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -433,19 +433,19 @@ CREATE TABLE call_attempts (
   call_attempt_id TEXT PRIMARY KEY NOT NULL,
   -- 关联记录唯一标识：step
   step_id TEXT NOT NULL REFERENCES execution_steps(step_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：attempt_no
+  -- 步骤内调用尝试序号，重试递增
   attempt_no INTEGER NOT NULL,
   -- 关联记录唯一标识：retry_of_attempt
   retry_of_attempt_id TEXT REFERENCES call_attempts(call_attempt_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：transport_kind
+  -- 远端调用 remote 或本地推理 local
   transport_kind TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：provider
+  -- 供应商或兼容协议名称
   provider TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：requested_model
+  -- 实际请求的模型名称
   requested_model TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：resolved_model
+  -- 供应商响应中的模型名称；未返回为空
   resolved_model TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：endpoint
+  -- 脱敏后的实际调用端点
   endpoint TEXT,
   -- 关联不可变证据工件：request
   request_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -461,13 +461,13 @@ CREATE TABLE call_attempts (
   response_metadata_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
   -- 关联不可变证据工件：usage
   usage_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：http_status
+  -- 真实 HTTP 状态码；未收到响应为空
   http_status INTEGER,
   -- 关联记录唯一标识：provider_request
   provider_request_id TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：idempotency_key
+  -- 确实发送给供应商的幂等键；未使用为空
   idempotency_key TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：finish_reason
+  -- 供应商返回的结束原因
   finish_reason TEXT,
   -- 生命周期状态
   status TEXT NOT NULL,
@@ -479,7 +479,7 @@ CREATE TABLE call_attempts (
   first_response_at TEXT,
   -- UTC 时间：completed
   completed_at TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：latency_ms
+  -- 使用单调时钟测得的耗时（毫秒）
   latency_ms INTEGER CHECK(latency_ms IS NULL OR latency_ms>=0),
   -- Token 数量，未提供时为空：input_tokens
   input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens>=0),
@@ -491,13 +491,13 @@ CREATE TABLE call_attempts (
   reasoning_tokens INTEGER CHECK(reasoning_tokens IS NULL OR reasoning_tokens>=0),
   -- Token 数量，未提供时为空：total_tokens
   total_tokens INTEGER CHECK(total_tokens IS NULL OR total_tokens>=0),
-  -- 实验审计字段（语义见设计第 5 节）：usage_source
+  -- 用量来源：provider、local_estimate 或 unavailable
   usage_source TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：billing_state
+  -- 未派发、未知、已估算或账单确认
   billing_state TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：estimated_cost_micros
+  -- 估算费用，单位为百万分之一币种单位；未知为空
   estimated_cost_micros INTEGER,
-  -- 实验审计字段（语义见设计第 5 节）：currency
+  -- 费用币种
   currency TEXT,
   -- 关联不可变证据工件：price_snapshot
   price_snapshot_artifact_id TEXT REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -525,9 +525,9 @@ CREATE TABLE predictions (
   call_attempt_id TEXT NOT NULL REFERENCES call_attempts(call_attempt_id) ON DELETE RESTRICT,
   -- 用途
   purpose TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：parser_version
+  -- 输出解析器版本
   parser_version TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：output_schema_version
+  -- 预测输出结构版本
   output_schema_version TEXT NOT NULL,
   -- SHA-256 完整性指纹：source_response
   source_response_sha256 TEXT NOT NULL,
@@ -555,11 +555,11 @@ CREATE TABLE prediction_labels (
   dataset_version_id TEXT NOT NULL REFERENCES dataset_versions(dataset_version_id) ON DELETE RESTRICT,
   -- 数据集原生情绪编号
   label_id INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：output_position
+  -- 标签在原模型输出中的位置，从零开始
   output_position INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：reported_score
+  -- 模型实际返回的标签分数；未返回为空
   reported_score REAL,
-  -- 实验审计字段（语义见设计第 5 节）：score_kind
+  -- 模型自述分数或对数概率等分数类型
   score_kind TEXT,
   -- 经过 JSON 校验的结构化内容：evidence
   evidence_json TEXT CHECK(json_valid(evidence_json)),
@@ -576,21 +576,21 @@ CREATE TABLE retrieval_items (
   retrieval_step_id TEXT NOT NULL REFERENCES execution_steps(step_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：sample
   sample_id TEXT NOT NULL REFERENCES samples(sample_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：stage
+  -- 候选检索或选择阶段
   stage TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：candidate_rank
+  -- 进入处理的候选顺序，从一开始
   candidate_rank INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：similarity_score
+  -- 实际计算的相似度，随机检索为空
   similarity_score REAL,
-  -- 实验审计字段（语义见设计第 5 节）：rerank_score
+  -- 实际重排得分，未重排为空
   rerank_score REAL,
   -- 经过 JSON 校验的结构化内容：score_components
   score_components_json TEXT NOT NULL CHECK(json_valid(score_components_json)),
-  -- 实验审计字段（语义见设计第 5 节）：decision
+  -- 候选、入选或排除
   decision TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：reason_code
+  -- 入选、去重、预算裁剪等决策原因
   reason_code TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：selected_rank
+  -- 最终示例顺序，未入选为空
   selected_rank INTEGER,
   -- Token 数量，未提供时为空：example_tokens
   example_tokens INTEGER CHECK(example_tokens IS NULL OR example_tokens>=0),
@@ -611,7 +611,7 @@ CREATE TABLE evaluations (
   run_id TEXT NOT NULL REFERENCES experiment_runs(run_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：sample_set
   sample_set_id TEXT NOT NULL REFERENCES sample_sets(sample_set_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：scorer_version
+  -- 指标计算程序版本
   scorer_version TEXT NOT NULL,
   -- 关联不可变证据工件：evaluation_config
   evaluation_config_artifact_id TEXT NOT NULL REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
@@ -625,11 +625,11 @@ CREATE TABLE evaluations (
   scope TEXT NOT NULL,
   -- 生命周期状态
   status TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：expected_items
+  -- 完整计划评测的样本数
   expected_items INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：observed_items
+  -- 运行已进入成功或失败状态的样本数
   observed_items INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：failed_items
+  -- 其中执行失败的样本数
   failed_items INTEGER NOT NULL,
   -- UTC 时间：completed
   completed_at TEXT,
@@ -649,17 +649,17 @@ CREATE TABLE evaluation_items (
   run_item_id TEXT NOT NULL REFERENCES run_items(run_item_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：prediction
   prediction_id TEXT REFERENCES predictions(prediction_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：outcome
+  -- 逐条正确、错误、失败或缺失状态
   outcome TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：missing_reason
+  -- 预测缺失的原始原因
   missing_reason TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：tp
+  -- 正确预测的标签数
   tp INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：fp
+  -- 误报标签数
   fp INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：fn
+  -- 漏报标签数
   fn INTEGER NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：exact_match
+  -- 标签集合是否完全一致，0 或 1
   exact_match INTEGER NOT NULL,
   -- 经过 JSON 校验的结构化内容：missing_label_ids
   missing_label_ids_json TEXT NOT NULL CHECK(json_valid(missing_label_ids_json)),
@@ -706,23 +706,23 @@ CREATE TABLE metric_values (
   evaluation_id TEXT REFERENCES evaluations(evaluation_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：comparison
   comparison_id TEXT REFERENCES comparisons(comparison_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：metric_name
+  -- 指标名称
   metric_name TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：scope_key
+  -- 总体、标签、family、切片或币种范围
   scope_key TEXT NOT NULL,
   -- 指标数值，未知为空
   value REAL,
-  -- 实验审计字段（语义见设计第 5 节）：numerator
+  -- 指标计算分子
   numerator REAL,
-  -- 实验审计字段（语义见设计第 5 节）：denominator
+  -- 指标计算分母
   denominator REAL,
-  -- 实验审计字段（语义见设计第 5 节）：support
+  -- 真值支持数或参与样本数
   support INTEGER,
-  -- 实验审计字段（语义见设计第 5 节）：ci_low
+  -- 置信区间下界
   ci_low REAL,
-  -- 实验审计字段（语义见设计第 5 节）：ci_high
+  -- 置信区间上界
   ci_high REAL,
-  -- 实验审计字段（语义见设计第 5 节）：undefined_reason
+  -- 未定义或零分母的说明
   undefined_reason TEXT,
   -- 记录创建时间（UTC）
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%f000Z','now')),
@@ -752,11 +752,11 @@ CREATE TABLE audit_events (
   evaluation_id TEXT REFERENCES evaluations(evaluation_id) ON DELETE RESTRICT,
   -- 关联记录唯一标识：comparison
   comparison_id TEXT REFERENCES comparisons(comparison_id) ON DELETE RESTRICT,
-  -- 实验审计字段（语义见设计第 5 节）：event_type
+  -- 追加事件类型
   event_type TEXT NOT NULL,
-  -- 实验审计字段（语义见设计第 5 节）：from_status
+  -- 状态变更前值
   from_status TEXT,
-  -- 实验审计字段（语义见设计第 5 节）：to_status
+  -- 状态变更后值
   to_status TEXT,
   -- 操作主体
   actor TEXT NOT NULL,
@@ -964,3 +964,12 @@ CREATE INDEX ix_events_step_id ON audit_events(step_id,event_id) WHERE step_id I
 CREATE INDEX ix_events_call_attempt_id ON audit_events(call_attempt_id,event_id) WHERE call_attempt_id IS NOT NULL;
 CREATE INDEX ix_events_evaluation_id ON audit_events(evaluation_id,event_id) WHERE evaluation_id IS NOT NULL;
 CREATE INDEX ix_events_comparison_id ON audit_events(comparison_id,event_id) WHERE comparison_id IS NOT NULL;
+
+-- 已参与最终结果或评分的标签集合不可再追加，保持历史结果稳定。
+CREATE TRIGGER freeze_used_prediction_labels BEFORE INSERT ON prediction_labels
+WHEN EXISTS(SELECT 1 FROM run_items WHERE final_prediction_id=NEW.prediction_id)
+ OR EXISTS(SELECT 1 FROM evaluation_items WHERE prediction_id=NEW.prediction_id)
+BEGIN SELECT RAISE(ABORT,'prediction labels already frozen'); END;
+-- 已成功执行项只允许通过新 run 开展独立实验。
+CREATE TRIGGER immutable_success_item BEFORE UPDATE ON run_items WHEN OLD.status='succeeded'
+BEGIN SELECT RAISE(ABORT,'successful item is immutable'); END;

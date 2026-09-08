@@ -22,7 +22,7 @@
 文件：`emotion_lab/storage/{database.py,artifacts.py,001_initial.sql}`、`emotion_lab/datasets.py`、`tests/lab/test_storage.py`。
 接口：`Store(root, db_path=None, initialize=False)`；`put(data, kind)` / `read(artifact_id)`；`import_goemotions(store, source)` 返回版本 ID；`make_set(store, config)` 返回集合 ID。
 
-- [ ] 写真实临时 SQLite 测试，验证旧库拒绝初始化、工件损坏检测、23 表、跨版本标签拒绝、冻结集合拒绝、train-only。
+- [x] 写真实临时 SQLite 测试，验证旧库拒绝初始化、工件损坏检测、23 表、跨版本标签拒绝、冻结集合拒绝、train-only。
 
 ```python
 with pytest.raises(sqlite3.IntegrityError):
@@ -30,17 +30,17 @@ with pytest.raises(sqlite3.IntegrityError):
 assert store.read(artifact_id) == b'original bytes'
 ```
 
-- [ ] 运行 `python -m pytest tests/lab/test_storage.py -q`，先确认缺失功能失败。
-- [ ] 按设计创建注释完整的 SQL 表、约束、触发器及视图；实现带校验的初始化、事务事件、工件、校验、备份。
-- [ ] 从数据提交 `3fa3928` 只恢复 `data/benchmarks/goemotions/`，实现来源校验、导入与集合冻结。
-- [ ] 测试通过后提交存储阶段。
+- [x] 运行 `python -m pytest tests/lab/test_storage.py -q`，先确认缺失功能失败。
+- [x] 按设计创建注释完整的 SQL 表、约束、触发器及视图；实现带校验的初始化、事务事件、工件、校验、备份。
+- [x] 从数据提交 `3fa3928` 只恢复 `data/benchmarks/goemotions/`，实现来源校验、导入与集合冻结。
+- [x] 测试通过后提交存储阶段。
 
 ## 任务 2：模型与推理执行
 
 文件：`emotion_lab/{config.py,taxonomy.py,retrieval.py,runner.py}`、`emotion_lab/llm/`、`tests/lab/test_runner.py`。
 接口：`prepare_run(store, config, dry_run=False)`；`execute_run(store, run_id, transport=None)`；`parse_attempt(store, attempt_id, parser_version)`；模型传输接收实际序列化 request bytes，返回 status、headers 和 raw bytes。
 
-- [ ] 写离线 HTTP 传输测试，返回固定多标签、非法 JSON、HTTP 错误、超时、无 usage；断点注入到派发与响应落盘边界。
+- [x] 写离线 HTTP 传输测试，返回固定多标签、非法 JSON、HTTP 错误、超时、无 usage；断点注入到派发与响应落盘边界。
 
 ```python
 assert item['status'] == 'succeeded'
@@ -48,28 +48,32 @@ assert attempt['total_tokens'] is None
 assert len(store.rows('SELECT * FROM call_attempts')) == 2
 ```
 
-- [ ] 运行 `python -m pytest tests/lab/test_runner.py -q` 确认失败。
-- [ ] 提取现有供应商参数、脱敏与官方 tokenizer；用 httpx 直接捕获完整响应，关闭隐式重试。
-- [ ] 实现 labels 数组验证，zero-shot/random/lexical，完整候选与预算裁剪记录；不读取待测标签。
-- [ ] 实现冻结配置、租约、调用审计、故障恢复、重解析，成功项恢复时跳过。
-- [ ] 通过持久化证据断言后提交执行阶段。
+- [x] 运行 `python -m pytest tests/lab/test_runner.py -q` 确认失败。
+- [x] 提取现有供应商参数、脱敏与官方 tokenizer；用 httpx 直接捕获完整响应，关闭隐式重试。
+- [x] 实现 labels 数组验证，zero-shot/random/lexical，完整候选与预算裁剪记录；不读取待测标签。
+- [x] 实现冻结配置、租约、调用审计、故障恢复、重解析，成功项恢复时跳过。
+- [x] 通过持久化证据断言后提交执行阶段。
 
 ## 任务 3：评测、比较和 CLI
 
 文件：`emotion_lab/{evaluation.py,cli.py,__main__.py}`、`tests/lab/test_evaluation.py`、`tests/lab/test_cli.py`。
 接口：`evaluate(store, run_id, config)`；`compare(store, baseline, candidate, seed, repeats)`；`export_evaluation(store, evaluation_id, output)`。
 
-- [ ] 手算夹具验证真值 `{0,1}` 与预测 `{0}` 的 TP=1、FP=0、FN=1；空预测保留分母；配对比较必须严格对齐。
-- [ ] 运行对应测试确认失败，再实现固定标签全集 Macro/Micro-F1、逐类与 family 指标、快照、配对 bootstrap。
-- [ ] 实现 init/import/make-set/run/dry-run/resume/evaluate/compare/export/verify/backup，增加 reparse/cancel/status 操作。
-- [ ] CLI subprocess 离线流程验证返回码、数据行数与不发生调用。
+- [x] 手算夹具验证真值 `{0,1}` 与预测 `{0}` 的 TP=1、FP=0、FN=1；空预测保留分母；配对比较必须严格对齐。
+- [x] 运行对应测试确认失败，再实现固定标签全集 Macro/Micro-F1、逐类与 family 指标、快照、配对 bootstrap。
+- [x] 实现 init/import/make-set/run/dry-run/resume/evaluate/compare/export/verify/backup，增加 reparse/cancel/status 操作。
+- [x] CLI subprocess 离线流程验证返回码、数据行数与不发生调用。
 
 ## 任务 4：清理、初始化和交付
 
 文件：README、依赖、环境示例、启动脚本、实验配置、验收报告；删除设计所列旧 tracked 文件。
 
-- [ ] 保存仍有价值的 tokenizer/脱敏测试与有来源的 56 条烟测夹具。
-- [ ] 仅删除 Git 跟踪的旧聊天/归档/文档/测试，保留新模块和本次文档。
-- [ ] 运行完整新测试、官方数据验证、CLI init/import、200 dev dry-run、备份还原校验。
-- [ ] 核对主工作区 Git 状态和原数据文件哈希未变；记录实际库统计与测试结果。
-- [ ] `git diff --check`、审阅改动、任务提交。最终说明仅离线验证，真实模型实验尚未执行。
+- [x] 保存仍有价值的 tokenizer/脱敏测试与有来源的 56 条烟测夹具。
+- [x] 仅删除 Git 跟踪的旧聊天/归档/文档/测试，保留新模块和本次文档。
+- [x] 运行完整新测试、官方数据验证、CLI init/import、200 dev dry-run、备份还原校验。
+- [x] 核对主工作区 Git 状态和原数据文件哈希未变；记录实际库统计与测试结果。
+- [x] `git diff --check`、审阅改动、任务提交。最终说明仅离线验证，真实模型实验尚未执行。
+
+## 执行结果
+
+2026-09-08：上述步骤已完成。51 项离线测试通过；完整官方数据已导入，dev200 dry-run 无模型调用，最终备份哈希通过。实现采用单调度线程串行写数据库和并发 HTTP future 队列。用户要求保留分支，因此不进行合并或推送。详细证据见 `docs/research/implementation-verification.md`。

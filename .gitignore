@@ -7,3 +7,6 @@ __pycache__/
 .worktrees/
 .superpowers/
 data/*.sqlite3*
+data/research/
+*.egg-info/
+.ruff_cache/

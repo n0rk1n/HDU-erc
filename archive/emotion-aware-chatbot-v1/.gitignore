@@ -1,9 +1,0 @@
-.claude
-.idea
-__pycache__
-EICL
-docs
-.env
-.worktrees
-data/records
-data/config/prompts.json
