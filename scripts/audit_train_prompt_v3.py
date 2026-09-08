@@ -18,7 +18,7 @@ def audit(source):
     labels = (source / "emotions.txt").read_text().splitlines()
     rows = [
         {"source_id": r[2], "text": r[0], "labels": [labels[int(i)] for i in r[1].split(",")]}
-        for r in csv.reader((source / "train.tsv").open(), delimiter="\t")
+        for r in csv.reader((source / "train.tsv").open(), delimiter="\t", quoting=csv.QUOTE_NONE)
     ]
     counts = Counter(label for row in rows for label in row["labels"])
     pairs = Counter(pair for row in rows for pair in combinations(sorted(row["labels"]), 2))

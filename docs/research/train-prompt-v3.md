@@ -4,7 +4,7 @@
 
 ## 数据依据
 
-训练审计工件：`a6ce3e65-7698-4683-b2e5-b63d56e6ec26`。完整统计、抽样原文、标签及 source_id 在 `data/research/train_prompt_v3_audit.json`，生成脚本为 `scripts/audit_train_prompt_v3.py`。脚本核对官方 manifest 哈希，只读取 train.tsv 和 emotions.txt，不读取 dev/test 内容。正则仅用于分析切片，不进入分类器。
+训练审计工件：`df0b445f-fe1b-4bea-bcb1-961f99778c41`。完整统计、抽样原文、标签及 source_id 在 `data/research/train_prompt_v3_audit.json`，生成脚本为 `scripts/audit_train_prompt_v3.py`。脚本核对官方 manifest 哈希，只读取 train.tsv 和 emotions.txt，不读取 dev/test 内容。正则仅用于分析切片，不进入分类器。
 
 43,410 条训练评论中，36,308 条（83.64%）单标签，6,541 条双标签，532 条三标签，28 条四标签，1 条五标签。12,823 条仅 neutral，1,396 条 neutral 与其他标签共现。
 
@@ -28,3 +28,5 @@
 - 前轮 dev200 的错误已被观察，并用于提出本轮问题，因此本轮属于开发集迭代，不是独立泛化结论。官方 test 不使用。
 - 只冻结一个 v3 候选；不按本轮 dev 得分继续改写或选择 prompt。
 - 记录原始请求响应、重试、usage、完整代码及 prompt 快照、配对 bootstrap、训练审计、评分与备份。
+
+审计修订说明：初版审计读取器处理了原文外层引号，280 个抽样记录中 1 个出现文本差异；已按 TSV 的 QUOTE_NONE 修正，并验证所有统计、prompt 和运行时导入文本不变。旧工件保留，纠正关系通过 train_audit_correction 工件记录。
