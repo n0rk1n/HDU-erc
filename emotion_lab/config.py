@@ -93,7 +93,7 @@ def validate_config(config):
     config.setdefault("require_evidence", False)
     config.setdefault("prompt_version", "native-labels-v1")
     config.setdefault("example_policy", "ranked")
-    if config["prompt_version"] not in {"native-labels-v1", "native-labels-v2"}:
+    if config["prompt_version"] not in {"native-labels-v1", "native-labels-v2", "native-labels-v3"}:
         raise ConfigError("unsupported prompt_version")
     if config["example_policy"] not in {"ranked", "contrastive-v1"}:
         raise ConfigError("unsupported example_policy")

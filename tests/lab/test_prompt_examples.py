@@ -150,9 +150,10 @@ def test_invalid_prompt_or_policy_cannot_silently_fall_back(override):
         validate_config({"method": "zero-shot", **override})
 
 
-def test_actual_v2_request_has_complete_frozen_prompt_snapshot(configured):
+@pytest.mark.parametrize("version", ["native-labels-v2", "native-labels-v3"])
+def test_actual_versioned_request_has_complete_frozen_prompt_snapshot(configured, version):
     store, cfg = configured
-    cfg["prompt_version"] = "native-labels-v2"
+    cfg["prompt_version"] = version
     cfg["model"]["context_tokens"] = 30000
     run = prepare_run(store, cfg, counter=Counter())
     execute_run(store, run, transport=lambda request: response(), counter=Counter())
@@ -164,5 +165,20 @@ def test_actual_v2_request_has_complete_frozen_prompt_snapshot(configured):
         request["messages"][0]["content"].split("\nLabel definitions:")[0]
         == snapshot["instruction"]
     )
-    assert snapshot["version"] == "native-labels-v2"
+    assert snapshot["version"] == version
     assert snapshot["example_policy"]["version"] == "ranked"
+
+
+def test_v3_changes_instruction_without_changing_query_or_training_evidence(contrast_corpus):
+    store, corpus = contrast_corpus
+    retriever = Retriever(store, corpus)
+    cfg = config()
+    old = retriever.select(query("late train again please"), cfg, load_taxonomy(), Counter())
+    cfg["prompt_version"] = "native-labels-v3"
+    cfg = validate_config(cfg)
+    new = retriever.select(query("late train again please"), cfg, load_taxonomy(), Counter())
+    assert [r["sample_id"] for r in old[0]] == [r["sample_id"] for r in new[0]]
+    assert old[2]["contrast_pair"] == new[2]["contrast_pair"]
+    assert old[3][1] == new[3][1]
+    assert old[3][0]["content"] != new[3][0]["content"]
+    assert old[3][0]["content"].split("\nLabel definitions:")[1] == new[3][0]["content"].split("\nLabel definitions:")[1]
