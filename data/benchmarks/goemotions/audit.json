@@ -1,0 +1,194 @@
+{
+  "source_commit": "5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4",
+  "verified_source_files": 6,
+  "normalization": "casefold, trim and collapse whitespace; no punctuation removal",
+  "splits": {
+    "train": {
+      "rows": 43410,
+      "unique_ids": 43410,
+      "unique_exact_texts": 43227,
+      "unique_normalized_texts": 43189,
+      "multilabel_rows": 7102,
+      "label_cardinality": {
+        "1": 36308,
+        "2": 6541,
+        "3": 532,
+        "4": 28,
+        "5": 1
+      },
+      "neutral_with_emotion_rows": 1396,
+      "label_positive_counts": {
+        "admiration": 4130,
+        "amusement": 2328,
+        "anger": 1567,
+        "annoyance": 2470,
+        "approval": 2939,
+        "caring": 1087,
+        "confusion": 1368,
+        "curiosity": 2191,
+        "desire": 641,
+        "disappointment": 1269,
+        "disapproval": 2022,
+        "disgust": 793,
+        "embarrassment": 303,
+        "excitement": 853,
+        "fear": 596,
+        "gratitude": 2662,
+        "grief": 77,
+        "joy": 1452,
+        "love": 2086,
+        "nervousness": 164,
+        "optimism": 1581,
+        "pride": 111,
+        "realization": 1110,
+        "relief": 153,
+        "remorse": 545,
+        "sadness": 1326,
+        "surprise": 1060,
+        "neutral": 14219
+      }
+    },
+    "dev": {
+      "rows": 5426,
+      "unique_ids": 5426,
+      "unique_exact_texts": 5423,
+      "unique_normalized_texts": 5421,
+      "multilabel_rows": 878,
+      "label_cardinality": {
+        "1": 4548,
+        "2": 809,
+        "3": 62,
+        "4": 7
+      },
+      "neutral_with_emotion_rows": 174,
+      "label_positive_counts": {
+        "admiration": 488,
+        "amusement": 303,
+        "anger": 195,
+        "annoyance": 303,
+        "approval": 397,
+        "caring": 153,
+        "confusion": 152,
+        "curiosity": 248,
+        "desire": 77,
+        "disappointment": 163,
+        "disapproval": 292,
+        "disgust": 97,
+        "embarrassment": 35,
+        "excitement": 96,
+        "fear": 90,
+        "gratitude": 358,
+        "grief": 13,
+        "joy": 172,
+        "love": 252,
+        "nervousness": 21,
+        "optimism": 209,
+        "pride": 15,
+        "realization": 127,
+        "relief": 18,
+        "remorse": 68,
+        "sadness": 143,
+        "surprise": 129,
+        "neutral": 1766
+      }
+    },
+    "test": {
+      "rows": 5427,
+      "unique_ids": 5427,
+      "unique_exact_texts": 5421,
+      "unique_normalized_texts": 5421,
+      "multilabel_rows": 837,
+      "label_cardinality": {
+        "1": 4590,
+        "2": 774,
+        "3": 61,
+        "4": 2
+      },
+      "neutral_with_emotion_rows": 181,
+      "label_positive_counts": {
+        "admiration": 504,
+        "amusement": 264,
+        "anger": 198,
+        "annoyance": 320,
+        "approval": 351,
+        "caring": 135,
+        "confusion": 153,
+        "curiosity": 284,
+        "desire": 83,
+        "disappointment": 151,
+        "disapproval": 267,
+        "disgust": 123,
+        "embarrassment": 37,
+        "excitement": 103,
+        "fear": 78,
+        "gratitude": 352,
+        "grief": 6,
+        "joy": 161,
+        "love": 238,
+        "nervousness": 23,
+        "optimism": 186,
+        "pride": 16,
+        "realization": 145,
+        "relief": 11,
+        "remorse": 56,
+        "sadness": 156,
+        "surprise": 141,
+        "neutral": 1787
+      }
+    }
+  },
+  "cross_split_overlap": {
+    "train/dev": {
+      "id": {
+        "shared_values": 0,
+        "train_rows": 0,
+        "dev_rows": 0
+      },
+      "exact_text": {
+        "shared_values": 41,
+        "train_rows": 84,
+        "dev_rows": 43
+      },
+      "normalized_text": {
+        "shared_values": 46,
+        "train_rows": 103,
+        "dev_rows": 49
+      }
+    },
+    "train/test": {
+      "id": {
+        "shared_values": 0,
+        "train_rows": 0,
+        "test_rows": 0
+      },
+      "exact_text": {
+        "shared_values": 32,
+        "train_rows": 79,
+        "test_rows": 37
+      },
+      "normalized_text": {
+        "shared_values": 37,
+        "train_rows": 99,
+        "test_rows": 42
+      }
+    },
+    "dev/test": {
+      "id": {
+        "shared_values": 0,
+        "dev_rows": 0,
+        "test_rows": 0
+      },
+      "exact_text": {
+        "shared_values": 10,
+        "dev_rows": 10,
+        "test_rows": 13
+      },
+      "normalized_text": {
+        "shared_values": 11,
+        "dev_rows": 12,
+        "test_rows": 14
+      }
+    }
+  },
+  "total_rows": 54263
+}
