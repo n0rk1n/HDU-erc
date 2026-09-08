@@ -28,7 +28,7 @@ class Recognizer:
         if self.calls == self.fail_at:
             raise RuntimeError('private provider failure sk-secret')
         return ModelOutcome(json.dumps({
-            'primary_emotion': 'sad', 'confidence': .9, 'secondary_emotions': ['lonely'],
+            'primary_emotion': 'sadness', 'confidence': .9, 'secondary_emotions': ['disappointment'],
             'evidence': '你提到最近感到难过。', 'reply_strategy': 'private strategy',
             'trajectory_note': 'private trajectory', 'safety_level': 'normal',
         }), 'private reasoning', TokenUsage(), 'stop', {}, None)
@@ -65,7 +65,7 @@ def test_progress_success_skip_history_pagination_replay_and_user_isolation(app_
         assert all(i < first_token for i, (name, _) in enumerate(events) if name == 'progress')
         done = events[-1][1]
         result = done['message']['processing']['emotion']
-        assert result['label'] == 'sad' and result['display_label'] == '难过'
+        assert result['label'] == 'sadness' and result['display_label'] == '难过'
         assert result['confidence'] == .9 and result['evidence'] == '你提到最近感到难过。'
         assert result['sequence_no'] == 1
         assert done['message']['processing']['emotion_status'] == 'completed'
@@ -120,7 +120,7 @@ def test_reply_failure_retains_successful_emotion_in_history(app_config):
         processing = history['messages'][-1]['processing']
         assert processing['emotion_status'] == 'completed'
         assert processing['steps'][-1] == {'id': 'response', 'status': 'failed'}
-        assert history['latest_emotion']['label'] == 'sad'
+        assert history['latest_emotion']['label'] == 'sadness'
 
 
 def test_preparation_failure_is_not_reported_as_a_model_call(app_config):
@@ -185,7 +185,25 @@ def test_older_analysis_without_gate_does_not_invent_a_failed_decision(app_confi
         assert not any(step['id'] == 'decision' for step in processing['steps'])
 
 
-@pytest.mark.parametrize(('names', 'expected'), [({'sad': {'description': 'sorrow', 'display_name': '低落'}}, '低落'), ({'sad': 'sorrow'}, 'sad')])
+def test_saved_legacy_label_is_displayed_without_relabeling(app_config):
+    import sqlite3
+    db = Database(app_config.sqlite_db_path)
+    with TestClient(create_app(config=app_config, model=OfflineModel(),
+            emotion=emotion_runtime(db, Recognizer()), gate=gate_runtime(db))) as client:
+        user = resolve(client, 'legacy-taxonomy')
+        send(client, user)
+        with sqlite3.connect(db.path) as con:
+            stored = json.loads(con.execute('SELECT result_json FROM emotion_analyses').fetchone()[0])
+            stored.update(primary_emotion='sad', primary_family='sadness_loss', secondary_emotions=['lonely'])
+            legacy_json = json.dumps(stored)
+            con.execute('UPDATE emotion_analyses SET result_json=?', (legacy_json,))
+        result = client.get(f'/api/users/{user}/messages').json()['latest_emotion']
+        assert result['label'] == result['display_label'] == 'sad'
+        with sqlite3.connect(db.path) as con:
+            assert con.execute('SELECT result_json FROM emotion_analyses').fetchone()[0] == legacy_json
+
+
+@pytest.mark.parametrize(('names', 'expected'), [({'sadness': {'description': 'sorrow', 'display_name': '低落'}}, '低落'), ({'sadness': 'sorrow'}, 'sadness')])
 def test_configured_names_reach_progress_done_replay_and_history(app_config, tmp_path, monkeypatch, names, expected):
     names_path = tmp_path / 'names.json'
     names_path.write_text(json.dumps(names), encoding='utf-8')
@@ -204,17 +222,17 @@ def test_configured_names_reach_progress_done_replay_and_history(app_config, tmp
             assert data['latest_emotion']['display_label'] == expected
         for result in (events[-1][1], send(client, user, request_id)[-1][1]):
             assert result['message']['processing']['emotion']['display_label'] == expected
-            assert result['latest_emotion']['label'] == 'sad'
+            assert result['latest_emotion']['label'] == 'sadness'
             assert result['latest_emotion']['display_label'] == expected
         history = client.get(f'/api/users/{user}/messages').json()
         assert history['messages'][-1]['processing']['emotion']['display_label'] == expected
         assert history['latest_emotion']['display_label'] == expected
-        names_path.write_text('{"sad": {"description": "sorrow", "display_name": "伤心"}}', encoding='utf-8')
+        names_path.write_text('{"sadness": {"description": "sorrow", "display_name": "伤心"}}', encoding='utf-8')
         assert client.get(f'/api/users/{user}/messages').json()['latest_emotion']['display_label'] == '伤心'
 
 
-@pytest.mark.parametrize('content', ['[]', '{', '{"sad": 1}', '{"sad": " "}',
-                                     '{" ": "伤心"}', '{"sad": {"description": "sorrow", "display_name": " "}}', '{"sad":"a","sad":"b"}', None])
+@pytest.mark.parametrize('content', ['[]', '{', '{"sadness": 1}', '{"sadness": " "}',
+                                     '{" ": "伤心"}', '{"sadness": {"description": "sorrow", "display_name": " "}}', '{"sadness":"a","sadness":"b"}', None])
 def test_invalid_emotion_names_are_rejected(tmp_path, monkeypatch, content):
     from chatbot.core.errors import ConfigError
     from chatbot.services.presentation import PresentationService

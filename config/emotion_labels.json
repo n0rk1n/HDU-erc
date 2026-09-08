@@ -1,138 +1,114 @@
 {
-  "surprised": {
-    "description": "an unexpected event, without assuming it is good or bad",
-    "display_name": "惊讶"
+  "admiration": {
+    "description": "Respect or appreciation for someone or something regarded as impressive, skilled, or excellent; distinguish from simply agreeing with an opinion (approval).",
+    "display_name": "赞赏"
   },
-  "excited": {
-    "description": "high-energy positive anticipation or enthusiasm",
-    "display_name": "兴奋"
+  "amusement": {
+    "description": "Finding something funny or entertaining, often with laughter; distinguish from general happiness (joy).",
+    "display_name": "觉得好笑"
   },
-  "annoyed": {
-    "description": "mild irritation, less intense than angry or furious",
-    "display_name": "烦恼"
-  },
-  "proud": {
-    "description": "satisfaction in one's own or another person's achievement",
-    "display_name": "自豪"
-  },
-  "angry": {
-    "description": "clear anger at a wrong or obstacle, stronger than annoyed",
-    "display_name": "生气"
-  },
-  "sad": {
-    "description": "general unhappiness or sorrow",
-    "display_name": "难过"
-  },
-  "grateful": {
-    "description": "appreciation for help, kindness, or a benefit received",
-    "display_name": "感激"
-  },
-  "lonely": {
-    "description": "distress from lacking companionship or connection",
-    "display_name": "孤独"
-  },
-  "impressed": {
-    "description": "admiration caused by something notably skillful or good",
-    "display_name": "赞叹"
-  },
-  "afraid": {
-    "description": "fear of a concrete threat, less overwhelming than terrified",
-    "display_name": "害怕"
-  },
-  "disgusted": {
-    "description": "strong revulsion or moral/physical aversion",
-    "display_name": "厌恶"
-  },
-  "confident": {
-    "description": "belief in one's ability or a favorable outcome",
-    "display_name": "自信"
-  },
-  "terrified": {
-    "description": "overwhelming or extreme fear",
-    "display_name": "恐惧"
-  },
-  "hopeful": {
-    "description": "desire and belief that a positive outcome may happen",
-    "display_name": "充满希望"
-  },
-  "anxious": {
-    "description": "uneasy worry about an uncertain outcome",
-    "display_name": "焦虑"
-  },
-  "disappointed": {
-    "description": "sadness because an expectation was not met",
-    "display_name": "失望"
-  },
-  "joyful": {
-    "description": "strong happiness caused by a positive event",
-    "display_name": "喜悦"
-  },
-  "prepared": {
-    "description": "readiness because planning or practice is complete",
-    "display_name": "准备充分"
-  },
-  "guilty": {
-    "description": "remorse for one's own action or responsibility",
-    "display_name": "内疚"
-  },
-  "furious": {
-    "description": "extreme, highly intense anger",
+  "anger": {
+    "description": "Strong displeasure or hostility about a perceived wrong or obstacle; distinguish from milder irritation (annoyance) and a negative judgment without anger (disapproval).",
     "display_name": "愤怒"
   },
-  "nostalgic": {
-    "description": "longing for or warmly recalling the past",
-    "display_name": "怀念"
+  "annoyance": {
+    "description": "Mild irritation or frustration at something bothersome; distinguish from stronger anger.",
+    "display_name": "烦躁"
   },
-  "jealous": {
-    "description": "fear or resentment about losing status, attention, or a bond",
-    "display_name": "嫉妒"
-  },
-  "anticipating": {
-    "description": "looking forward to an upcoming event; valence may be mixed",
-    "display_name": "期待"
-  },
-  "embarrassed": {
-    "description": "social discomfort after awkward exposure or attention",
-    "display_name": "尴尬"
-  },
-  "content": {
-    "description": "calm satisfaction, lower arousal than joyful or excited",
-    "display_name": "满足"
-  },
-  "devastated": {
-    "description": "overwhelming sadness after severe loss or bad news",
-    "display_name": "悲痛"
-  },
-  "sentimental": {
-    "description": "tender emotional attachment to a person, object, or memory",
-    "display_name": "感怀"
+  "approval": {
+    "description": "Agreement, acceptance, or a favorable opinion; distinguish from admiration of excellence and affection (love).",
+    "display_name": "认可"
   },
   "caring": {
-    "description": "concern for another person's wellbeing",
+    "description": "Concern, sympathy, or a wish to support another person and protect their wellbeing; distinguish from gratitude for help received.",
     "display_name": "关切"
   },
-  "trusting": {
-    "description": "willingness to rely on another person or believe them",
-    "display_name": "信任"
+  "confusion": {
+    "description": "Not understanding something or being unable to make sense of it; distinguish from an interested search for information (curiosity).",
+    "display_name": "困惑"
   },
-  "ashamed": {
-    "description": "painful negative judgment of oneself, broader than guilt about an act",
-    "display_name": "羞愧"
+  "curiosity": {
+    "description": "Interest in learning, exploring, or knowing more; a question alone does not establish curiosity, and lack of understanding may instead express confusion.",
+    "display_name": "好奇"
   },
-  "apprehensive": {
-    "description": "cautious fear about a possible future problem",
-    "display_name": "忐忑"
+  "desire": {
+    "description": "A strong wish or longing for something; wanting an outcome does not by itself imply expecting it to happen (optimism).",
+    "display_name": "渴望"
   },
-  "faithful": {
-    "description": "loyal commitment to a person, relationship, or belief",
-    "display_name": "忠诚"
+  "disappointment": {
+    "description": "Unhappiness because hopes or expectations were not met; distinguish from general sadness without an unmet expectation.",
+    "display_name": "失望"
+  },
+  "disapproval": {
+    "description": "Disagreement, criticism, or a negative opinion about something; distinguish from the emotional intensity of anger and the revulsion of disgust.",
+    "display_name": "不赞同"
+  },
+  "disgust": {
+    "description": "Revulsion or strong aversion to something offensive, repulsive, or unpleasant, physically or morally; distinguish from simple disagreement.",
+    "display_name": "厌恶"
+  },
+  "embarrassment": {
+    "description": "Self-conscious discomfort, awkwardness, or shame about exposure or how one is seen; distinguish from remorse about an action one regrets.",
+    "display_name": "尴尬"
+  },
+  "excitement": {
+    "description": "High-energy enthusiasm or eagerness about something happening or anticipated; distinguish from calmer happiness (joy) and a wish alone (desire).",
+    "display_name": "兴奋"
+  },
+  "fear": {
+    "description": "Being scared or sensing danger or a threat; distinguish from uneasy anticipation or nervous tension (nervousness).",
+    "display_name": "害怕"
+  },
+  "gratitude": {
+    "description": "Thankfulness or appreciation for help, kindness, or a benefit received; distinguish from admiration of a quality or achievement.",
+    "display_name": "感激"
+  },
+  "grief": {
+    "description": "Deep sorrow, especially in response to death or significant loss; distinguish from more general sadness.",
+    "display_name": "悲痛"
+  },
+  "joy": {
+    "description": "Happiness, pleasure, or delight; distinguish from finding something funny (amusement) and high-energy enthusiasm (excitement).",
+    "display_name": "喜悦"
+  },
+  "love": {
+    "description": "Affection, attachment, or strong fondness for a person, activity, or thing; distinguish from agreement (approval) and concern for wellbeing (caring).",
+    "display_name": "喜爱"
+  },
+  "nervousness": {
+    "description": "Anxiety, worry, or uneasy tension about something uncertain or anticipated; distinguish from being directly frightened by a threat (fear).",
+    "display_name": "紧张"
+  },
+  "optimism": {
+    "description": "Hope or confidence that things may turn out well; distinguish from merely wanting a particular outcome (desire).",
+    "display_name": "乐观"
+  },
+  "pride": {
+    "description": "Satisfaction or esteem in oneself, an achievement, or someone or a group one identifies with; distinguish from admiration without this personal connection.",
+    "display_name": "自豪"
+  },
+  "realization": {
+    "description": "Coming to understand, notice, or discover something; distinguish from remaining confused and from surprise at an unexpected event.",
+    "display_name": "领悟"
+  },
+  "relief": {
+    "description": "Reassurance or relaxation when worry, distress, or an unwanted situation eases; distinguish from happiness without a preceding burden.",
+    "display_name": "如释重负"
+  },
+  "remorse": {
+    "description": "Regret, guilt, or an apology about something done or left undone; distinguish from embarrassment about social exposure and caring for someone else.",
+    "display_name": "懊悔"
+  },
+  "sadness": {
+    "description": "Unhappiness, sorrow, or feeling down; distinguish from disappointment tied to an unmet expectation and deep loss-focused grief.",
+    "display_name": "难过"
+  },
+  "surprise": {
+    "description": "A reaction to something unexpected or astonishing, whether pleasant or unpleasant; distinguish from simply coming to understand something (realization).",
+    "display_name": "惊讶"
   },
   "neutral": {
-    "description": "an explicitly expressed neutral state that is neither positive nor negative, such as feeling neither happy nor sad about something; distinct from contentment",
-    "display_name": "情绪平稳"
-  },
-  "no_emotion": {
-    "description": "the current input expresses no identifiable emotion, such as a purely factual question or task instruction; does not indicate recognition failure or uncertainty",
-    "display_name": "未表达明确情绪"
+    "description": "No clearly expressed emotion from the other GoEmotions categories, or a neutral reaction; includes factual statements and task requests. This is not a recognition-error or uncertainty label.",
+    "display_name": "中性"
   }
 }

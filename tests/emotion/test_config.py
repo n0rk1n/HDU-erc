@@ -4,13 +4,30 @@ import pytest
 from chatbot.core.errors import ConfigError
 
 
-def test_taxonomy_loads_and_separates_absence_from_neutral():
+GOEMOTIONS_LABELS = (
+    'admiration amusement anger annoyance approval caring confusion curiosity desire '
+    'disappointment disapproval disgust embarrassment excitement fear gratitude grief '
+    'joy love nervousness optimism pride realization relief remorse sadness surprise neutral'
+).split()
+
+
+@pytest.mark.parametrize('root', [Path('config'), Path('data/config')])
+def test_taxonomy_uses_official_goemotions_labels_and_ekman_families(root):
     from chatbot.emotion.config import load_taxonomy
-    taxonomy = load_taxonomy(Path('config/emotion_labels.json'), Path('config/emotion_families.json'))
-    assert len(taxonomy.labels) == 34
-    assert taxonomy.families['sad'] == taxonomy.families['lonely'] == 'sadness_loss'
-    assert taxonomy.families['no_emotion'] != taxonomy.families['neutral']
-    assert taxonomy.labels['no_emotion'] != taxonomy.labels['neutral']
+    taxonomy = load_taxonomy(root / 'emotion_labels.json', root / 'emotion_families.json')
+    assert list(taxonomy.labels) == GOEMOTIONS_LABELS
+    assert set(taxonomy.families.values()) == {'anger', 'disgust', 'fear', 'joy', 'sadness', 'surprise', 'neutral'}
+    assert taxonomy.families['anger'] == taxonomy.families['annoyance'] == taxonomy.families['disapproval'] == 'anger'
+    assert taxonomy.families['fear'] == taxonomy.families['nervousness'] == 'fear'
+    assert taxonomy.families['sadness'] == taxonomy.families['grief'] == taxonomy.families['disappointment'] == 'sadness'
+    assert taxonomy.families['embarrassment'] == taxonomy.families['remorse'] == 'sadness'
+    assert taxonomy.families['confusion'] == taxonomy.families['curiosity'] == taxonomy.families['realization'] == 'surprise'
+    assert taxonomy.families['neutral'] == 'neutral'
+
+
+@pytest.mark.parametrize('filename', ['emotion_labels.json', 'emotion_families.json', 'emotion_examples.json'])
+def test_builtin_and_environment_template_configs_stay_in_sync(filename):
+    assert (Path('config') / filename).read_bytes() == (Path('data/config') / filename).read_bytes()
 
 
 @pytest.mark.parametrize('labels,families', [

@@ -22,7 +22,7 @@ class Emotion:
         if '识别失败' in text:
             raise RuntimeError('offline recognition failure')
         return ModelOutcome(json.dumps({
-            'primary_emotion': 'anxious', 'confidence': .88, 'secondary_emotions': [],
+            'primary_emotion': 'nervousness', 'confidence': .88, 'secondary_emotions': [],
             'evidence': '你提到担心明天的汇报，并表达了紧张的感受。',
             'reply_strategy': 'listen', 'trajectory_note': '', 'safety_level': 'normal',
         }), None, TokenUsage(), 'stop', {}, None)

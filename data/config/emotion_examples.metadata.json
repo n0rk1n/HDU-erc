@@ -1,0 +1,445 @@
+{
+  "version": "goemotions-single-label-seed-v1",
+  "dataset": "GoEmotions",
+  "source_split": "train",
+  "source_commit": "5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4",
+  "paper": "https://aclanthology.org/2020.acl-main.372/",
+  "source_files": {
+    "train.tsv": {
+      "url": "https://raw.githubusercontent.com/google-research/google-research/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions/data/train.tsv",
+      "bytes": 3519053,
+      "sha256": "1c254a142be5c00e80d819b9ae1bbd36d94b2eeb8f4b1271846508d57e57d9c5"
+    },
+    "dev.tsv": {
+      "url": "https://raw.githubusercontent.com/google-research/google-research/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions/data/dev.tsv",
+      "bytes": 439059,
+      "sha256": "575489c079c9de1097062a01738f998590d6b7ead66dd1c9fd1d2ba01fd8bc62"
+    },
+    "test.tsv": {
+      "url": "https://raw.githubusercontent.com/google-research/google-research/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions/data/test.tsv",
+      "bytes": 436706,
+      "sha256": "0587b2dd8b27b97352adbfc3fb083d46005c8946657fdc2b1ca8b1cc7f1f8be4"
+    },
+    "emotions.txt": {
+      "url": "https://raw.githubusercontent.com/google-research/google-research/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions/data/emotions.txt",
+      "bytes": 248,
+      "sha256": "45c3ef86782d2a4d7fedcd6d8c111aa0d0e94720689bd164fac94fefb4495a89"
+    }
+  },
+  "ekman_mapping": {
+    "url": "https://raw.githubusercontent.com/google-research/google-research/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions/data/ekman_mapping.json",
+    "sha256": "d6b1fea382917c1685c42e1324a0344106be9390f52a3850ce032656d103a328",
+    "neutral_policy": "Official mapping covers 27 emotions; neutral is assigned to a separate neutral family."
+  },
+  "selection": {
+    "method": "Assistant-reviewed single-label training examples found by keyword candidate search; fixed IDs, original text and human annotations preserved.",
+    "per_label": 2,
+    "total": 56,
+    "ordering": "Two rounds of official label order.",
+    "normalization": "casefold, trim and collapse whitespace",
+    "duplicate_policy": "Selected text occurs once in train and has no normalized text match in dev/test; held-out labels are not used.",
+    "scope": "Application seed examples only, not the full research retrieval corpus and not an evaluation dataset."
+  },
+  "config_sha256": {
+    "config/emotion_labels.json": "00aa8ebce6756da4ed5fa38a4ceb6628853df55878b923ccc1bc8338d86004b6",
+    "config/emotion_families.json": "a38d6de22db84d8a2809dc03a03b2e7e4fe2718a4d2c6415558818537e8c2a90",
+    "config/emotion_examples.json": "5a0565f1a459066a2b11d6f3e2bd9ce76a5908914b37c0c5d2b68f63a49b0f4c",
+    "data/config/emotion_labels.json": "00aa8ebce6756da4ed5fa38a4ceb6628853df55878b923ccc1bc8338d86004b6",
+    "data/config/emotion_families.json": "a38d6de22db84d8a2809dc03a03b2e7e4fe2718a4d2c6415558818537e8c2a90",
+    "data/config/emotion_examples.json": "5a0565f1a459066a2b11d6f3e2bd9ce76a5908914b37c0c5d2b68f63a49b0f4c"
+  },
+  "samples": [
+    {
+      "comment_id": "ee9r6qm",
+      "train_line": 176,
+      "label_ids": [
+        0
+      ]
+    },
+    {
+      "comment_id": "edtjgrw",
+      "train_line": 260,
+      "label_ids": [
+        1
+      ]
+    },
+    {
+      "comment_id": "edwjhwz",
+      "train_line": 1205,
+      "label_ids": [
+        2
+      ]
+    },
+    {
+      "comment_id": "ed261nh",
+      "train_line": 4764,
+      "label_ids": [
+        3
+      ]
+    },
+    {
+      "comment_id": "ed01w5c",
+      "train_line": 618,
+      "label_ids": [
+        4
+      ]
+    },
+    {
+      "comment_id": "eeeakz9",
+      "train_line": 6341,
+      "label_ids": [
+        5
+      ]
+    },
+    {
+      "comment_id": "edtp10x",
+      "train_line": 1386,
+      "label_ids": [
+        6
+      ]
+    },
+    {
+      "comment_id": "edzhgw6",
+      "train_line": 1334,
+      "label_ids": [
+        7
+      ]
+    },
+    {
+      "comment_id": "edmazye",
+      "train_line": 476,
+      "label_ids": [
+        8
+      ]
+    },
+    {
+      "comment_id": "ef0rsb1",
+      "train_line": 1067,
+      "label_ids": [
+        9
+      ]
+    },
+    {
+      "comment_id": "edi7fz7",
+      "train_line": 874,
+      "label_ids": [
+        10
+      ]
+    },
+    {
+      "comment_id": "ee24om2",
+      "train_line": 4247,
+      "label_ids": [
+        11
+      ]
+    },
+    {
+      "comment_id": "ef8hcb6",
+      "train_line": 1518,
+      "label_ids": [
+        12
+      ]
+    },
+    {
+      "comment_id": "eeedgpu",
+      "train_line": 142,
+      "label_ids": [
+        13
+      ]
+    },
+    {
+      "comment_id": "ee1mxhu",
+      "train_line": 296,
+      "label_ids": [
+        14
+      ]
+    },
+    {
+      "comment_id": "eejcgvu",
+      "train_line": 60,
+      "label_ids": [
+        15
+      ]
+    },
+    {
+      "comment_id": "ef9u23n",
+      "train_line": 4513,
+      "label_ids": [
+        16
+      ]
+    },
+    {
+      "comment_id": "edv9mqm",
+      "train_line": 6395,
+      "label_ids": [
+        17
+      ]
+    },
+    {
+      "comment_id": "ef5zrqm",
+      "train_line": 14362,
+      "label_ids": [
+        18
+      ]
+    },
+    {
+      "comment_id": "eevprwx",
+      "train_line": 2039,
+      "label_ids": [
+        19
+      ]
+    },
+    {
+      "comment_id": "effouzj",
+      "train_line": 606,
+      "label_ids": [
+        20
+      ]
+    },
+    {
+      "comment_id": "ed1kvd5",
+      "train_line": 16129,
+      "label_ids": [
+        21
+      ]
+    },
+    {
+      "comment_id": "edbfrmc",
+      "train_line": 2514,
+      "label_ids": [
+        22
+      ]
+    },
+    {
+      "comment_id": "efav43v",
+      "train_line": 7278,
+      "label_ids": [
+        23
+      ]
+    },
+    {
+      "comment_id": "efaqsyg",
+      "train_line": 10168,
+      "label_ids": [
+        24
+      ]
+    },
+    {
+      "comment_id": "ed3hald",
+      "train_line": 40383,
+      "label_ids": [
+        25
+      ]
+    },
+    {
+      "comment_id": "eedpaek",
+      "train_line": 126,
+      "label_ids": [
+        26
+      ]
+    },
+    {
+      "comment_id": "eczgv1o",
+      "train_line": 10,
+      "label_ids": [
+        27
+      ]
+    },
+    {
+      "comment_id": "ee41kcd",
+      "train_line": 1136,
+      "label_ids": [
+        0
+      ]
+    },
+    {
+      "comment_id": "eff3qik",
+      "train_line": 588,
+      "label_ids": [
+        1
+      ]
+    },
+    {
+      "comment_id": "ee6gib3",
+      "train_line": 21121,
+      "label_ids": [
+        2
+      ]
+    },
+    {
+      "comment_id": "ee05pvt",
+      "train_line": 11617,
+      "label_ids": [
+        3
+      ]
+    },
+    {
+      "comment_id": "eektj2t",
+      "train_line": 834,
+      "label_ids": [
+        4
+      ]
+    },
+    {
+      "comment_id": "edcne00",
+      "train_line": 7330,
+      "label_ids": [
+        5
+      ]
+    },
+    {
+      "comment_id": "edcfdkw",
+      "train_line": 2042,
+      "label_ids": [
+        6
+      ]
+    },
+    {
+      "comment_id": "edom8il",
+      "train_line": 3098,
+      "label_ids": [
+        7
+      ]
+    },
+    {
+      "comment_id": "edjsvk7",
+      "train_line": 2242,
+      "label_ids": [
+        8
+      ]
+    },
+    {
+      "comment_id": "ef8cbul",
+      "train_line": 2358,
+      "label_ids": [
+        9
+      ]
+    },
+    {
+      "comment_id": "edzacs2",
+      "train_line": 806,
+      "label_ids": [
+        10
+      ]
+    },
+    {
+      "comment_id": "edbj8al",
+      "train_line": 7945,
+      "label_ids": [
+        11
+      ]
+    },
+    {
+      "comment_id": "ee1o4hg",
+      "train_line": 9368,
+      "label_ids": [
+        12
+      ]
+    },
+    {
+      "comment_id": "ee1p7q1",
+      "train_line": 1973,
+      "label_ids": [
+        13
+      ]
+    },
+    {
+      "comment_id": "eetucyl",
+      "train_line": 1721,
+      "label_ids": [
+        14
+      ]
+    },
+    {
+      "comment_id": "edijgo3",
+      "train_line": 131,
+      "label_ids": [
+        15
+      ]
+    },
+    {
+      "comment_id": "eei6qpm",
+      "train_line": 7578,
+      "label_ids": [
+        16
+      ]
+    },
+    {
+      "comment_id": "eeix3n9",
+      "train_line": 5985,
+      "label_ids": [
+        17
+      ]
+    },
+    {
+      "comment_id": "eduhsma",
+      "train_line": 2597,
+      "label_ids": [
+        18
+      ]
+    },
+    {
+      "comment_id": "ed2rftc",
+      "train_line": 6706,
+      "label_ids": [
+        19
+      ]
+    },
+    {
+      "comment_id": "edoj69i",
+      "train_line": 1332,
+      "label_ids": [
+        20
+      ]
+    },
+    {
+      "comment_id": "ed2glp9",
+      "train_line": 37327,
+      "label_ids": [
+        21
+      ]
+    },
+    {
+      "comment_id": "edmf8ob",
+      "train_line": 2595,
+      "label_ids": [
+        22
+      ]
+    },
+    {
+      "comment_id": "ef8c16v",
+      "train_line": 19470,
+      "label_ids": [
+        23
+      ]
+    },
+    {
+      "comment_id": "eejhlt1",
+      "train_line": 11699,
+      "label_ids": [
+        24
+      ]
+    },
+    {
+      "comment_id": "ed8n3se",
+      "train_line": 1449,
+      "label_ids": [
+        25
+      ]
+    },
+    {
+      "comment_id": "edl2ux9",
+      "train_line": 328,
+      "label_ids": [
+        26
+      ]
+    },
+    {
+      "comment_id": "ee18uaj",
+      "train_line": 25,
+      "label_ids": [
+        27
+      ]
+    }
+  ]
+}

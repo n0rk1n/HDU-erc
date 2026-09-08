@@ -14,7 +14,7 @@ class Counter:
     def count(self,messages): return sum(len(m.content)+1 for m in messages)
 
 @pytest.mark.parametrize('raw,error,status', [
-    ('{"primary_emotion":"no_emotion","confidence":0.9,"secondary_emotions":[],"evidence":"你好","reply_strategy":"问候","trajectory_note":"","safety_level":"normal"}',None,'completed'),
+    ('{"primary_emotion":"neutral","confidence":0.9,"secondary_emotions":[],"evidence":"你好","reply_strategy":"问候","trajectory_note":"","safety_level":"normal"}',None,'completed'),
     ('not json',None,'failed'),
     (None,{'stage':'model','type':'TimeoutError','message':'timeout'},'failed')])
 async def test_graph_persists_before_call_and_failure_keeps_facts(database,raw,error,status):

@@ -20,6 +20,16 @@ def prepare():
                             budget=BudgetConfig(100000, 1000, 256))
 
 
+def test_default_prompt_and_audit_use_goemotions_without_legacy_absence_label(monkeypatch):
+    from tests.emotion.test_config import GOEMOTIONS_LABELS
+    monkeypatch.delenv('EMOTION_SYSTEM_PROMPT_PATH', raising=False)
+    prepared = prepare()
+    assert 'no_emotion' not in prepared.messages[0].content
+    assert 'GoEmotions' in prepared.messages[0].content
+    assert list(prepared.snapshot['labels']) == GOEMOTIONS_LABELS
+    assert {example['emotion'] for example in prepared.snapshot['selected_examples']} <= set(GOEMOTIONS_LABELS)
+
+
 def test_config_changes_reach_prompt_and_audit_next_analysis(tmp_path, monkeypatch):
     path = tmp_path / 'chat_prompts.json'
     monkeypatch.setenv('EMOTION_SYSTEM_PROMPT_PATH', str(path))

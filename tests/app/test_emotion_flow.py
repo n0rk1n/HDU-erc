@@ -29,7 +29,7 @@ def test_three_turns_persist_success_failure_and_complete_role_history(app_confi
             if len(self.prompts)==2:
                 return ModelOutcome('partial invalid output',None,TokenUsage(9,None,None),None,{},
                     {'stage':'model','type':'TimeoutError','message':'deadline exceeded','http_status':504,'provider_request_id':'failed-r2'})
-            return ModelOutcome(json.dumps({'primary_emotion':'no_emotion','confidence':.9,'secondary_emotions':[], 'evidence':'任务','reply_strategy':'直接回答','trajectory_note':'','safety_level':'normal'}),None,TokenUsage(10,4,14),'stop',{},None)
+            return ModelOutcome(json.dumps({'primary_emotion':'neutral','confidence':.9,'secondary_emotions':[], 'evidence':'任务','reply_strategy':'直接回答','trajectory_note':'','safety_level':'normal'}),None,TokenUsage(10,4,14),'stop',{},None)
     model=Emotion();runtime=emotion_runtime(Database(app_config.sqlite_db_path),model)
     chat=OfflineModel()
     from tests.emotion_gate.helpers import gate_runtime
@@ -56,7 +56,7 @@ def test_three_turns_persist_success_failure_and_complete_role_history(app_confi
     snapshot=json.loads(rows[2][1])
     assert [m['role'] for m in snapshot['role_history']]==['human','assistant','human','assistant','human']
     assert snapshot['model_parameters']['max_retries']==0
-    assert len(snapshot['labels'])==34
+    assert len(snapshot['labels'])==28
     assert snapshot['budget']['chat_tokens']<=60000
 
 

@@ -14,8 +14,8 @@ class SuccessEmotion:
     def __init__(self): self.prompts=[]
     async def invoke(self,prompt):
         self.prompts.append(prompt)
-        return ModelOutcome(json.dumps({'primary_emotion':'sad','confidence':0.9,'secondary_emotions':[],
-            'evidence':'sad','reply_strategy':'listen','trajectory_note':'','safety_level':'normal'}),None,TokenUsage(),'stop',{},None)
+        return ModelOutcome(json.dumps({'primary_emotion':'sadness','confidence':0.9,'secondary_emotions':[],
+            'evidence':'sadness','reply_strategy':'listen','trajectory_note':'','safety_level':'normal'}),None,TokenUsage(),'stop',{},None)
 
 @pytest.mark.parametrize('interval,total,want_calls',[(15,16,2),(2,5,3),(1,3,3)])
 async def test_interval_routing_replay_and_historical_context(database,messages,saver,interval,total,want_calls):

@@ -15,7 +15,7 @@ async def test_emotion_is_durable_before_reply_and_failure_continues(database,me
         calls=0
         async def invoke(self,prompt):
             self.calls+=1
-            raw=json.dumps({'primary_emotion':'sad','confidence':.8,'secondary_emotions':[], 'evidence':'问题','reply_strategy':'倾听','trajectory_note':'','safety_level':'normal'})
+            raw=json.dumps({'primary_emotion':'sadness','confidence':.8,'secondary_emotions':[], 'evidence':'问题','reply_strategy':'倾听','trajectory_note':'','safety_level':'normal'})
             return ModelOutcome(raw,None,TokenUsage(), 'stop',{}, {'message':'timeout','stage':'model'} if fail else None)
     model=Emotion();emotion=emotion_runtime(database,model)
     class Chat(DeterministicModel):

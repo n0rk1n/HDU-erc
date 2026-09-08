@@ -77,9 +77,9 @@ data/
 └── config/
     ├── emotion_gate.json    # 判定间隔、上下文窗口和失败策略
     ├── prompts/            # chat_prompts.json、emotion_prompts.json、emotion_gate_prompts.json
-    ├── emotion_labels.json  # 34 类情绪及描述
+    ├── emotion_labels.json  # GoEmotions 28 类标签及描述
     ├── emotion_families.json # 情绪到 family 的映射
-    └── emotion_examples.json # 66 条动态检索示例
+    └── emotion_examples.json # 56 条 GoEmotions 训练集示例
 config/                  # 未指定 EMOTION_*_PATH 时使用的内置情绪配置
 tests/                   # API、图、模型、数据库、前端和离线验收测试
 docs/superpowers/         # 设计、实施计划与验收记录
@@ -280,15 +280,15 @@ WHERE d.conversation_id = :conversation_id AND d.request_id = :request_id ORDER 
 日常编辑 `data/config/` 下的文件：
 
 - `prompts/chat_prompts.json`：包含非空字符串 `version` 和 `system`，控制聊天角色和回复风格。
-- `emotion_labels.json`：每个标签包含 `description`（识别描述）和 `display_name`（前端显示名称），包含 34 类情绪。
-- `emotion_families.json`：`"情绪标签": "family"`，键必须与标签集合完全一致。
-- `emotion_examples.json`：示例数组，每条包含非空字符串 `id`、`dialogue`、`emotion`；ID 唯一，标签必须已定义。
+- `emotion_labels.json`：每个标签包含 `description`（识别描述）和 `display_name`（前端显示名称），包含 GoEmotions 的 27 种情绪和 `neutral`。
+- `emotion_families.json`：`"情绪标签": "family"`，键必须与标签集合完全一致；采用官方 Ekman 六类映射，另将 `neutral` 单列。
+- `emotion_examples.json`：示例数组，每条包含非空字符串 `id`、`dialogue`、`emotion`；ID 唯一，标签必须已定义。当前为 GoEmotions train 的 56 条原始单标签样本，来源见 `emotion_examples.metadata.json`。
 
 前端情绪名称配置在 `emotion_labels.json` 的每个标签下面，例如：
 
 ```json
 {
-  "sad": {
+  "sadness": {
     "description": "general unhappiness or sorrow",
     "display_name": "难过"
   }
@@ -366,7 +366,7 @@ SSE 事件包括 `run_started`、`user_message`、`progress`、`token`、`bubble
 - `processing` 包含 `steps`、`emotion_status`、`emotion_invoked`、`emotion`、`started_at` 和 `elapsed_ms`。步骤状态包括待处理、进行中、已完成、未完成和已跳过；耗时是从本轮消息保存到回复结束的总时间。
 - `emotion` 仅在本轮成功识别时出现，包含标签、中译名、模型置信度、简短依据、来源消息和识别时间。准备阶段失败时 `emotion_invoked=false`；跳过和失败都不会套用历史结果。
 - 历史接口的助手消息和 `done.message` 均包含相同的 `processing`；历史接口及 `done` 顶层返回 `latest_emotion`。最近结果独立于历史分页查询，同一用户刷新、断线恢复或重放都能恢复显示；切换用户会清空上一用户的状态。
-- 右上角始终标记“最近识别”与时间；本轮未识别或失败时保留最近成功结果，没有成功结果时显示“尚未识别”。`neutral` 显示“情绪平稳”，`no_emotion` 显示“未表达明确情绪”；两者都不是识别失败。
+- 右上角始终标记“最近识别”与时间；本轮未识别或失败时保留最近成功结果，没有成功结果时显示“尚未识别”。`neutral` 显示“中性”，涵盖中性表达和未明确表达情绪的内容，不代表识别失败。
 - 历史步骤由已有消息、判定和分析记录重建，不增加数据库表；缺少这些记录的旧消息不补造处理过程。
 
 离线浏览器验收：先运行 `PYTHON_DOTENV_DISABLED=1 .venv/bin/python -m tests.ui.preview_emotion`，再在另一个终端运行 `node tests/ui/emotion_browser.cjs`（需要本地 Playwright 与 Chromium，可分别用 `PLAYWRIGHT_MODULE` 和 `CHROMIUM_EXECUTABLE` 指定已有安装）。测试服务仅监听 `127.0.0.1:8765`，使用 `data/ui-preview.sqlite3` 和离线模型，测试截图写入 `docs/verification/emotion-ui/`。
@@ -391,11 +391,13 @@ RUN_LIVE_LLM_TEST=1 .venv/bin/python -m pytest tests/app/test_live_llm.py -v
 
 主图按 `prepare_turn → analyze_emotion → generate_response → finalize_turn` 执行；情绪节点内部为独立的准备、调用、保存子图。每个新 request_id 分析一次，相同文字的新请求仍会重新分析；重复请求不重复调用模型。
 
-- `data/config/emotion_labels.json`：`"情绪": {"description": "描述", "display_name": "显示名称"}`，包括原有 32 类以及 `neutral` 和 `no_emotion`。
-- `data/config/emotion_families.json`：`"情绪": "family"`，例如 sad 和 lonely 都属于 sadness_loss。family 由程序查表派生。
-- `data/config/emotion_examples.json`：包含 66 条带标签的 few-shot 示例，动态检索最多 4 条，并保存选择理由和分数。
+- `data/config/emotion_labels.json`：`"情绪": {"description": "描述", "display_name": "显示名称"}`，使用 GoEmotions 官方 28 个标签；不保留旧标签别名和额外的 `no_emotion`。
+- `data/config/emotion_families.json`：`"情绪": "family"`，依据官方 Ekman 分组，例如 anger、annoyance、disapproval 同属 anger；neutral 单列。family 由程序查表派生。
+- `data/config/emotion_examples.json`：包含 56 条 GoEmotions train 的原始单标签示例，每类 2 条，动态检索最多 4 条，并保存选择理由和分数。两套配置中的内容保持一致。
 
-`neutral` 指明确表达中性状态，例如“既不高兴，也不难过”；`no_emotion` 指未表达情绪，例如“转换这个文件”。二者都不是失败标记。配置加载拒绝重复键、空值、未知示例标签及不完整 family 映射；修改后重启生效，每次调用保存当时配置快照及哈希。
+`neutral` 按 GoEmotions 涵盖中性反应和未明确表达其他情绪的内容，包括纯事实或任务请求。它不是失败或不确定标记；数据存在多标签及 neutral 与其他标签共现，因此提示词不强制互斥。应用继续使用主情绪及次情绪列表，数据集本身没有主次排序。配置加载拒绝重复键、空值、未知示例标签及不完整 family 映射；修改后重启生效，每次调用保存当时配置快照及哈希。
+
+标签定义、来源、示例筛选及迁移边界见 [GoEmotions 配置说明](docs/research/goemotions-config.md)。旧数据库结果和快照不会重标，旧标签不在新显示名配置中时显示原始英文标签。合入配置后需重启服务；模型评测和完整训练集检索尚未实施。
 
 情绪模型连接参数 `EMOTION_LLM_*` 可逐项覆盖共享的 `LLM_*` 默认配置；温度和超时留空也继承共享默认值，自动重试次数为 0。`EMOTION_LLM_TIMEOUT_SECONDS` 可独立调整。两次串行调用的关闭等待预算相加。
 
