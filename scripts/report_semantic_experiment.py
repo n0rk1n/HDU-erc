@@ -50,7 +50,12 @@ def main():
             values.append(f'{p["tp"]}/{p["fp"]}/{p["fn"]}；{pct(p["f1"])}')
         lines.append(f'| {label} | {row["support"]} | ' + ' | '.join(values) + ' |')
     lines += ['', '本切片没有真值支持的类别：' + (', '.join(analysis['zero_support_labels']) or '无') + '。Macro-F1 对零分母按 0，稀有类估计不稳定。', '',
-             '## 用量与耗时', '', '| 项目 | A | B | C | D |', '|---|---:|---:|---:|---:|']
+              '## 示例诊断', '', '| 项目 | A | B | C | D |', '|---|---:|---:|---:|---:|']
+    for title, key in [('找到对比样本的查询数', 'contrast_found'), ('4 条示例标签包含至少一个真值的比例', 'example_label_any_gold_coverage'), ('示例标签与真值的平均 Jaccard', 'mean_example_label_jaccard')]:
+        values = [analysis['retrieval_diagnostics'][a][key] for a in 'ABCD']
+        lines.append('| ' + title + ' | ' + ' | '.join(str(v) if key == 'contrast_found' else pct(v) for v in values) + ' |')
+    lines += ['', '这些是完成预测之后计算的标签重合诊断，不参与检索选择，也不等同于最终分类准确性。', '',
+              '## 用量与耗时', '', '| 项目 | A | B | C | D |', '|---|---:|---:|---:|---:|']
     for title, key in [('成功样本', 'succeeded'), ('最终失败', 'failed'), ('调用次数', 'calls'), ('重试', 'retries'),
                        ('输入 tokens', 'input_tokens'), ('输出 tokens', 'output_tokens'), ('推理 tokens', 'reasoning_tokens'),
                        ('缓存输入 tokens', 'cached_input_tokens'), ('平均模型调用毫秒', 'mean_call_latency_ms'),

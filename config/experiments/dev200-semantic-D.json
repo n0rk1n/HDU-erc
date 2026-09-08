@@ -1,0 +1,36 @@
+{
+  "name": "GoEmotions semantic retrieval D",
+  "research_question": "冻结模型和指令，比较词面/语义检索与普通/对比示例选择的四组效果；新的 dev200 初步验证",
+  "comparison_group": "goemotions-semantic-dev200-20260908",
+  "corpus_set": "goemotions-train",
+  "method": "semantic",
+  "seed": 42,
+  "k": 4,
+  "candidate_count": 50,
+  "max_attempts": 2,
+  "max_total_attempts": 400,
+  "concurrency": 4,
+  "repetition_no": 1,
+  "deduplicate": true,
+  "require_evidence": false,
+  "parser_version": "labels-v1",
+  "model": {
+    "name": "ZHIPU/GLM-5.3",
+    "base_url": "https://ws-s716tgzenkjl39vr.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "temperature": 0,
+    "thinking": "enabled",
+    "reasoning_effort": "low",
+    "timeout_seconds": 120,
+    "max_tokens": 8192,
+    "context_tokens": 32768,
+    "safety_tokens": 256,
+    "tokenizer_model": "ZHIPU/GLM-5.3"
+  },
+  "prompt_version": "native-labels-v3",
+  "example_policy": "contrastive-v1",
+  "evaluation_set_id": "d39139c5-548a-47f8-bbd1-2762b43d1cd2",
+  "embedding": {
+    "index_id": "ce150a15-47f3-4046-891e-144aa575d09b",
+    "queries_artifact_id": "8bd61959-6b1b-4a26-8a5c-868bc2374762"
+  }
+}

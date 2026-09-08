@@ -181,6 +181,14 @@ def main():
         paired = sorted(records.values(), key=lambda r: r['source_id'])
         assert len(paired) == 200 and all(all(a in r for a in ARMS) for r in paired)
         scores = {a: metrics(paired, a, family) for a in ARMS}
+        retrieval_diagnostics = {}
+        for arm in ARMS:
+            retrieval_diagnostics[arm] = {
+                'contrast_found': sum(bool(r[arm]['contrast_pair']) for r in paired),
+                'example_label_any_gold_coverage': sum(bool(set(r['truth']) & {label for ex in r[arm]['selected_examples'] for label in ex['labels']}) for r in paired) / len(paired),
+                'mean_example_label_jaccard': statistics.mean(len(set(r['truth']) & set(ex['labels'])) / len(set(r['truth']) | set(ex['labels'])) for r in paired for ex in r[arm]['selected_examples']),
+                'scope': 'post-evaluation label-overlap diagnostics, never used for example selection',
+            }
         for arm in ARMS:
             db = {r['metric_name']: r['value'] for r in store.rows("SELECT metric_name,value FROM metric_values WHERE evaluation_id=? AND scope_key='overall'", (state['evaluations'][arm],))}
             for name in ['micro_f1', 'macro_f1', 'exact_match']:
@@ -197,6 +205,7 @@ def main():
                                      exact_fixed=sum(set(r['truth']) == set(r[candidate]['predicted_labels']) and set(r['truth']) != set(r[baseline]['predicted_labels']) for r in paired),
                                      exact_regressed=sum(set(r['truth']) != set(r[candidate]['predicted_labels']) and set(r['truth']) == set(r[baseline]['predicted_labels']) for r in paired))
         summary = {'created_at': now(), 'state': state, 'runs': info, 'metrics': scores, 'comparisons': comparisons,
+                   'retrieval_diagnostics': retrieval_diagnostics,
                    'independent_validation': dict(audits), 'test_split_used': False,
                    'zero_support_labels': [label for label in LABELS if scores['A']['per_label'][label]['support'] == 0],
                    'scope': 'new dev200 screening; four sequential arms; fixed v3; no unobserved-test generalization claim'}
