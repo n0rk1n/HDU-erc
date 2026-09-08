@@ -83,4 +83,4 @@ uv pip install --python .venv/bin/python -r requirements.lock
 
 [本次实施与验收记录](docs/research/implementation-verification.md)。未运行真实模型的离线测试结果不能当作情绪识别效果。
 
-[本轮 prompt / example 验证记录](docs/research/prompt-examples-validation-20260908.md)。当前已完成离线验证，真实 200 条模型对照仍待模型选择。
+[离线阶段记录](docs/research/prompt-examples-validation-20260908.md)与[GLM-5.3 真实对照结果](docs/research/glm-dev200-results-20260908.md)。两组各 200 条真实预测、评分与详细数据入库已完成；Micro-F1 从 39.53% 到 40.62%，95% 差值区间包含 0，目前不能确认新版更优。
