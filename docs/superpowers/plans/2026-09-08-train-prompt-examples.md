@@ -19,7 +19,11 @@
 
 - [x] 新增 `tests/lab/test_prompt_examples.py`：真实临时数据库验证对照示例选择、原标签保留、重复与零相关回退、预算保护、配置拒绝错误组合、请求与提示词快照一致。先执行 `.venv/bin/python -m pytest -q tests/lab/test_prompt_examples.py`，确认新增功能缺失导致失败。
 - [x] 修改 `emotion_lab/config.py`：验证 prompt_version 和 example_policy；默认保留 v1/ranked。修改 `emotion_lab/taxonomy.py`：按版本构建提示词并提供完整可审计快照。修改 `emotion_lab/retrieval.py`：加入确定性对照排序及原排名、相邻标签、锚点等审计字段。修改 `emotion_lab/preparation.py`：快照记录完整提示词规则与选择策略。
-- [ ] 从 SQLite train 生成类别统计和真实示例检查记录，写入 `docs/research/train-prompt-examples.md`；创建本轮两组配置。执行全套 pytest、两组 dry-run、git diff --check；核对改动后提交代码。
+- [x] 从 SQLite train 生成类别统计和真实示例检查记录，写入 `docs/research/train-prompt-examples.md`；创建本轮两组配置。执行全套 pytest、两组 dry-run、git diff --check；核对改动后提交代码。
 - [ ] 模型确认后，以固定代码创建并运行两个各 200 条的实验。逐步检查 HTTP 和解析结果；错误请求与重试全部保留。出现服务或凭据系统性错误及时暂停，不伪造预测。
 - [ ] 对实际完成结果调用 evaluate、compare（配对 bootstrap，seed=42，1000 次）、export。将训练审计及中文结果报告作为 artifacts 存入 SQLite，报告 Micro/Macro F1、准确集合匹配率、失败数、调用数、token、置信区间和限制。
 - [ ] 核验存储完整性，制作可恢复备份；提交结果文档。最终提供数据库、报告、run/evaluation ID、验证结果及尚未合并的分支信息。
+
+## 当前执行状态
+
+已完成代码、训练审计、两组 200 条离线验证和本地提交。真实模型、评分与比较步骤仍未执行：等待用户回复已发出的模型选择问题。离线验收及数据库内工件位置见 `docs/research/prompt-examples-validation-20260908.md`。

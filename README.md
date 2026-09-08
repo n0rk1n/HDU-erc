@@ -82,3 +82,5 @@ uv pip install --python .venv/bin/python -r requirements.lock
 备份通过 SQLite Backup API 取得快照，再收集该快照引用的工件，附带哈希清单。备份目录自动以只读方式打开，校验会同时检查 `backup_manifest.json` 中的文件哈希。恢复时先验证备份，再把其中的 `experiments.sqlite3` 和 `artifacts/` 复制到一个新的工作数据目录（不把 `backup_manifest.json` 放入工作目录），然后以该目录作为 `--data-dir` 继续；保留原始备份，不覆盖唯一原库。CSV/JSONL 导出用于分析，完整证据迁移使用 backup。校验报告会列出损坏、缺失和孤儿文件；不会自动清理证据。
 
 [本次实施与验收记录](docs/research/implementation-verification.md)。未运行真实模型的离线测试结果不能当作情绪识别效果。
+
+[本轮 prompt / example 验证记录](docs/research/prompt-examples-validation-20260908.md)。当前已完成离线验证，真实 200 条模型对照仍待模型选择。
