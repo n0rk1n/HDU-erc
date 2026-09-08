@@ -55,6 +55,9 @@ def main():
         values = [analysis['retrieval_diagnostics'][a][key] for a in 'ABCD']
         lines.append('| ' + title + ' | ' + ' | '.join(str(v) if key == 'contrast_found' else pct(v) for v in values) + ' |')
     lines += ['', '这些是完成预测之后计算的标签重合诊断，不参与检索选择，也不等同于最终分类准确性。', '',
+              '### 本轮能支持的判断', '',
+              f'普通排序下，示例标签覆盖率由 {pct(analysis["retrieval_diagnostics"]["A"]["example_label_any_gold_coverage"])} 变为 {pct(analysis["retrieval_diagnostics"]["B"]["example_label_any_gold_coverage"])}；最终 Micro-F1 却由 {pct(metrics["A"]["micro_f1"])} 变为 {pct(metrics["B"]["micro_f1"])}。因此，示例中出现正确标签的比例上升，并不足以保证模型做出正确判定。', '',
+              '本轮尚未证明“换成通用语义向量”或“沿用当前对比规则”能稳定提高准确性。语义候选是否在主题相近时仍混淆情绪、模型是否过度跟随个别示例，都是后续可检验的假设，不能由这一次实验直接认定为原因。现有索引和逐条证据可用于研究候选的情绪判别性；若据本轮错误调整规则，须在独立数据上重新验证。', '',
               '## 用量与耗时', '', '| 项目 | A | B | C | D |', '|---|---:|---:|---:|---:|']
     for title, key in [('成功样本', 'succeeded'), ('最终失败', 'failed'), ('调用次数', 'calls'), ('重试', 'retries'),
                        ('输入 tokens', 'input_tokens'), ('输出 tokens', 'output_tokens'), ('推理 tokens', 'reasoning_tokens'),
@@ -64,6 +67,8 @@ def main():
     encoding = build['encoding']
     qencoding = query['encoding_metadata']['encoding']
     lines += ['', f'预先固定的顺序执行次序：{state["run_order"]}。实际输入 tokens 因示例长度不同而变化；缓存和服务负载会影响耗时，不能把总耗时差全部归因于检索算法。未获得可核实单价，费用保持 NULL。', '',
+              '检索耗时覆盖相似度计算、排序、示例筛选及提示词 token 预算计算；语义组首次调用还包含冻结索引加载与校验。因此该耗时不是单独的向量搜索基准。', '',
+              '各组服务端返回的模型标识及次数：`' + json.dumps({a: runs[a]['resolved_models'] for a in 'ABCD'}, ensure_ascii=False) + '`。固定 API 模型标识不等于固定服务端权重修订，本轮无法核实服务端权重版本。', '',
               '## 向量构建与存储', '',
               f'- 模型：`BAAI/bge-base-en-v1.5`，修订 `{state["build"]["model_config"]["revision"]}`。权重及配置全文已存工件 `{state["build"]["model_checkpoint_artifact_id"]}`。',
               f'- train：{len(encoding["rows"])} 条；查询：{len(qencoding["rows"])} 条。CLS pooling、无额外文本指令、归一化 float32、维度 {index["dimension"]}，精确余弦检索。',
