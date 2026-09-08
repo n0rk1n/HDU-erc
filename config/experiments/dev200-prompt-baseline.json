@@ -1,0 +1,31 @@
+{
+  "name": "GoEmotions dev200 prompt-examples baseline",
+  "research_question": "在相同模型与4条训练示例预算下，标签区分提示词加词面对照示例能否改善原生28类多标签识别",
+  "comparison_group": "goemotions-dev200-prompt-examples-20260908",
+  "corpus_set": "goemotions-train",
+  "evaluation_set": "goemotions-dev200",
+  "method": "lexical",
+  "seed": 42,
+  "k": 4,
+  "candidate_count": 50,
+  "max_attempts": 2,
+  "max_total_attempts": 400,
+  "concurrency": 2,
+  "repetition_no": 1,
+  "deduplicate": true,
+  "require_evidence": false,
+  "parser_version": "labels-v1",
+  "model": {
+    "name": "deepseek-v4-flash",
+    "base_url": "https://api.deepseek.com",
+    "temperature": 0,
+    "thinking": "disabled",
+    "timeout_seconds": 120,
+    "max_tokens": 4096,
+    "context_tokens": 32768,
+    "safety_tokens": 256,
+    "tokenizer_model": "deepseek-v4-flash"
+  },
+  "prompt_version": "native-labels-v1",
+  "example_policy": "ranked"
+}

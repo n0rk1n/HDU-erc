@@ -8,9 +8,9 @@ import subprocess
 from .config import PROJECT_ROOT, validate_config
 from .llm.counter import TokenCounter
 from .llm.parameters import thinking_extra_body
-from .retrieval import Retriever
+from .retrieval import Retriever, example_policy_snapshot
 from .storage import digest, now
-from .taxonomy import load_taxonomy
+from .taxonomy import load_taxonomy, prompt_instruction
 
 
 def resolve_set(store, value, purpose=None):
@@ -147,8 +147,17 @@ def prepare_run(store, config, dry_run=False, counter=None):
             model_config_artifact_id=store.put(model, "model_config"),
             prompt_config_artifact_id=store.put(
                 {
-                    "template": "native-labels-v1",
+                    "version": config["prompt_version"],
+                    "instruction": prompt_instruction(
+                        config["prompt_version"], config["require_evidence"]
+                    ),
                     "require_evidence": config["require_evidence"],
+                    "example_policy": example_policy_snapshot(config["example_policy"]),
+                    "label_definitions": taxonomy["labels"],
+                    "example_format": {
+                        "text": "training raw_text",
+                        "labels": "complete native label set",
+                    },
                 },
                 "prompt_config",
             ),

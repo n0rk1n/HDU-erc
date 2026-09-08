@@ -1,6 +1,6 @@
 # GoEmotions 情绪识别实验工程
 
-研究目标：使用固定现成模型，在原生 28 类多标签情绪识别上比较示例检索方法，重点分析易混情绪的漏报和误报。当前提供 zero-shot、随机示例、词面 Jaccard 检索三种基线；向量检索和对比检索尚未实现，选择这些方法会明确报错。
+研究目标：使用固定现成模型，在原生 28 类多标签情绪识别上比较示例检索方法，重点分析易混情绪的漏报和误报。当前提供 zero-shot、随机示例、词面 Jaccard 三种基线，以及词面候选中的对照示例选择策略。向量检索尚未实现。
 
 该研究分支已移除聊天 Web/API、会话、回复生成、点赞、情绪门控和历史聊天归档。原聊天工程保留在 Git 历史与 `main`。本工程不训练模型。
 
@@ -41,6 +41,8 @@ uv pip install --python .venv/bin/python -r requirements.lock
 ```
 
 `random.json`、`lexical.json` 使用相同模型、训练集、开发集和 4 个示例上限。输入相同文本及重复示例会被排除，预算不足时记录裁剪原因。lexical 是词面 Jaccard，不是向量检索。完整词面得分、候选顺序、筛选结果与实际请求分别留档。
+
+本轮训练集驱动的调整见 [示例与提示词说明](docs/research/train-prompt-examples.md)。`dev200-prompt-baseline.json` 保留原版提示词和排序；`dev200-prompt-revised.json` 使用 `prompt_version=native-labels-v2`、`example_policy=contrastive-v1`。后者在同一候选池中优先加入一个不同相邻标签的训练例，无适合对照则保留原排序。默认配置仍为 v1/ranked；两个开关可单独配置，以供后续消融实验。旧静态示例文件只是测试夹具，不参与当前实验推理。
 
 一次独立重复创建新的 run；`resume` 仅恢复同一 run，成功样本跳过，失败/中断样本保留原调用。`max_attempts` 是每条样本整个 run 的累计尝试上限，resume 不重置；要改变预算需新建 run。`max_total_attempts` 是运行级请求上限。没有价格配置时费用是 NULL，不是零。可在运行配置中设置 `pricing`，含 `currency`、`input_per_million`、`output_per_million` 和可选 `cached_input_per_million`，价格及计算输入均保存；估算不代表供应商账单。
 

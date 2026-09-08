@@ -58,6 +58,8 @@ def validate_config(config):
         "evaluation_set_id",
         "comparison_group",
         "research_question",
+        "prompt_version",
+        "example_policy",
     }
     if set(config) - allowed:
         raise ConfigError(
@@ -89,6 +91,16 @@ def validate_config(config):
     config.setdefault("parser_version", "labels-v1")
     config.setdefault("deduplicate", True)
     config.setdefault("require_evidence", False)
+    config.setdefault("prompt_version", "native-labels-v1")
+    config.setdefault("example_policy", "ranked")
+    if config["prompt_version"] not in {"native-labels-v1", "native-labels-v2"}:
+        raise ConfigError("unsupported prompt_version")
+    if config["example_policy"] not in {"ranked", "contrastive-v1"}:
+        raise ConfigError("unsupported example_policy")
+    if config["example_policy"] == "contrastive-v1" and (
+        config["method"] != "lexical" or config["k"] < 2
+    ):
+        raise ConfigError("contrastive-v1 requires lexical retrieval with k >= 2")
     config.setdefault("max_total_attempts", 100000)
     if (
         type(config["max_total_attempts"]) is not int
