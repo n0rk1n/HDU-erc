@@ -192,6 +192,17 @@ def make_set(store, config):
         "SELECT sample_id,normalized_text_sha256 FROM samples WHERE dataset_version_id=? AND split=? ORDER BY source_line",
         (ds, split),
     )
+    exclusions = config.get('exclude_set_ids', [])
+    if not isinstance(exclusions, list) or not all(isinstance(sid, str) and sid for sid in exclusions):
+        raise ValueError('exclude_set_ids must be a list of frozen set ids')
+    excluded_hashes = set()
+    for sid in exclusions:
+        previous = store.one('SELECT * FROM sample_sets WHERE sample_set_id=?', (sid,))
+        if previous['status'] != 'frozen' or previous['dataset_version_id'] != ds:
+            raise ValueError('exclusion set must be frozen and from same dataset')
+        excluded_hashes.update(r['normalized_text_sha256'] for r in store.rows(
+            'SELECT s.normalized_text_sha256 FROM sample_set_members m JOIN samples s USING(sample_id) WHERE m.sample_set_id=?', (sid,)))
+    rows = [r for r in rows if r['normalized_text_sha256'] not in excluded_hashes]
     if config.get("deduplicate", False):
         seen = set()
         rows = [

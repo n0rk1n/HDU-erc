@@ -60,15 +60,22 @@ def validate_config(config):
         "research_question",
         "prompt_version",
         "example_policy",
+        "embedding",
     }
     if set(config) - allowed:
         raise ConfigError(
             "unknown run configuration keys: " + ",".join(sorted(set(config) - allowed))
         )
-    if config.get("method") not in {"zero-shot", "random", "lexical"}:
+    if config.get("method") not in {"zero-shot", "random", "lexical", "semantic"}:
         raise ConfigError(
-            "method not implemented; supported: zero-shot, random, lexical"
+            "method not implemented; supported: zero-shot, random, lexical, semantic"
         )
+    if config['method'] == 'semantic':
+        embedding = config.get('embedding')
+        if not isinstance(embedding, dict) or set(embedding) != {'index_id', 'queries_artifact_id'} or not all(isinstance(v, str) and v for v in embedding.values()):
+            raise ConfigError('semantic retrieval requires frozen index_id and queries_artifact_id')
+    elif 'embedding' in config:
+        raise ConfigError('embedding configuration requires semantic retrieval')
     for key, default, minimum, maximum in [
         ("seed", 42, 0, 2**32),
         ("k", 0, 0, 100),
@@ -98,9 +105,9 @@ def validate_config(config):
     if config["example_policy"] not in {"ranked", "contrastive-v1"}:
         raise ConfigError("unsupported example_policy")
     if config["example_policy"] == "contrastive-v1" and (
-        config["method"] != "lexical" or config["k"] < 2
+        config["method"] not in {"lexical", "semantic"} or config["k"] < 2
     ):
-        raise ConfigError("contrastive-v1 requires lexical retrieval with k >= 2")
+        raise ConfigError("contrastive-v1 requires lexical or semantic retrieval with k >= 2")
     config.setdefault("max_total_attempts", 100000)
     if (
         type(config["max_total_attempts"]) is not int

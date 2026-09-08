@@ -167,6 +167,7 @@ def prepare_run(store, config, dry_run=False, counter=None):
             if config.get("pricing")
             else None,
             code_commit=commit,
+            index_id=config.get('embedding', {}).get('index_id'),
             working_diff_artifact_id=store.put(
                 {"git_diff": diff.decode(), "application_sources": sources},
                 "working_sources",

@@ -43,6 +43,8 @@ def words(text):
 
 class Retriever:
     def __init__(self, store, corpus_id):
+        self.store, self.corpus_id = store, corpus_id
+        self.semantic_resources = None
         rows = store.rows(
             "SELECT s.* FROM sample_set_members m JOIN samples s USING(sample_id) WHERE sample_set_id=? ORDER BY ordinal",
             (corpus_id,),
@@ -132,6 +134,7 @@ class Retriever:
         if method == "zero-shot":
             return [], [], {"method": method, "full_scores": []}, base
         scores = None
+        semantic_trace = {}
         if method == "lexical":
             q = words(query["raw_text"])
             scores = [len(q & t) / len(q | t) if q | t else 0.0 for t in self.tokens]
@@ -139,6 +142,23 @@ class Retriever:
                 range(len(self.rows)),
                 key=lambda i: (-scores[i], self.rows[i]["source_id"]),
             )
+        elif method == 'semantic':
+            from .embeddings import load_index, load_query_bundle
+            identity = (config['embedding']['index_id'], config['embedding']['queries_artifact_id'])
+            if self.semantic_resources is None or self.semantic_resources[0] != identity:
+                index = load_index(self.store, identity[0], self.corpus_id)
+                if [r['sample_id'] for r in index['records']] != [r['sample_id'] for r in self.rows]:
+                    raise ValueError('semantic corpus order mismatch')
+                queries = load_query_bundle(self.store, identity[1], index)
+                self.semantic_resources = (identity, index, queries)
+            _, index, queries = self.semantic_resources
+            entry = queries.get(query.get('sample_id'))
+            if entry is None or entry['text_sha256'] != query['text_sha256'] or digest(query['raw_text'].encode()) != entry['text_sha256']:
+                raise ValueError('query text not present in frozen query bundle')
+            scores = (index['vectors'] @ entry['vector']).tolist()
+            order = sorted(range(len(self.rows)), key=lambda i: (-scores[i], self.rows[i]['source_id']))
+            semantic_trace = {'index_id': identity[0], 'queries_artifact_id': identity[1],
+                              'query_vector_sha256': entry['vector_sha256'], 'index_fingerprint': index['row']['fingerprint']}
         else:
             order = list(range(len(self.rows)))
             random.Random(digest([config["seed"], query["text_sha256"]])).shuffle(order)
@@ -167,7 +187,7 @@ class Retriever:
                 selected.append(row)
                 seen.add(row["normalized_text_sha256"])
             components = (
-                {"metric": "jaccard"}
+                {"metric": "cosine" if method == 'semantic' else "jaccard"}
                 if scores is not None
                 else {"seed": config["seed"]}
             )
@@ -197,13 +217,14 @@ class Retriever:
             "example_policy": policy,
             "contrast_pair": contrast_pair,
             "selection_order": [self.rows[i]["sample_id"] for i in pool],
-            "score_dtype": "python-float64" if scores else None,
+            "score_dtype": "float32" if method == 'semantic' else ("python-float64" if scores else None),
             "corpus_sample_ids": [r["sample_id"] for r in self.rows],
             "full_scores": scores,
             "candidate_order": [self.rows[i]["sample_id"] for i in order],
             "selected_sample_ids": [r["sample_id"] for r in selected],
             "input_tokens": counter.count(render(selected)),
             "token_budget": budget,
+            **semantic_trace,
         }
         return (
             selected,

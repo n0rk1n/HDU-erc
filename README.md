@@ -84,3 +84,22 @@ uv pip install --python .venv/bin/python -r requirements.lock
 [本次实施与验收记录](docs/research/implementation-verification.md)。未运行真实模型的离线测试结果不能当作情绪识别效果。
 
 [离线阶段记录](docs/research/prompt-examples-validation-20260908.md)与[GLM-5.3 真实对照结果](docs/research/glm-dev200-results-20260908.md)。两组各 200 条真实预测、评分与详细数据入库已完成；Micro-F1 从 39.53% 到 40.62%，95% 差值区间包含 0，目前不能确认新版更优。
+
+## 语义检索实验
+
+`method=semantic` 使用固定 BGE 编码的归一化 float32 矩阵做精确余弦检索。配置必须明确 `embedding.index_id` 与 `embedding.queries_artifact_id`；查询向量提前冻结，正式运行和恢复不会调用编码器。`ranked` 与 `contrastive-v1` 均可使用语义检索，词面方法继续保留。情绪标签不参与文本向量编码；对比示例选择仍读取训练样本的完整标签。
+
+训练索引保存在 `embedding_indexes`、`embedding_items` 和矩阵工件中，读取时核对语料顺序、原文指纹、向量形状、归一化状态与逐行哈希。模型权重和配置也归档为工件。`make_set` 的 `exclude_set_ids` 可按规范化文本排除既有冻结集合，用于构造不与旧评估文本重复的开发切片。
+
+本次四组协议：A=词面/普通排序，B=语义/普通排序，C=词面/现有对比规则，D=语义/现有对比规则。固定 v3、GLM-5.3、候选 50、示例 4；新 dev200 从未用于旧实验的开发记录中取样，并排除训练集文本复制。首次准备需要把固定 BGE 修订 `a5beb1e3e68b9ab74eb54cfd186867f64f240e1a` 的权重与配置下载到 `data/research/models/bge-base-en-v1.5-a5beb1e/`。
+
+```bash
+PYTHONPATH=. .venv/bin/python scripts/build_semantic_experiment.py
+PYTHONPATH=. .venv/bin/python scripts/run_semantic_experiment.py --write-configs
+# 核验配置、运行测试并提交代码后，再冻结四组并实际调用模型。
+PYTHONPATH=. .venv/bin/python scripts/run_semantic_experiment.py --env-file .env
+PYTHONPATH=. .venv/bin/python scripts/analyze_semantic_experiment.py
+PYTHONPATH=. .venv/bin/python scripts/report_semantic_experiment.py
+```
+
+运行脚本保留 `semantic_experiment_state.json`，重复执行会恢复已有运行，不覆盖历史预测。按同一评估切片比较 B-A、D-C，并用 D-B、C-A 分析对比规则；全部组完成后才评分。真实模型结果与软件测试分别报告，见 [实施计划](docs/superpowers/plans/2026-09-08-semantic-retrieval.md)。
