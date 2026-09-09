@@ -9,6 +9,7 @@ ROOT = Path('data/research')
 
 def main():
     analysis = json.loads((ROOT / 'prompt_factorial_analysis.json').read_text())
+    variation = json.loads((ROOT / 'prompt_factorial_request_variation.json').read_text())
     state, metrics, runs = analysis['state'], analysis['metrics'], analysis['runs']
     with Store(ROOT) as store:
         cases = store.json(analysis['paired_details_artifact_id'])['records']
@@ -53,6 +54,13 @@ def main():
     lines += [text, '',
               '所有区间使用同一批样本 ID 配对、seed=42、1000 次 percentile bootstrap；交互计算每次对四组使用相同抽样。区间未经多重比较校正，且不包含服务端重复运行波动。点估计采用整体 Micro-F1，交互结论依赖这一指标尺度。', '',
               '本轮保留全部结果，不自动修改默认配置。实验中的 dev200 属于开发验证切片；若据此继续改方法，该切片不能再视为独立验证集。', '',
+              '## 相同请求的重复波动', '',
+              '以下为预测完成后的诊断，没有新增模型调用。通过实际请求 SHA-256 区分请求是否相同；即使 temperature=0，相同请求也出现不同标签集合。', '',
+              '| 比较 | 请求是否相同 | 样本数 | 预测集合不同 | 原组完全正确数 | 新组完全正确数 |', '|---|---|---:|---:|---:|---:|']
+    for name, groups in variation['counts'].items():
+        for group, values in groups.items():
+            lines.append('| ' + name + ' | ' + ('相同' if group == 'same_request' else '不同') + ' | ' + ' | '.join(str(values[k]) for k in ['samples', 'different_predictions', 'baseline_exact', 'candidate_exact']) + ' |')
+    lines += ['', '因此，组间差异混有重复调用波动，不能把全部下降归因于对比示例，也不能把一次指令增益认定为稳定收益。配对样本区间没有消除这一限制；本轮结果用于决定后续复测方向。', '',
               '## 每类 TP/FP/FN 与 F1', '', '| 标签 | 支持数 | A | B | C | D |', '|---|---:|---|---|---|---|']
     for label, row in metrics['A']['per_label'].items():
         values = []
@@ -95,7 +103,9 @@ def main():
               '| 组 | Run ID | Evaluation ID | 代码提交 |', '|---|---|---|---|']
     for arm in 'ABCD':
         lines.append(f'| {arm} | `{state["runs"][arm]}` | `{state["evaluations"][arm]}` | `{runs[arm]["code_commit"]}` |')
-    lines += ['', f'分析工件：`{analysis["analysis_artifact_id"]}`；四组明细：`{analysis["paired_details_artifact_id"]}`；共同抽样及交互统计：`{analysis["factorial_artifact_id"]}`。', '']
+    lines += ['', f'分析工件：`{analysis["analysis_artifact_id"]}`；四组明细：`{analysis["paired_details_artifact_id"]}`；共同抽样及交互统计：`{analysis["factorial_artifact_id"]}`。', '',
+              f'交互比较记录：`{analysis["factorial_comparison_id"]}`，类型 `four-arm-interaction`，配置中列出全部四个 evaluation IDs；指标名 `interaction_micro_f1`。重复波动工件：`{variation["artifact_id"]}`。', '',
+              '离线分析曾尝试向已冻结的配对比较追加交互指标，触发数据库保护后回滚；已改为独立记录并重新验证。修复未改变推理代码、原始预测、评分公式或五项配对结果，没有因此新增模型调用。失败日志和回滚文件作为诊断工件保留。', '']
     report = '\n'.join(lines)
     path = Path('docs/research/prompt-factorial-results-20260909.md')
     path.write_text(report)

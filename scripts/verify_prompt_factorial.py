@@ -57,7 +57,8 @@ def main():
                        Path('scripts/analyze_prompt_factorial.py'), Path('scripts/report_prompt_factorial.py'),
                        Path('docs/research/prompt-factorial-results-20260909.md'),
                        Path('scripts/prompt_factorial_stats.py'), root / 'prompt_factorial_provenance_check.json',
-                       root / 'prompt_factorial_original_workspace.json', root / 'prompt_factorial_history_check.json']}
+                       root / 'prompt_factorial_original_workspace.json', root / 'prompt_factorial_history_check.json',
+                       root / 'prompt_factorial_request_variation.json']}
             checks['final_sources_artifact_id'] = store.put(sources, 'prompt_factorial_final_sources', inline=False)
             aid = store.put(checks, 'verification_report', inline=False)
             for cid in [*state['comparisons'].values(), analysis['factorial_comparison_id']]:

@@ -105,3 +105,20 @@ PYTHONPATH=. .venv/bin/python scripts/report_semantic_experiment.py
 运行脚本保留 `semantic_experiment_state.json`，重复执行会恢复已有运行，不覆盖历史预测。按同一评估切片比较 B-A、D-C，并用 D-B、C-A 分析对比规则；全部组完成后才评分。真实模型结果与软件测试分别报告，见 [实施计划](docs/superpowers/plans/2026-09-08-semantic-retrieval.md)。
 
 [语义检索四组真实结果](docs/research/semantic-retrieval-results-20260908.md)：800 条预测全部成功，A/B/C/D 的 Micro-F1 分别为 41.67% / 40.83% / 41.93% / 42.65%。语义检索的两项主比较差值区间都包含 0，本轮未确认稳定收益，也没有自动替换默认方法。报告保留逐类指标、改善与退化案例、完整用量及证据定位。
+
+## 指令与对比示例的四组实验
+
+[2026-09-09 实验报告](docs/research/prompt-factorial-results-20260909.md)：固定 BGE 语义检索，将 v1/v3 指令与 ranked/contrastive-v1 交叉组合，在另一份新 dev200 上完成 800 条有效预测、803 次实际调用。A/B/C/D 的 Micro-F1 为 38.77% / 45.36% / 39.53% / 37.05%；普通示例下 v3 本轮上升 6.59 个百分点，但未观察到与现有对比规则的正向协同。相同请求也出现了明显输出波动，单次结果不能证明稳定增益，默认方法保持不变。
+
+```bash
+# 复用已冻结的模型文件与训练索引，构造并编码独立 dev200。
+PYTHONPATH=. .venv/bin/python scripts/build_prompt_factorial.py
+PYTHONPATH=. .venv/bin/python scripts/run_prompt_factorial.py --write-configs
+# 真实调用需要显式凭据；已有 state 会恢复原运行，不重复成功样本。
+PYTHONPATH=. .venv/bin/python scripts/run_prompt_factorial.py --env-file .env
+PYTHONPATH=. .venv/bin/python scripts/analyze_prompt_factorial.py
+PYTHONPATH=. .venv/bin/python scripts/audit_prompt_factorial_variation.py
+PYTHONPATH=. .venv/bin/python scripts/report_prompt_factorial.py
+```
+
+交互效应使用 `(D-C)-(B-A)`，四组共同进行 1000 次配对抽样，统计配置列出全部 evaluation IDs，并以独立的 `four-arm-interaction` 比较记录保存。原始请求、响应、候选、示例、五项配对比较、交互统计及重复波动诊断均有对应工件。完整迁移使用 `data/research/backups/prompt-factorial-final-20260909/`；不要只复制 SQLite 文件而遗漏关联工件。
