@@ -11,7 +11,7 @@ import numpy as np
 from emotion_lab.datasets import normalize
 from emotion_lab.embeddings import load_index, load_query_bundle
 from emotion_lab.storage import Store, digest, now
-from scripts.prompt_factorial_stats import validate_factorial, validate_requests, factorial_bootstrap
+from scripts.prompt_factorial_stats import validate_factorial, validate_requests, factorial_bootstrap, save_factorial
 
 ROOT = Path('data/research')
 ARMS = ['A', 'B', 'C', 'D']
@@ -217,17 +217,14 @@ def main():
                    'independent_validation': dict(audits), 'test_split_used': False,
                    'zero_support_labels': [label for label in LABELS if scores['A']['per_label'][label]['support'] == 0],
                    'scope': 'new dev200 screening; semantic fixed; existing v1/v3 crossed with ranked/contrastive; sequential arms; no unobserved-test generalization claim'}
+        saved = save_factorial(store, state['evaluations'], factorial, [r['sample_id'] for r in paired])
+        summary['factorial_artifact_id'] = saved['artifact_id']
+        summary['factorial_comparison_id'] = saved['comparison_id']
         with store.transaction():
-            factorial['evaluation_ids'] = state['evaluations']
-            factorial['analysis_source'] = Path('scripts/prompt_factorial_stats.py').read_text()
-            summary['factorial_artifact_id'] = store.put(factorial, 'prompt_factorial_bootstrap', inline=False)
-            effect = factorial['interaction']
-            store.insert('metric_values', comparison_id=state['comparisons']['D-A'], metric_name='interaction_micro_f1',
-                         scope_key='factorial/A,B,C,D', value=effect['value'], ci_low=effect['ci_low'], ci_high=effect['ci_high'], support=200)
             details = store.put({'records': paired, 'analysis_source': Path(__file__).read_text()}, 'prompt_factorial_paired_cases', inline=False)
             summary['paired_details_artifact_id'] = details
             aid = store.put(summary, 'prompt_factorial_analysis', inline=False)
-            for cid in state['comparisons'].values():
+            for cid in [*state['comparisons'].values(), saved['comparison_id']]:
                 store.event('comparison_id', cid, 'independently_validated', payload=aid)
         summary['analysis_artifact_id'] = aid
         (ROOT / 'prompt_factorial_analysis.json').write_text(json.dumps(summary, ensure_ascii=False, indent=2) + '\n')

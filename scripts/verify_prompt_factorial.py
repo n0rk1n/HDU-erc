@@ -45,6 +45,10 @@ def main():
         assert analysis['comparisons']['B-A']['changed_examples'] == 0
         assert analysis['comparisons']['D-C']['changed_examples'] == 0
         checks['factorial_artifact_id'] = analysis['factorial_artifact_id']
+        factorial_row = store.one('SELECT * FROM comparisons WHERE comparison_id=?', (analysis['factorial_comparison_id'],))
+        assert factorial_row['status'] == 'completed' and factorial_row['result_artifact_id'] == analysis['factorial_artifact_id']
+        assert store.json(factorial_row['analysis_config_artifact_id'])['evaluation_ids'] == state['evaluations']
+        checks['factorial_comparison_id'] = analysis['factorial_comparison_id']
         checks['database'] = store.verify()
         assert checks['database']['ok'] and not checks['database']['orphan_files']
         with store.transaction():
@@ -53,10 +57,10 @@ def main():
                        Path('scripts/analyze_prompt_factorial.py'), Path('scripts/report_prompt_factorial.py'),
                        Path('docs/research/prompt-factorial-results-20260909.md'),
                        Path('scripts/prompt_factorial_stats.py'), root / 'prompt_factorial_provenance_check.json',
-                       root / 'prompt_factorial_original_workspace.json']}
+                       root / 'prompt_factorial_original_workspace.json', root / 'prompt_factorial_history_check.json']}
             checks['final_sources_artifact_id'] = store.put(sources, 'prompt_factorial_final_sources', inline=False)
             aid = store.put(checks, 'verification_report', inline=False)
-            for cid in state['comparisons'].values():
+            for cid in [*state['comparisons'].values(), analysis['factorial_comparison_id']]:
                 store.event('comparison_id', cid, 'completion_verified', payload=aid)
         backup = root / 'backups/prompt-factorial-final-20260909'
         store.backup(backup)

@@ -1,7 +1,9 @@
 """Protocol guards and paired four-arm statistics; no model calls."""
 import json
 import random
+from pathlib import Path
 
+from emotion_lab.storage import now
 from emotion_lab.taxonomy import prompt_instruction
 
 ARMS = {'A': ('native-labels-v1', 'ranked'), 'B': ('native-labels-v3', 'ranked'),
@@ -91,3 +93,37 @@ def factorial_bootstrap(records, seed=42, repeats=1000):
             'interaction_formula': '(D-C)-(B-A), on Micro-F1 scale',
             'interaction': interval('interaction'),
             'effects': {name: interval(name) for name in COMPARISONS}, 'bootstrap_draws': draws}
+
+
+def save_factorial(store, evaluation_ids, result, sample_ids):
+    """Create a distinct analysis record; never append to a frozen pairwise result."""
+    if set(evaluation_ids) != set(ARMS) or len(set(sample_ids)) != result['samples']:
+        raise ValueError('factorial members or evaluations differ')
+    reference = None
+    for eid in evaluation_ids.values():
+        row = store.one('SELECT * FROM evaluations WHERE evaluation_id=?', (eid,))
+        if row['status'] != 'completed':
+            raise ValueError('factorial requires completed evaluations')
+        identity = (row['sample_set_id'], row['ground_truth_manifest_sha256'], store.json(row['evaluation_config_artifact_id']))
+        if reference is not None and identity != reference:
+            raise ValueError('factorial evaluation definitions differ')
+        reference = identity
+        actual = [r['sample_id'] for r in store.rows('SELECT i.sample_id FROM evaluation_items e JOIN run_items i USING(run_item_id) WHERE e.evaluation_id=?', (eid,))]
+        if sorted(actual) != sorted(sample_ids):
+            raise ValueError('factorial paired samples differ')
+    with store.transaction():
+        aid = store.put({**result, 'evaluation_ids': evaluation_ids, 'analysis_source': Path(__file__).read_text()},
+                        'prompt_factorial_bootstrap', inline=False)
+        # A and D anchor the overall experiment. The analysis configuration names
+        # all four evaluations and explicitly identifies this as an interaction.
+        cid = store.insert('comparisons', baseline_evaluation_id=evaluation_ids['A'], candidate_evaluation_id=evaluation_ids['D'],
+                           analysis_config_artifact_id=store.put({'version': 'paired-factorial-v1', 'kind': 'four-arm-interaction',
+                               'evaluation_ids': evaluation_ids, 'formula': result['interaction_formula'],
+                               'seed': result['seed'], 'repeats': result['repeats'], 'confidence': result['confidence']}, 'comparison_config'),
+                           paired_members_artifact_id=store.put(sorted(sample_ids), 'paired_members'),
+                           result_artifact_id=aid, status='building')
+        effect = result['interaction']
+        store.insert('metric_values', comparison_id=cid, metric_name='interaction_micro_f1', scope_key='factorial/A,B,C,D',
+                     value=effect['value'], ci_low=effect['ci_low'], ci_high=effect['ci_high'], support=result['samples'])
+        store.transition('comparisons', 'comparison_id', cid, 'completed', completed_at=now())
+    return {'comparison_id': cid, 'artifact_id': aid}

@@ -81,3 +81,31 @@ def test_best_combined_score_does_not_automatically_imply_synergy():
 def test_empty_or_unpaired_records_are_rejected(records):
     with pytest.raises(ValueError, match='paired|empty'):
         module().factorial_bootstrap(records, repeats=20)
+
+
+def test_factorial_storage_creates_its_own_frozen_comparison(configured):
+    from emotion_lab.preparation import prepare_run
+    from emotion_lab.runner import execute_run
+    from emotion_lab.evaluation import evaluate, compare
+    from test_runner import Counter, response
+    store, cfg = configured
+    run = prepare_run(store, cfg, counter=Counter())
+    execute_run(store, run, transport=lambda request: response(('joy',)), counter=Counter())
+    evaluations = {arm: evaluate(store, run, {}) for arm in 'ABCD'}
+    original = compare(store, evaluations['A'], evaluations['D'], repeats=20)
+    before = store.one('SELECT * FROM comparisons WHERE comparison_id=?', (original,))
+    ids = [r['sample_id'] for r in store.rows('SELECT sample_id FROM run_items WHERE run_id=? ORDER BY ordinal', (run,))]
+    rows = []
+    for sid in ids:
+        truth = [r['label_name'] for r in store.rows('SELECT d.label_name FROM sample_labels l JOIN label_definitions d ON d.dataset_version_id=l.dataset_version_id AND d.label_id=l.label_id WHERE l.sample_id=?', (sid,))]
+        rows.append({'sample_id': sid, 'truth': truth, **{a: {'predicted_labels': ['joy']} for a in 'ABCD'}})
+    result = module().factorial_bootstrap(rows, repeats=20)
+    saved = module().save_factorial(store, evaluations, result, ids)
+    assert saved['comparison_id'] != original
+    assert store.one('SELECT * FROM comparisons WHERE comparison_id=?', (original,)) == before
+    row = store.one('SELECT * FROM comparisons WHERE comparison_id=?', (saved['comparison_id'],))
+    assert row['status'] == 'completed'
+    assert store.json(row['analysis_config_artifact_id'])['evaluation_ids'] == evaluations
+    metric = store.one('SELECT * FROM metric_values WHERE comparison_id=?', (saved['comparison_id'],))
+    assert metric['metric_name'] == 'interaction_micro_f1' and metric['value'] == 0.0
+    assert not store.rows("SELECT * FROM metric_values WHERE comparison_id=? AND metric_name='interaction_micro_f1'", (original,))
