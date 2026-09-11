@@ -6,6 +6,8 @@
 >
 > 本文是可持续更新的项目总账，不替代各轮不可变实验记录。历史报告中的“尚未执行”保留其当时含义；当前进度以本文的状态、数据库及对应后续报告为准。本次整理没有新增模型调用、修改预测或重跑实验。
 
+> 2026-09-11 路径迁移说明：用户已授权将研究分支合入 main 并删除任务 worktree。本文主体保留 2026-09-09 的历史状态；可点击路径及复查命令已改为主工作区 `/Users/oriki/Database/HDU-erc`。迁移过程证据保存在 `data/research/integration-20260911/`，不更改原实验数据。
+
 ## 目录
 
 - [1. 当前状态与关键结论](#s1)
@@ -155,7 +157,7 @@ GoEmotions 数据集、使用大模型、接入 BGE、向量检索、few-shot、
 
 早期 CPED、MELD 用于讨论多轮任务的可能性；最终按照用户选择，采用资料较齐全、具有公开细粒度标签与固定划分的 GoEmotions。当前任务为**英文 Reddit 单条评论的多标签情绪识别**，不使用虚构的上下文或上一样本的情绪。
 
-来源：[GoEmotions ACL 2020 论文](https://aclanthology.org/2020.acl-main.372/)；[固定版本官方数据](https://github.com/google-research/google-research/tree/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions)。更完整的来源与许可记录见[数据说明](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/data/benchmarks/goemotions/README.md)和[manifest](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/data/benchmarks/goemotions/manifest.json)。这些是既有项目记录的来源，不是本次新做的“最新资料”调查。
+来源：[GoEmotions ACL 2020 论文](https://aclanthology.org/2020.acl-main.372/)；[固定版本官方数据](https://github.com/google-research/google-research/tree/5594ac0ee7a13c77eb1e0b98f0f305a2ca65b6c4/goemotions)。更完整的来源与许可记录见[数据说明](/Users/oriki/Database/HDU-erc/data/benchmarks/goemotions/README.md)和[manifest](/Users/oriki/Database/HDU-erc/data/benchmarks/goemotions/manifest.json)。这些是既有项目记录的来源，不是本次新做的“最新资料”调查。
 
 | 划分 | 评论数 | 多标签评论数 | neutral 与其他标签共现 | 实际用途 |
 |---|---:|---:|---:|---|
@@ -170,7 +172,7 @@ GoEmotions 数据集、使用大模型、接入 BGE、向量检索、few-shot、
 
 ### 4.2 28 类与 families 的修改
 
-修改了 [emotion_labels.json](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/config/emotion_labels.json) 和 [emotion_families.json](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/config/emotion_families.json)：保留 GoEmotions 的 27 种情绪及 neutral；删除额外的 no_emotion；补充中文显示名称与英文判别描述。细类定义和 families 在后续 prompt 对照中保持不变。
+修改了 [emotion_labels.json](/Users/oriki/Database/HDU-erc/config/emotion_labels.json) 和 [emotion_families.json](/Users/oriki/Database/HDU-erc/config/emotion_families.json)：保留 GoEmotions 的 27 种情绪及 neutral；删除额外的 no_emotion；补充中文显示名称与英文判别描述。细类定义和 families 在后续 prompt 对照中保持不变。
 
 官方 Ekman 映射覆盖 27 种情绪，neutral 单独归为 neutral，因此大类共 7 个。大类只用于补充评价，没有把 28 类任务替换成 7 类任务。
 
@@ -213,7 +215,7 @@ GoEmotions 数据集、使用大模型、接入 BGE、向量检索、few-shot、
 | 标签对齐阶段 | 替换为 56 条官方 train 单标签原文，每类 2 条；保存 source_id 和来源元数据 | 应用种子库，不是训练参数的数据，也不是正式验证集 |
 | 独立实验工程阶段 | 56 条迁移到 tests/fixtures/goemotions；正式检索覆盖完整 train | 修改旧 data/config/emotion_examples.json 不会改变当前实验的选例 |
 
-现在可查看：[56 条测试夹具](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/tests/fixtures/goemotions/emotion_examples.json)、[来源元数据](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/tests/fixtures/goemotions/emotion_examples.metadata.json)。历史 data/config 路径和配置说明可能只存在于 Git 历史，不能把旧链接失效误判为没有做过调整。
+现在可查看：[56 条测试夹具](/Users/oriki/Database/HDU-erc/tests/fixtures/goemotions/emotion_examples.json)、[来源元数据](/Users/oriki/Database/HDU-erc/tests/fixtures/goemotions/emotion_examples.metadata.json)。历史 data/config 路径和配置说明可能只存在于 Git 历史，不能把旧链接失效误判为没有做过调整。
 
 56 条种子示例当时排除了与 dev/test 的规范化重复文本，没有使用留出标签选择“容易正确”的例子。后来的运行时示例允许原生多标签，保留完整标注。
 
@@ -252,7 +254,7 @@ GoEmotions 数据集、使用大模型、接入 BGE、向量检索、few-shot、
 
 运行依赖移除了 FastAPI、uvicorn、LangGraph、聊天 checkpoint 和 LangChain。工程的研究能力与旧产品能力分开评价。
 
-主要入口：[README](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/README.md)、[cli.py](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/emotion_lab/cli.py)、[runner.py](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/emotion_lab/runner.py)、[retrieval.py](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/emotion_lab/retrieval.py)、[evaluation.py](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/emotion_lab/evaluation.py)。
+主要入口：[README](/Users/oriki/Database/HDU-erc/README.md)、[cli.py](/Users/oriki/Database/HDU-erc/emotion_lab/cli.py)、[runner.py](/Users/oriki/Database/HDU-erc/emotion_lab/runner.py)、[retrieval.py](/Users/oriki/Database/HDU-erc/emotion_lab/retrieval.py)、[evaluation.py](/Users/oriki/Database/HDU-erc/emotion_lab/evaluation.py)。
 
 ### 5.2 数据存放位置
 
@@ -267,11 +269,11 @@ GoEmotions 数据集、使用大模型、接入 BGE、向量检索、few-shot、
 | JSONL/CSV 等分析导出 | data/research/exports/ | 否 |
 | 完整可恢复备份 | data/research/backups/ | 否 |
 
-实际数据库：[experiments.sqlite3](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/data/research/experiments.sqlite3)。较小工件存于 artifacts.inline_bytes，较大工件由 relative_path 指向 gzip 文件。**只复制 SQLite 不等于完整迁移实验。**
+实际数据库：[experiments.sqlite3](/Users/oriki/Database/HDU-erc/data/research/experiments.sqlite3)。较小工件存于 artifacts.inline_bytes，较大工件由 relative_path 指向 gzip 文件。**只复制 SQLite 不等于完整迁移实验。**
 
 ### 5.3 23 张表分别负责什么
 
-下表行数来自本次只读核对；字段列列出关键关联和用途，完整主外键、触发器和约束见[数据库设计](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/specs/2026-09-08-emotion-experiment-platform-design.md)与[实际 SQL](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/emotion_lab/storage/001_initial.sql)。22 张业务表＋1 张迁移表，不把 SQLite 内部序列表算入业务数量。
+下表行数来自本次只读核对；字段列列出关键关联和用途，完整主外键、触发器和约束见[数据库设计](/Users/oriki/Database/HDU-erc/docs/superpowers/specs/2026-09-08-emotion-experiment-platform-design.md)与[实际 SQL](/Users/oriki/Database/HDU-erc/emotion_lab/storage/001_initial.sql)。22 张业务表＋1 张迁移表，不把 SQLite 内部序列表算入业务数量。
 
 | 表名 | 当前行数 | 职责与关键关联 |
 |---|---|---|
@@ -344,7 +346,7 @@ sample_sets + sample_set_members → experiments → experiment_runs
 
 ### 6.1 四个提示词版本
 
-完整实现：[taxonomy.py](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/emotion_lab/taxonomy.py)。每次 run 有独立 prompt 快照，实际发给模型的完整消息也保存；不能只看当前源码推断旧实验用过什么。
+完整实现：[taxonomy.py](/Users/oriki/Database/HDU-erc/emotion_lab/taxonomy.py)。每次 run 有独立 prompt 快照，实际发给模型的完整消息也保存；不能只看当前源码推断旧实验用过什么。
 
 | 版本 | 修改依据与主要变化 | 保持不变 | 实验定位 |
 |---|---|---|---|
@@ -357,7 +359,7 @@ v3 训练依据包括：36,308/43,410 条单标签（83.64%），6,541 条双标
 
 还检查了负面词、脏话、问号、感谢、笑声、sorry 等切片：负面词和脏话中存在 neutral；疑问句可有 curiosity、confusion 或 neutral；同情性 sorry 在原标注中也可能是 remorse。统计支持操作假设，不保证每条公开标注都可由简单规则解释。
 
-对应证据：[最初训练审计](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/train-prompt-examples.md)、[v3 依据](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/train-prompt-v3.md)、[v4 全问题复盘](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/low-accuracy-review-and-prompt-v4.md)。
+对应证据：[最初训练审计](/Users/oriki/Database/HDU-erc/docs/research/train-prompt-examples.md)、[v3 依据](/Users/oriki/Database/HDU-erc/docs/research/train-prompt-v3.md)、[v4 全问题复盘](/Users/oriki/Database/HDU-erc/docs/research/low-accuracy-review-and-prompt-v4.md)。
 
 v3/v4 的 instruction 与早期通用标签定义在部分边界上存在宽窄差别，例如 remorse 的同情性道歉用法。现有对照保留共同定义以控制变量；尚未对“定义与新增规则一致性”单独做消融，不能认定它已被彻底解决。
 
@@ -471,7 +473,7 @@ R1/R2/R3 使用旧 dev200，R4 和 R5 各使用另一份新 dev200。**只在同
 
 随后一个独立 run 检查 2 条评论：2 次调用、2 条有效解析；不生成正式比较用的 evaluation。与 R1 的 401 次正式调用合计 403 次。
 
-该阶段曾有工件登记参数错误，已恢复登记，详见第 9 节。对应记录：[离线验收](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/prompt-examples-validation-20260908.md)。
+该阶段曾有工件登记参数错误，已恢复登记，详见第 9 节。对应记录：[离线验收](/Users/oriki/Database/HDU-erc/docs/research/prompt-examples-validation-20260908.md)。
 
 ### 8.3 R1：同时修改 prompt 与 example
 
@@ -485,7 +487,7 @@ R1/R2/R3 使用旧 dev200，R4 和 R5 各使用另一份新 dev200。**只在同
 
 实施意义：建立了真实“训练示例→模型输出→评分→独立核验”的证据链；暴露 prompt 与 example 同时改变的归因问题。后续必须拆开比较。
 
-完整报告：[R1](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/glm-dev200-results-20260908.md)。
+完整报告：[R1](/Users/oriki/Database/HDU-erc/docs/research/glm-dev200-results-20260908.md)。
 
 ### 8.4 R2：只改 prompt，v2 与 v3
 
@@ -501,7 +503,7 @@ R1/R2/R3 使用旧 dev200，R4 和 R5 各使用另一份新 dev200。**只在同
 
 结论：v3 改变了多报/漏报平衡，没有稳定全面优于 v2 的证据，未自动替换默认指令。训练规则来自 train，但已经看过旧 dev 错误，因此本轮不是独立未见验证。
 
-完整报告：[R2](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/glm-dev200-prompt-v3-results-20260908.md)。
+完整报告：[R2](/Users/oriki/Database/HDU-erc/docs/research/glm-dev200-prompt-v3-results-20260908.md)。
 
 ### 8.5 R3：复盘全部历史问题后，v3 与 v4
 
@@ -518,7 +520,7 @@ R2 与 R3 的 v3 控制请求 200 个哈希全部相同，Micro-F1 却为 39.32%
 
 结论：保留负面结果，**v4 不提升为默认**。这不等于证明所有 prompt 优化都无收益；它说明继续堆边界规则没有在当前设定下形成稳定净收益。
 
-完整报告：[R3](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/glm-dev200-prompt-v4-results-20260908.md)。
+完整报告：[R3](/Users/oriki/Database/HDU-erc/docs/research/glm-dev200-prompt-v4-results-20260908.md)。
 
 ### 8.6 R4：相似度 × 对比选例四组实验
 
@@ -562,7 +564,7 @@ R2 与 R3 的 v3 控制请求 200 个哈希全部相同，Micro-F1 却为 39.32%
 
 独立核验 800 份请求/预测、40,000 条候选、3,200 条示例、800 份完整得分向量。81 项测试通过，数据库及备份工件核验通过。
 
-结论：实现与实验完成，未确认稳定增益，未自动提升默认方案。完整报告：[R4](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/semantic-retrieval-results-20260908.md)。
+结论：实现与实验完成，未确认稳定增益，未自动提升默认方案。完整报告：[R4](/Users/oriki/Database/HDU-erc/docs/research/semantic-retrieval-results-20260908.md)。
 
 ### 8.7 R5：指令 × 对比示例四组实验
 
@@ -620,7 +622,7 @@ A/B 的 200 组示例全文和顺序完全相同，C/D 同样相同。A/C 与 B/
 
 本轮离线交互统计曾触发 frozen metrics 保护，修复后单独保存交互比较，未重跑模型、未修改预测，详情见第 9 节。最终 91 项测试通过；逐条核对 800 份真值/请求/预测、40,000 条候选、3,200 条示例、800 份完整得分与 200 组四臂请求。
 
-结论：**B 是当前优先复测的候选，现有对比规则没有得到正向协同支持**；尚未自动修改默认配置。完整报告：[R5](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/research/prompt-factorial-results-20260909.md)。
+结论：**B 是当前优先复测的候选，现有对比规则没有得到正向协同支持**；尚未自动修改默认配置。完整报告：[R5](/Users/oriki/Database/HDU-erc/docs/research/prompt-factorial-results-20260909.md)。
 
 ### 8.8 全部调用与 token 总账
 
@@ -702,7 +704,7 @@ I07 的修复是新增独立 `four-arm-interaction` 比较记录：校验四个�
 | prompt factorial | 新切片、v1/v3 × 两种示例、交互统计、波动审计、修复冻结生命周期 | 91 tests；800 条有效预测；803 次调用 | 已完成，未支持正向协同 |
 | 本次全过程追踪 | 历史决策、当前总账、结果、问题、计划、定位与更新模板 | 只读 DB 核对、链接和差异检查 | 文档交付，不新增实验 |
 
-对应计划：[平台](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/plans/2026-09-08-emotion-experiment-platform.md)、[初轮](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/plans/2026-09-08-train-prompt-examples.md)、[v3](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/plans/2026-09-08-train-prompt-v3.md)、[v4](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/plans/2026-09-08-prompt-v4.md)、[语义检索](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/plans/2026-09-08-semantic-retrieval.md)、[指令交叉](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/docs/superpowers/plans/2026-09-09-prompt-factorial.md)。
+对应计划：[平台](/Users/oriki/Database/HDU-erc/docs/superpowers/plans/2026-09-08-emotion-experiment-platform.md)、[初轮](/Users/oriki/Database/HDU-erc/docs/superpowers/plans/2026-09-08-train-prompt-examples.md)、[v3](/Users/oriki/Database/HDU-erc/docs/superpowers/plans/2026-09-08-train-prompt-v3.md)、[v4](/Users/oriki/Database/HDU-erc/docs/superpowers/plans/2026-09-08-prompt-v4.md)、[语义检索](/Users/oriki/Database/HDU-erc/docs/superpowers/plans/2026-09-08-semantic-retrieval.md)、[指令交叉](/Users/oriki/Database/HDU-erc/docs/superpowers/plans/2026-09-09-prompt-factorial.md)。
 
 测试数量是各阶段对应代码的历史验收结果，不代表本次文档整理重新跑过这些测试。改造前 462 passed、1 skipped 与改造后 51 passed 是不同测试集合，不能据数量减少认定测试覆盖退化，也不能把跳过的真实模型测试当成已运行。
 
@@ -879,18 +881,18 @@ ID 只定位本地这份数据库；新建数据库重导入不保证 UUID 一�
 | R4 | data/research/backups/semantic-retrieval-final-20260908/ | semantic-retrieval-results-20260908.md |
 | R5 | data/research/backups/prompt-factorial-final-20260909/ | prompt-factorial-results-20260909.md |
 
-当前优先用于完整迁移的已有快照：[R5 最终备份](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/data/research/backups/prompt-factorial-final-20260909)。它包含截至该轮的历史实验、模型工件和向量，不包含本文之后的 Git 文档变更。
+当前优先用于完整迁移的已有快照：[R5 最终备份](/Users/oriki/Database/HDU-erc/data/research/backups/prompt-factorial-final-20260909)。它包含截至该轮的历史实验、模型工件和向量，不包含本文之后的 Git 文档变更。
 
 历史完整核验：R3 备份 12,695 个工件；R4 备份 21,104 个；R5 备份 29,449 个，均无错误或孤儿文件。R5 还对比 R4 备份的全部 23 表，确认 **364,467 条旧记录未缺失或修改**。这些是既有验证报告记录，不是本次重新执行全量工件解压核验。
 
-标准导出位于 data/research/exports，各组包含 5 份标准导出及清单；另外保存跨组逐条 JSONL。最新[四组逐条明细](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/data/research/exports/prompt-factorial-dev200-paired-cases-20260909.jsonl)包含配对分析所需的信息。CSV/JSONL 便于统计，但不能替代原始响应和完整备份。
+标准导出位于 data/research/exports，各组包含 5 份标准导出及清单；另外保存跨组逐条 JSONL。最新[四组逐条明细](/Users/oriki/Database/HDU-erc/data/research/exports/prompt-factorial-dev200-paired-cases-20260909.jsonl)包含配对分析所需的信息。CSV/JSONL 便于统计，但不能替代原始响应和完整备份。
 
 ### 13.2 当前只读复查命令
 
 在研究工作区执行以下命令。第一条只读核对数据文件；第二条以 SQLite mode=ro 查看现有记录，不创建 run、不请求模型、不更新数据库。
 
 ```bash
-cd /Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908
+cd /Users/oriki/Database/HDU-erc
 .venv/bin/python data/benchmarks/goemotions/verify.py
 
 .venv/bin/python - <<'PY'
@@ -949,7 +951,7 @@ WHERE artifact_id = 'bb0925a4-96a1-4098-a1b4-3650b61cad6c';
 | 新建独立 run | 是 | 是 | 测量跨次模型波动或新方法 |
 | storage backup | 否 | 活跃库可能登记清单 | 产生可迁移快照 |
 
-原实验驱动入口在 [scripts](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/scripts)，配置位于 [config/experiments](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908/config/experiments)。已有 state 文件用于恢复原运行，重新执行已有驱动不一定创建独立实验；不能删 state 后不核查就盲目重跑。
+原实验驱动入口在 [scripts](/Users/oriki/Database/HDU-erc/scripts)，配置位于 [config/experiments](/Users/oriki/Database/HDU-erc/config/experiments)。已有 state 文件用于恢复原运行，重新执行已有驱动不一定创建独立实验；不能删 state 后不核查就盲目重跑。
 
 完整恢复应先校验备份，将 experiments.sqlite3 与其 artifacts/ 一起复制到新的数据目录，以该目录继续工作；保留原备份，不把 WAL/SHM 临时文件当归档、不覆盖唯一原库。新机器还需相应 Git 代码、依赖与本地凭据；凭据不随证据包转移。
 
@@ -959,7 +961,7 @@ WHERE artifact_id = 'bb0925a4-96a1-4098-a1b4-3650b61cad6c';
 ### 14.1 当前研究分支
 
 - 研究分支：`codex/goemotions-config-20260908`。
-- 研究工作树：[goemotions-config-20260908](/Users/oriki/Database/HDU-erc/.worktrees/goemotions-config-20260908)。
+- 研究工作树：[goemotions-config-20260908](/Users/oriki/Database/HDU-erc)。
 - 目标分支：`main`，当前已提交 HEAD `1af9d06c1bc0f8b2754b1066568ed56598ab411a`。
 - 本次整理复用同一研究任务的隔离工作树，开始时研究树干净。
 - 原始工作区：[HDU-erc](/Users/oriki/Database/HDU-erc)；当前有 50 项预先存在的测试文件删除，本文不把它说成干净，也不将其混入提交。
